@@ -46,21 +46,17 @@ jobs:
         shell: bash
         env:
           JLZ_DEBUG_KEYSTORE_BASE64: ${{ secrets.JLZ_DEBUG_KEYSTORE_BASE64 }}
-          JLZ_KEYSTORE_PASSWORD: ${{ secrets.JLZ_KEYSTORE_PASSWORD }}
-          JLZ_KEY_PASSWORD: ${{ secrets.JLZ_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           test -n "${JLZ_DEBUG_KEYSTORE_BASE64:-}"
-          test -n "${JLZ_KEYSTORE_PASSWORD:-}"
-          test -n "${JLZ_KEY_PASSWORD:-}"
           mkdir -p /tmp/jlz-signing
           printf '%s' "$JLZ_DEBUG_KEYSTORE_BASE64" | base64 --decode > /tmp/jlz-signing/jlz-native-debug.keystore
           apk="native-android/app/build/outputs/apk/debug/app-debug.apk"
           apksigner sign \
             --ks /tmp/jlz-signing/jlz-native-debug.keystore \
             --ks-key-alias androiddebugkey \
-            --ks-pass env:JLZ_KEYSTORE_PASSWORD \
-            --key-pass env:JLZ_KEY_PASSWORD \
+            --ks-pass pass:android \
+            --key-pass pass:android \
             "$apk"
           apksigner verify --verbose --print-certs "$apk"
           rm -f /tmp/jlz-signing/jlz-native-debug.keystore
