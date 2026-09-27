@@ -1,0 +1,15 @@
+[
+  {"group":"songs","file":"song_01.mp3","path":"songs/song_01.mp3","source_cn":"别走主歌","duration_s":231.6},
+  {"group":"songs","file":"song_02.mp3","path":"songs/song_02.mp3","source_cn":"枕边梦话","duration_s":172.6},
+  {"group":"songs","file":"song_03.mp3","path":"songs/song_03.mp3","source_cn":"别走鼓点","duration_s":121.8},
+  {"group":"songs","file":"song_04.mp3","path":"songs/song_04.mp3","source_cn":"别走轻","duration_s":125.5},
+  {"group":"overlays","file":"breathing_soft.wav","path":"overlays/breathing_soft.wav","source_cn":"安静呼吸声","duration_s":123.6},
+  {"group":"overlays","file":"heartbeat_soft.wav","path":"overlays/heartbeat_soft.wav","source_cn":"稳心跳","duration_s":117.7},
+  {"group":"overlays","file":"heartbeat_strong.wav","path":"overlays/heartbeat_strong.wav","source_cn":"快心跳","duration_s":124.5},
+  {"group":"overlays","file":"breathing_strong.wav","path":"overlays/breathing_strong.wav","source_cn":"放松呼吸声","duration_s":121.7},
+  {"group":"ambience","file":"rain_quiet_room.mp3","path":"ambience/rain_quiet_room.mp3","source_cn":"安静房间雨","duration_s":59.1},
+  {"group":"ambience","file":"rain_soft_room.mp3","path":"ambience/rain_soft_room.mp3","source_cn":"安静房间柔和雨","duration_s":59.5},
+  {"group":"ambience","file":"midnight_flight_01.mp3","path":"ambience/midnight_flight_01.mp3","source_cn":"午夜飞行1","duration_s":118.9},
+  {"group":"ambience","file":"midnight_flight_02.mp3","path":"ambience/midnight_flight_02.mp3","source_cn":"午夜飞行2","duration_s":126.7},
+  {"group":"ambience","file":"weightless_drift.mp3","path":"ambience/weightless_drift.mp3","source_cn":"失重沉溺","duration_s":116.7}
+]
