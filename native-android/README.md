@@ -41,3 +41,6 @@ It is physically separate from the legacy `android/app` tree and uses a new appl
 - real-device acceptance
 
 A successful source commit is not a device PASS. N0 completion requires the separate real-device exit checks in `worker/n0/N0_NATIVE_CLIENT_ARCHITECTURE_v0.1.md`.
+
+
+> Public build mirror: signing keys and private Runtime/server material are intentionally excluded.
