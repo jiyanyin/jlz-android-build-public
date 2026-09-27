@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import dev.jlz.presence.actions.DeviceActionExecutor
 import dev.jlz.presence.actions.DeviceSystemController
@@ -63,6 +64,7 @@ class NativeRuntimeService : Service() {
     private var heartbeatJob: Job? = null
     private var commandJob: Job? = null
     private var planJob: Job? = null
+    private var commandWakeLock: PowerManager.WakeLock? = null
 
     private lateinit var focusRepository: FocusRepository
     private lateinit var deviceActions: DeviceActionExecutor
@@ -130,6 +132,15 @@ class NativeRuntimeService : Service() {
         }
 
         createChannel()
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        commandWakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "JLZPresence:RuntimeCommandChannel"
+        ).apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+
         startForeground(
             FOREGROUND_ID,
             NotificationCompat.Builder(this, SERVICE_CHANNEL)
@@ -152,6 +163,10 @@ class NativeRuntimeService : Service() {
         planJob?.cancel()
         scope.cancel()
         runCatching { unregisterReceiver(deviceEventReceiver) }
+        runCatching {
+            commandWakeLock?.let { if (it.isHeld) it.release() }
+        }
+        commandWakeLock = null
         NativeClientDiagnostics.update {
             it.copy(serviceRunning = false, runtimeConnected = false)
         }
