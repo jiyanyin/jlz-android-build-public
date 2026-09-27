@@ -312,6 +312,12 @@ class DeviceActionExecutor(private val context: Context) {
             delay(100L)
         }
 
+        // HyperOS needs a short settle after waking before the first keyguard
+        // gesture; otherwise the swipe can land during the wake transition.
+        if (system.lockState() == DeviceSystemController.LockState.LOCKED_SECURE) {
+            delay(650L)
+        }
+
         when (system.lockState()) {
             DeviceSystemController.LockState.UNLOCKED ->
                 return true to JSONObject().put("ok", true)
