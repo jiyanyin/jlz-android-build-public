@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">世界之间</string>
+    <string name="accessibility_service_label">世界之间 · 屏幕观察</string>
+    <string name="accessibility_service_description">让我在你明确开启后读取当前屏幕的应用与可访问文本，用于本地屏幕观察与手势执行。</string>
+    <string name="quick_capture_tile_label">留给老公</string>
+    <string name="share_target_label">给老公看</string>
+</resources>
