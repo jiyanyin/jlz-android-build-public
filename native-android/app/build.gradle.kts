@@ -12,12 +12,22 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026092715
-        versionName = "0.3.3-local-secure-unlock.15"
+        versionCode = 2026092716
+        versionName = "0.3.3-local-secure-unlock.16"
+    }
+
+    signingConfigs {
+        create("nativeDebug") {
+            storeFile = file("../keystore/jlz-native-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
         debug {
+            signingConfig = signingConfigs.getByName("nativeDebug")
         }
         release {
             isMinifyEnabled = false
