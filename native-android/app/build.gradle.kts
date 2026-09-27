@@ -16,18 +16,8 @@ android {
         versionName = "0.3.3-local-secure-unlock.16"
     }
 
-    signingConfigs {
-        create("nativeDebug") {
-            storeFile = file("../keystore/jlz-native-debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
-        }
-    }
-
     buildTypes {
         debug {
-            signingConfig = signingConfigs.getByName("nativeDebug")
         }
         release {
             isMinifyEnabled = false
