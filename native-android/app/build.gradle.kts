@@ -12,8 +12,8 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026092716
-        versionName = "0.3.3-local-secure-unlock.16"
+        versionCode = 2026092717
+        versionName = "0.3.3-local-secure-unlock.17"
     }
 
     buildTypes {
