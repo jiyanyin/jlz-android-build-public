@@ -1,0 +1,72 @@
+name: Public Android Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'native-android/**'
+      - '.github/workflows/android-build.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: public-android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Debug APK
+        working-directory: native-android
+        shell: bash
+        run: |
+          set +e
+          gradle :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee build-output.log
+          status=${PIPESTATUS[0]}
+          exit $status
+
+      - name: Upload APK artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: JLZ-Presence-2026092715
+          path: native-android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Publish latest APK release
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="native-android/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$apk"
+          build_code="$(sed -n 's/^[[:space:]]*versionCode = \([0-9][0-9]*\).*$/\1/p' native-android/app/build.gradle.kts | head -n 1)"
+          version_name="$(sed -n 's/^[[:space:]]*versionName = "\([^"]*\)".*$/\1/p' native-android/app/build.gradle.kts | head -n 1)"
+          cp "$apk" /tmp/JLZ-Presence-latest.apk
+          sha256sum /tmp/JLZ-Presence-latest.apk > /tmp/JLZ-Presence-latest-SHA256.txt
+          notes="Public build mirror. Android version: ${version_name}; versionCode: ${build_code}. Private Runtime/server sources are not included in this repository."
+          if gh release view android-native-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload android-native-latest /tmp/JLZ-Presence-latest.apk /tmp/JLZ-Presence-latest-SHA256.txt --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit android-native-latest --title "JLZ Presence · Android latest" --notes "$notes" --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create android-native-latest /tmp/JLZ-Presence-latest.apk /tmp/JLZ-Presence-latest-SHA256.txt --target "$GITHUB_SHA" --title "JLZ Presence · Android latest" --notes "$notes" --repo "$GITHUB_REPOSITORY"
+          fi

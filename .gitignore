@@ -1,0 +1,12 @@
+# Public Android build mirror: never commit private signing or runtime material
+native-android/keystore/
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+.env
+.env.*
+local.properties
+**/google-services.json
+**/secrets.properties
