@@ -20,15 +20,39 @@ data class UnifiedTimelineItem(
     val side: Int = 0
 )
 
+data class TimelineSegment(
+    val id: String,
+    val startAtMs: Long,
+    val endAtMs: Long,
+    val title: String,
+    val detail: String,
+    val periodLabel: String,
+    val appLabels: List<String>,
+    val activeDurationMs: Long,
+    val wallDurationMs: Long,
+    val sessionCount: Int,
+    val origin: String
+)
+
+data class TopAppUsage(
+    val label: String,
+    val durationMs: Long,
+    val sessionCount: Int
+)
+
 data class UnifiedTimelineSnapshot(
     val generatedAtMs: Long,
     val startAtMs: Long,
     val items: List<UnifiedTimelineItem>,
+    val segments: List<TimelineSegment>,
+    val topApps: List<TopAppUsage>,
     val screenOnCount: Int,
     val unlockCount: Int,
     val appSessionCount: Int,
     val foregroundMinutes: Long,
-    val runtimeAttributedCount: Int
+    val runtimeAttributedCount: Int,
+    val firstUnlockAtMs: Long?,
+    val latestActivityAtMs: Long?
 )
 
 /**
@@ -43,6 +67,26 @@ class UnifiedPhoneTimeline(private val context: Context) {
     private val activity = DeviceActivityJournal(context)
     private val life = LocalLifeStore(context)
     private val appLabelCache = mutableMapOf<String, String>()
+
+    private data class AppEvidence(
+        val packageName: String,
+        val label: String,
+        val startMs: Long,
+        val endMs: Long,
+        val durationMs: Long,
+        val origin: String,
+        val confidence: String
+    )
+
+    private data class SegmentBuilder(
+        var startMs: Long,
+        var endMs: Long,
+        var activeMs: Long,
+        var sessionCount: Int,
+        val appsInOrder: MutableList<String>,
+        val appDurations: MutableMap<String, Long>,
+        val origins: MutableSet<String>
+    )
 
     fun today(nowMs: Long = System.currentTimeMillis(), limit: Int = 500): UnifiedTimelineSnapshot {
         val start = Calendar.getInstance().apply {
@@ -70,14 +114,21 @@ class UnifiedPhoneTimeline(private val context: Context) {
         val screenArray = screenJson.optJSONArray("items")
         var screenOnCount = 0
         var unlockCount = 0
+        var firstUnlockAtMs: Long? = null
+
         if (screenArray != null) {
             for (i in 0 until screenArray.length()) {
                 val item = screenArray.optJSONObject(i) ?: continue
                 val type = item.optString("event_type")
                 val at = item.optLong("wall_clock_timestamp")
                 if (at <= 0L) continue
+
                 if (type == "SCREEN_ON") screenOnCount++
-                if (type == "KEYGUARD_HIDDEN") unlockCount++
+                if (type == "KEYGUARD_HIDDEN") {
+                    unlockCount++
+                    if (firstUnlockAtMs == null || at < firstUnlockAtMs!!) firstUnlockAtMs = at
+                }
+
                 val origin = item.optString("origin", "UNKNOWN")
                 val title = when (type) {
                     "SCREEN_ON" -> "亮屏"
@@ -90,10 +141,12 @@ class UnifiedPhoneTimeline(private val context: Context) {
                     "DATA_GAP_END" -> "记录恢复"
                     else -> type.ifBlank { "设备事件" }
                 }
+
                 val detailParts = mutableListOf<String>()
-                item.optString("foreground_package").takeIf { it.isNotBlank() && it != "null" }?.let {
-                    detailParts += appLabel(it)
-                }
+                item.optString("foreground_package")
+                    .takeIf { it.isNotBlank() && it != "null" }
+                    ?.let { detailParts += appLabel(it) }
+
                 item.optString("screen_off_reason").takeIf { it.isNotBlank() }?.let {
                     detailParts += when (it) {
                         "RUNTIME_OR_TEST_SCREEN_OFF" -> "由 Runtime/测试触发"
@@ -101,6 +154,7 @@ class UnifiedPhoneTimeline(private val context: Context) {
                         else -> it
                     }
                 }
+
                 screenItems += UnifiedTimelineItem(
                     id = item.optString("event_id", "screen:$at:$type"),
                     atMs = at,
@@ -110,15 +164,19 @@ class UnifiedPhoneTimeline(private val context: Context) {
                     origin = origin,
                     actor = item.optString("actor", actorFor(origin)),
                     source = item.optString("source", screenJson.optString("source", "device")),
-                    confidence = if (item.has("command_id") && !item.isNull("command_id")) "high_command_correlation" else "",
+                    confidence = if (item.has("command_id") && !item.isNull("command_id")) {
+                        "high_command_correlation"
+                    } else "",
                     side = if (origin == "JLZ_RUNTIME") -1 else 0
                 )
             }
         }
 
+        val appEvidence = mutableListOf<AppEvidence>()
         val appItems = mutableListOf<UnifiedTimelineItem>()
         var foregroundMs = 0L
         val sessions = appJson.optJSONArray("sessions")
+
         if (sessions != null) {
             for (i in 0 until sessions.length()) {
                 val item = sessions.optJSONObject(i) ?: continue
@@ -126,20 +184,40 @@ class UnifiedPhoneTimeline(private val context: Context) {
                 val startMs = item.optLong("session_start")
                 val endMs = item.optLong("session_end")
                 val duration = item.optLong("duration_ms")
-                if (pkg.isBlank() || startMs <= 0L || duration < 3_000L || isSystemNoise(pkg)) continue
+                if (
+                    pkg.isBlank() ||
+                    startMs <= 0L ||
+                    endMs <= startMs ||
+                    duration < 3_000L ||
+                    isSystemNoise(pkg)
+                ) continue
+
                 foregroundMs += duration
                 val origin = item.optString("origin", "UNKNOWN")
+                val label = appLabel(pkg)
+                val confidence = item.optString("confidence")
+
+                appEvidence += AppEvidence(
+                    packageName = pkg,
+                    label = label,
+                    startMs = startMs,
+                    endMs = endMs,
+                    durationMs = duration,
+                    origin = origin,
+                    confidence = confidence
+                )
+
                 appItems += UnifiedTimelineItem(
                     id = "app:$pkg:$startMs:$endMs",
                     atMs = startMs,
-                    endMs = endMs.takeIf { it > startMs },
-                    title = "使用 ${appLabel(pkg)}",
+                    endMs = endMs,
+                    title = "使用 $label",
                     detail = formatDuration(duration),
                     category = "APP",
                     origin = origin,
                     actor = item.optString("actor", actorFor(origin)),
                     source = item.optString("source", "android_usage_events"),
-                    confidence = item.optString("confidence"),
+                    confidence = confidence,
                     side = if (origin == "JLZ_RUNTIME") -1 else 0
                 )
             }
@@ -151,6 +229,7 @@ class UnifiedPhoneTimeline(private val context: Context) {
             }
             val meta = runCatching { JSONObject(ev.metadataJson) }.getOrNull()
             val actor = meta?.optString("actor").orEmpty()
+
             UnifiedTimelineItem(
                 id = "life:${ev.id}",
                 atMs = ev.createdAtMs,
@@ -177,16 +256,136 @@ class UnifiedPhoneTimeline(private val context: Context) {
             .sortedByDescending { it.atMs }
             .take(limit.coerceIn(50, 1000))
 
+        val segments = buildSegments(appEvidence)
+        val topApps = appEvidence
+            .groupBy { it.label }
+            .map { (label, values) ->
+                TopAppUsage(
+                    label = label,
+                    durationMs = values.sumOf { it.durationMs },
+                    sessionCount = values.size
+                )
+            }
+            .sortedByDescending { it.durationMs }
+            .take(5)
+
         return UnifiedTimelineSnapshot(
             generatedAtMs = nowMs,
             startAtMs = start,
             items = merged,
+            segments = segments.sortedByDescending { it.startAtMs },
+            topApps = topApps,
             screenOnCount = screenOnCount,
             unlockCount = unlockCount,
             appSessionCount = appItems.size,
             foregroundMinutes = foregroundMs / 60_000L,
-            runtimeAttributedCount = merged.count { it.origin == "JLZ_RUNTIME" }
+            runtimeAttributedCount = merged.count { it.origin == "JLZ_RUNTIME" },
+            firstUnlockAtMs = firstUnlockAtMs,
+            latestActivityAtMs = merged.maxOfOrNull { it.endMs ?: it.atMs }
         )
+    }
+
+    private fun buildSegments(apps: List<AppEvidence>): List<TimelineSegment> {
+        if (apps.isEmpty()) return emptyList()
+
+        val sorted = apps.sortedBy { it.startMs }
+        val result = mutableListOf<TimelineSegment>()
+        var current: SegmentBuilder? = null
+
+        fun flush() {
+            val segment = current ?: return
+            val uniqueApps = segment.appsInOrder.distinct()
+            val top = segment.appDurations.maxByOrNull { it.value }
+            val title = when {
+                uniqueApps.isEmpty() -> "手机活动"
+                uniqueApps.size == 1 -> uniqueApps.first()
+                top != null && top.value >= segment.activeMs * 0.60 -> "主要在 ${top.key}"
+                else -> uniqueApps.take(3).joinToString(" → ")
+            }
+
+            val wallMs = (segment.endMs - segment.startMs).coerceAtLeast(segment.activeMs)
+            val detailParts = mutableListOf<String>()
+            detailParts += "连续 ${formatDuration(wallMs)}"
+            detailParts += "前台 ${formatDuration(segment.activeMs)}"
+            if (uniqueApps.size > 1) detailParts += "${uniqueApps.size} 个 App"
+            if (segment.sessionCount > 1) detailParts += "${segment.sessionCount} 段"
+
+            val origin = when {
+                segment.origins.size == 1 -> segment.origins.first()
+                segment.origins.isEmpty() -> "UNKNOWN"
+                else -> "MIXED"
+            }
+
+            result += TimelineSegment(
+                id = "segment:${segment.startMs}:${segment.endMs}",
+                startAtMs = segment.startMs,
+                endAtMs = segment.endMs,
+                title = title,
+                detail = detailParts.joinToString(" · "),
+                periodLabel = periodLabel(segment.startMs),
+                appLabels = uniqueApps,
+                activeDurationMs = segment.activeMs,
+                wallDurationMs = wallMs,
+                sessionCount = segment.sessionCount,
+                origin = origin
+            )
+            current = null
+        }
+
+        for (app in sorted) {
+            val builder = current
+            if (builder == null) {
+                current = SegmentBuilder(
+                    startMs = app.startMs,
+                    endMs = app.endMs,
+                    activeMs = app.durationMs,
+                    sessionCount = 1,
+                    appsInOrder = mutableListOf(app.label),
+                    appDurations = mutableMapOf(app.label to app.durationMs),
+                    origins = mutableSetOf(app.origin)
+                )
+                continue
+            }
+
+            val gap = app.startMs - builder.endMs
+            val shouldMerge = gap in 0L..SEGMENT_GAP_MS
+
+            if (!shouldMerge) {
+                flush()
+                current = SegmentBuilder(
+                    startMs = app.startMs,
+                    endMs = app.endMs,
+                    activeMs = app.durationMs,
+                    sessionCount = 1,
+                    appsInOrder = mutableListOf(app.label),
+                    appDurations = mutableMapOf(app.label to app.durationMs),
+                    origins = mutableSetOf(app.origin)
+                )
+                continue
+            }
+
+            builder.endMs = maxOf(builder.endMs, app.endMs)
+            builder.activeMs += app.durationMs
+            builder.sessionCount += 1
+            builder.appsInOrder += app.label
+            builder.appDurations[app.label] = (builder.appDurations[app.label] ?: 0L) + app.durationMs
+            builder.origins += app.origin
+        }
+
+        flush()
+        return result.filter { it.activeDurationMs >= 5_000L }
+    }
+
+    private fun periodLabel(atMs: Long): String {
+        val hour = Calendar.getInstance().apply { timeInMillis = atMs }.get(Calendar.HOUR_OF_DAY)
+        return when (hour) {
+            in 0..5 -> "凌晨"
+            in 6..8 -> "早上"
+            in 9..11 -> "上午"
+            in 12..13 -> "中午"
+            in 14..17 -> "下午"
+            else -> "晚上"
+        }
     }
 
     private fun appLabel(packageName: String): String = appLabelCache.getOrPut(packageName) {
@@ -232,5 +431,9 @@ class UnifiedPhoneTimeline(private val context: Context) {
             minutes > 0 -> String.format(Locale.getDefault(), "%d分%02d秒", minutes, seconds)
             else -> "${seconds}秒"
         }
+    }
+
+    companion object {
+        private const val SEGMENT_GAP_MS = 90_000L
     }
 }
