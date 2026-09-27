@@ -44,8 +44,10 @@ class DeviceSystemController(private val context: Context) {
                 PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
                 "jlz:remote-wake"
             )
-            wakeLock.acquire(2_500L)
-            wakeLock.release()
+            // Keep the display wake lock alive long enough for HyperOS keyguard
+            // to finish its wake animation and accept the following accessibility
+            // swipe/PIN sequence. Releasing immediately only flashes the screen on.
+            wakeLock.acquire(10_000L)
             true to lockState().name
         }.getOrElse { false to (it.message ?: it.javaClass.simpleName) }
     }
