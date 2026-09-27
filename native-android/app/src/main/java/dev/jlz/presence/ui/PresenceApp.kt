@@ -29,6 +29,7 @@ import dev.jlz.presence.study.StudyPatrol
 import dev.jlz.presence.trip.TripController
 import dev.jlz.presence.usage.UnifiedPhoneTimeline
 import dev.jlz.presence.usage.UnifiedTimelineItem
+import dev.jlz.presence.usage.TimelineSegment
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -226,6 +227,7 @@ fun TimelineScreen() {
     val repository = remember { UnifiedPhoneTimeline(context) }
     var snapshot by remember { mutableStateOf<dev.jlz.presence.usage.UnifiedTimelineSnapshot?>(null) }
     var filter by remember { mutableStateOf("ALL") }
+    var mode by remember { mutableStateOf("SEGMENTS") }
     var refreshNonce by remember { mutableIntStateOf(0) }
     var loading by remember { mutableStateOf(true) }
 
@@ -245,6 +247,7 @@ fun TimelineScreen() {
         "WORK_TEST" -> "Work 测试"
         "SYSTEM" -> "系统"
         "LOCAL" -> "本地"
+        "MIXED" -> "混合来源"
         else -> item.origin.ifBlank { "未知来源" }
     }
 
@@ -258,6 +261,23 @@ fun TimelineScreen() {
     fun formatMinutes(minutes: Long): String = when {
         minutes >= 60L -> "${minutes / 60L}小时${minutes % 60L}分"
         else -> "${minutes}分"
+    }
+
+    fun formatClock(atMs: Long?): String {
+        if (atMs == null || atMs <= 0L) return "—"
+        return java.text.SimpleDateFormat(
+            "HH:mm",
+            java.util.Locale.getDefault()
+        ).format(java.util.Date(atMs))
+    }
+
+    fun segmentOrigin(segment: TimelineSegment): String = when (segment.origin) {
+        "JLZ_RUNTIME" -> "含 Runtime 操作"
+        "USER_OR_NON_RUNTIME" -> "手机侧 · 非 Runtime"
+        "MIXED" -> "混合来源"
+        "WORK_TEST" -> "Work 测试"
+        "SYSTEM" -> "系统"
+        else -> ""
     }
 
     val visibleItems = snapshot?.items.orEmpty().filter {
@@ -274,7 +294,7 @@ fun TimelineScreen() {
         ) {
             Column {
                 Text("今天发生了什么", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
-                Text("手机证据 × App 使用 × 你我事件", color = TextTertiary, style = MaterialTheme.typography.labelMedium)
+                Text("把系统日志收成你真正能读的一天", color = TextTertiary, style = MaterialTheme.typography.labelMedium)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -297,6 +317,11 @@ fun TimelineScreen() {
                 Text("今日手机摘要", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(6.dp))
                 Text(
+                    "第一次解锁 ${formatClock(snap.firstUnlockAtMs)} · 最近活动 ${formatClock(snap.latestActivityAtMs)}",
+                    color = TextSecondary,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
                     "亮屏 ${snap.screenOnCount} 次 · 解锁 ${snap.unlockCount} 次 · App 会话 ${snap.appSessionCount} 段",
                     color = TextSecondary,
                     style = MaterialTheme.typography.bodyMedium
@@ -306,9 +331,22 @@ fun TimelineScreen() {
                     color = TextSecondary,
                     style = MaterialTheme.typography.bodyMedium
                 )
-                Spacer(Modifier.height(4.dp))
+
+                if (snap.topApps.isNotEmpty()) {
+                    Spacer(Modifier.height(7.dp))
+                    Text("今天主要停留", color = TextTertiary, style = MaterialTheme.typography.labelSmall)
+                    snap.topApps.take(3).forEachIndexed { index, app ->
+                        Text(
+                            "${index + 1}. ${app.label} · ${formatMinutes(app.durationMs / 60_000L)} · ${app.sessionCount} 段",
+                            color = TextSecondary,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(5.dp))
                 Text(
-                    "“手机侧 · 非 Runtime”表示排除了已知 Runtime/Work，不等于证明一定是你本人操作。",
+                    "“手机侧 · 非 Runtime”只表示排除了已知 Runtime/Work，不把它冒充成确定的本人操作。",
                     color = TextTertiary,
                     style = MaterialTheme.typography.labelSmall
                 )
@@ -318,21 +356,19 @@ fun TimelineScreen() {
         Spacer(Modifier.height(12.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(
-                "ALL" to "全部",
-                "PHONE" to "屏幕",
-                "APP" to "App",
-                "RELATION" to "你我"
-            ).forEach { (value, label) ->
-                FilterChip(
-                    selected = filter == value,
-                    onClick = { filter = value },
-                    label = { Text(label) }
-                )
-            }
+            FilterChip(
+                selected = mode == "SEGMENTS",
+                onClick = { mode = "SEGMENTS" },
+                label = { Text("生活片段") }
+            )
+            FilterChip(
+                selected = mode == "DETAILS",
+                onClick = { mode = "DETAILS" },
+                label = { Text("事件明细") }
+            )
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
 
         when {
             loading && snapshot == null -> {
@@ -340,77 +376,163 @@ fun TimelineScreen() {
                     CircularProgressIndicator()
                 }
             }
-            visibleItems.isEmpty() -> {
-                IceGlassCard {
-                    Text("这一栏今天还没有记录。", color = TextSecondary)
-                }
-            }
-            else -> {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    items(visibleItems, key = { it.id }) { item ->
-                        val time = java.text.SimpleDateFormat(
-                            "HH:mm",
-                            java.util.Locale.getDefault()
-                        ).format(java.util.Date(item.atMs))
-                        val side = item.side
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            horizontalArrangement = when (side) {
-                                -1 -> Arrangement.Start
-                                1 -> Arrangement.End
-                                else -> Arrangement.Center
-                            }
-                        ) {
-                            if (side == -1) {
-                                Box(
-                                    Modifier.size(30.dp).background(
-                                        GlassFillPressed,
-                                        RoundedCornerShape(9.dp)
-                                    ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("纪", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
-                                }
-                                Spacer(Modifier.width(7.dp))
-                            }
 
-                            Box(Modifier.widthIn(max = if (side == 0) 340.dp else 286.dp)) {
-                                IceGlassCard {
-                                    Row(
-                                        Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(item.title, color = TextPrimary, style = MaterialTheme.typography.bodyLarge)
-                                        Text(time, color = TextTertiary, style = MaterialTheme.typography.labelSmall)
-                                    }
-                                    if (item.detail.isNotBlank()) {
-                                        Spacer(Modifier.height(3.dp))
-                                        Text(item.detail.take(180), color = TextSecondary, style = MaterialTheme.typography.bodyMedium)
-                                    }
-                                    Spacer(Modifier.height(5.dp))
+            mode == "SEGMENTS" -> {
+                val segments = snapshot?.segments.orEmpty()
+                if (segments.isEmpty()) {
+                    IceGlassCard {
+                        Text("今天还没有足够的 App 活动组成生活片段。", color = TextSecondary)
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        items(segments, key = { it.id }) { segment ->
+                            IceGlassCard {
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Text(
-                                        "${categoryLabel(item.category)} · ${originLabel(item)}",
-                                        color = when (item.origin) {
-                                            "JLZ_RUNTIME" -> VioletGlow
-                                            "USER" -> BlueGlow
-                                            else -> TextTertiary
-                                        },
+                                        segment.periodLabel,
+                                        color = VioletGlow,
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                    Text(
+                                        "${formatClock(segment.startAtMs)}–${formatClock(segment.endAtMs)}",
+                                        color = TextTertiary,
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+                                Spacer(Modifier.height(5.dp))
+                                Text(
+                                    segment.title,
+                                    color = TextPrimary,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Spacer(Modifier.height(3.dp))
+                                Text(
+                                    segment.detail,
+                                    color = TextSecondary,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                if (segment.appLabels.size > 1) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        segment.appLabels.take(5).joinToString(" · "),
+                                        color = TextTertiary,
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+                                segmentOrigin(segment).takeIf { it.isNotBlank() }?.let {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        it,
+                                        color = if (segment.origin == "JLZ_RUNTIME") VioletGlow else TextTertiary,
                                         style = MaterialTheme.typography.labelSmall
                                     )
                                 }
                             }
+                        }
+                    }
+                }
+            }
 
-                            if (side == 1) {
-                                Spacer(Modifier.width(7.dp))
-                                Box(
-                                    Modifier.size(30.dp).background(
-                                        GlassBorder,
-                                        RoundedCornerShape(9.dp)
-                                    ),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("你", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
+            else -> {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(
+                        "ALL" to "全部",
+                        "PHONE" to "屏幕",
+                        "APP" to "App",
+                        "RELATION" to "你我"
+                    ).forEach { (value, label) ->
+                        FilterChip(
+                            selected = filter == value,
+                            onClick = { filter = value },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+
+                if (visibleItems.isEmpty()) {
+                    IceGlassCard {
+                        Text("这一栏今天还没有记录。", color = TextSecondary)
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                    ) {
+                        items(visibleItems, key = { it.id }) { item ->
+                            val time = formatClock(item.atMs)
+                            val side = item.side
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = when (side) {
+                                    -1 -> Arrangement.Start
+                                    1 -> Arrangement.End
+                                    else -> Arrangement.Center
+                                }
+                            ) {
+                                if (side == -1) {
+                                    Box(
+                                        Modifier.size(30.dp).background(
+                                            GlassFillPressed,
+                                            RoundedCornerShape(9.dp)
+                                        ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("纪", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
+                                    }
+                                    Spacer(Modifier.width(7.dp))
+                                }
+
+                                Box(Modifier.widthIn(max = if (side == 0) 340.dp else 286.dp)) {
+                                    IceGlassCard {
+                                        Row(
+                                            Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(item.title, color = TextPrimary, style = MaterialTheme.typography.bodyLarge)
+                                            Text(time, color = TextTertiary, style = MaterialTheme.typography.labelSmall)
+                                        }
+                                        if (item.detail.isNotBlank()) {
+                                            Spacer(Modifier.height(3.dp))
+                                            Text(
+                                                item.detail.take(180),
+                                                color = TextSecondary,
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        }
+                                        Spacer(Modifier.height(5.dp))
+                                        Text(
+                                            "${categoryLabel(item.category)} · ${originLabel(item)}",
+                                            color = when (item.origin) {
+                                                "JLZ_RUNTIME" -> VioletGlow
+                                                "USER" -> BlueGlow
+                                                else -> TextTertiary
+                                            },
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                }
+
+                                if (side == 1) {
+                                    Spacer(Modifier.width(7.dp))
+                                    Box(
+                                        Modifier.size(30.dp).background(
+                                            GlassBorder,
+                                            RoundedCornerShape(9.dp)
+                                        ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("你", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
+                                    }
                                 }
                             }
                         }
