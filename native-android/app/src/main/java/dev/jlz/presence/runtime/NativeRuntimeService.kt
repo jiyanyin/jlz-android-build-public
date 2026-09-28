@@ -16,7 +16,6 @@ import dev.jlz.presence.actions.DeviceSystemController
 import dev.jlz.presence.agency.PresencePlanRepository
 import dev.jlz.presence.capture.CaptureEventStore
 import dev.jlz.presence.capture.PendingScreenshotQueue
-import dev.jlz.presence.capture.AutomaticCaptureCoordinator
 import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.usage.ForegroundUsageTracker
 import dev.jlz.presence.usage.ForegroundUsageStore
@@ -74,7 +73,6 @@ class NativeRuntimeService : Service() {
     private lateinit var lifeStore: LocalLifeStore
     private lateinit var captureEvents: CaptureEventStore
     private lateinit var screenshotQueue: PendingScreenshotQueue
-    private lateinit var automaticCapture: AutomaticCaptureCoordinator
     private lateinit var settingsRepository: RuntimeSettingsRepository
     private lateinit var deviceActivityJournal: DeviceActivityJournal
     private lateinit var deviceSystem: DeviceSystemController
@@ -115,7 +113,10 @@ class NativeRuntimeService : Service() {
         captureEvents = CaptureEventStore(applicationContext)
         screenshotQueue = PendingScreenshotQueue(applicationContext)
         screenshotQueue.clearLegacyTestImagesOnce()
-        automaticCapture = AutomaticCaptureCoordinator(applicationContext)
+        // 2026-09-28 owner-authorized screenshot policy reset:
+        // old periodic LIFE/STUDY captures are discarded locally once.
+        screenshotQueue.clearAllScreenshotsOnce("20260928_app_switch_v1")
+        lifeStore.deleteScreenshotTimelineRecordsBefore(1790561160000L)
         settingsRepository = RuntimeSettingsRepository(applicationContext)
         deviceActivityJournal = DeviceActivityJournal(applicationContext)
         deviceSystem = DeviceSystemController(applicationContext)
@@ -180,9 +181,6 @@ class NativeRuntimeService : Service() {
         val cycleReminder = CycleReminderEngine(applicationContext)
 
         while (scope.isActive) {
-            // Sample into private local storage even during network outages.
-            // This is an Android-side observation interval, NOT a GPT task.
-            runCatching { automaticCapture.captureIfDue() }
             val settings = settingsRepository.load()
             if (settings.baseUrl.isBlank() || settings.token.isBlank()) {
                 NativeClientDiagnostics.update {
@@ -554,8 +552,7 @@ class NativeRuntimeService : Service() {
 
             "peek" -> {
                 val eventId = UUID.randomUUID().toString()
-                val session = studyRepository.state.first()
-                val sessionId = session.sessionId.takeIf { session.active && it.isNotBlank() }
+                val sessionId: String? = null
                 val sourcePackage = ForegroundUsageTracker.currentPackageName()
                     ?.takeIf { it.isNotBlank() && it != packageName }
                 when (val capture = FloatingPresenceService.captureForRuntime()) {
@@ -584,7 +581,7 @@ class NativeRuntimeService : Service() {
                                 .toString()
                         } else {
                             lifeStore.recordTimeline(
-                                type = if (sessionId != null) "study_screenshot" else "life_screenshot",
+                                type = "manual_screenshot",
                                 title = "让我看看",
                                 detail = sourcePackage.orEmpty(),
                                 eventId = eventId,
@@ -627,7 +624,7 @@ class NativeRuntimeService : Service() {
                             kind = "screenshot", id = eventId,
                             originPackage = sourcePackage,
                             studySessionId = sessionId,
-                            mode = if (sessionId != null) "STUDY" else "LIFE",
+                            mode = "RUNTIME",
                             deliveryStatus = "upload_failed", detail = capture.reason
                         )
                         false to JSONObject().put("ok", false).put("event_id", eventId)
