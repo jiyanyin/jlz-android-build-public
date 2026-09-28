@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import dev.jlz.presence.capture.AutomaticCaptureCoordinator
 import dev.jlz.presence.focus.FocusRepository
 import dev.jlz.presence.focus.FocusGateActivity
 import dev.jlz.presence.focus.FocusState
@@ -23,6 +24,7 @@ class PresenceAccessibilityService : AccessibilityService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     @Volatile private var focusState: FocusState = FocusState()
     private lateinit var focusRepository: FocusRepository
+    private lateinit var automaticCapture: AutomaticCaptureCoordinator
     private val lastGateAtMs = mutableMapOf<String, Long>()
     private val observationCache = AccessibilityObservationCache()
     @Volatile private var contentChangePending = false
@@ -48,6 +50,7 @@ class PresenceAccessibilityService : AccessibilityService() {
         AccessibilityActionGateway.bind(this)
         ForegroundUsageTracker.bind(applicationContext)
         focusRepository = FocusRepository(applicationContext)
+        automaticCapture = AutomaticCaptureCoordinator(applicationContext)
         scope.launch {
             focusRepository.state.collectLatest { state -> focusState = state }
         }
@@ -60,6 +63,9 @@ class PresenceAccessibilityService : AccessibilityService() {
         AccessibilityActionGateway.observeEventSource(event)
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             AccessibilityActionGateway.observeWindow(packageName, event.className?.toString())
+            if (::automaticCapture.isInitialized) {
+                automaticCapture.onForegroundPackage(packageName, now)
+            }
         }
         ForegroundUsageTracker.observe(packageName, now)
         val currentFocus = focusState
@@ -106,6 +112,7 @@ class PresenceAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         ForegroundUsageTracker.unbind()
+        if (::automaticCapture.isInitialized) automaticCapture.close()
         AccessibilityActionGateway.unbind(this)
         AccessibilityScreenshotGateway.unbind(this)
         ScreenObservationBus.setConnected(false)
