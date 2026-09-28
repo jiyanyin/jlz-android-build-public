@@ -1,0 +1,81 @@
+name: Status Light V3 Android test APK
+
+on:
+  push:
+    branches: [ci/status-light-v3-20260928]
+    paths:
+      - 'native-android/**'
+      - '.github/workflows/android-status-light-v3.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: public-status-light-v3-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deliver-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Compile Status Light V3 debug APK
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle -p native-android :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/jlz-status-v3-build.log
+      - name: Sign with existing stable Android test certificate
+        env:
+          JLZ_DEBUG_KEYSTORE_BASE64: ${{ secrets.JLZ_DEBUG_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${JLZ_DEBUG_KEYSTORE_BASE64:-}"
+          mkdir -p /tmp/jlz-signing
+          printf '%s' "$JLZ_DEBUG_KEYSTORE_BASE64" | base64 --decode > /tmp/jlz-signing/jlz-native-debug.keystore
+          apk="native-android/app/build/outputs/apk/debug/app-debug.apk"
+          signer="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          "$signer" sign --ks /tmp/jlz-signing/jlz-native-debug.keystore \
+            --ks-key-alias androiddebugkey --ks-pass pass:android --key-pass pass:android "$apk"
+          "$signer" verify --verbose --print-certs "$apk"
+          rm -f /tmp/jlz-signing/jlz-native-debug.keystore
+      - name: Verify and name test APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s native-android/app/build/outputs/apk/debug/app-debug.apk
+          cp native-android/app/build/outputs/apk/debug/app-debug.apk /tmp/JLZ-Presence-StatusLight-V3.apk
+          sha256sum /tmp/JLZ-Presence-StatusLight-V3.apk | tee /tmp/JLZ-Presence-StatusLight-V3-SHA256.txt
+      - name: Upload isolated test APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JLZ-Presence-StatusLight-V3-2026092829
+          path: native-android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+      - name: Publish test-only APK release (never replace stable latest)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="android-status-light-v3-20260928"
+          notes="Status Light V3 experimental Android build 2026092829. NOT yet phone-verified. Build-only mirror; no Runtime/server secrets. Do not replace android-native-latest."
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" /tmp/JLZ-Presence-StatusLight-V3.apk /tmp/JLZ-Presence-StatusLight-V3-SHA256.txt --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$tag" --title "JLZ Presence · Status Light V3 test" --notes "$notes" --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" /tmp/JLZ-Presence-StatusLight-V3.apk /tmp/JLZ-Presence-StatusLight-V3-SHA256.txt \
+              --target "$GITHUB_SHA" --title "JLZ Presence · Status Light V3 test" --notes "$notes" --repo "$GITHUB_REPOSITORY"
+          fi
