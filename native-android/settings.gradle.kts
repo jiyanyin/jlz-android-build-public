@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "JLZPresenceNative"
 include(":app")
+include(":ib-ui-lab")
