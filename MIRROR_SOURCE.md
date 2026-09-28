@@ -13,3 +13,5 @@ Excluded by design: private Git history, Runtime/MCP/server sources, keystores, 
 P0-2 expanded state-light UI snapshot from private commit `274bc1c81b8af2fe294dc037ca423bd805320a72` plus `StatusLightEditor.kt`; this test build has versionCode `2026092823` and is not a production release. Public build changes include only Android Kotlin source and test-version metadata.
 
 P0-2 home-card + source timestamp/history and linked companion replies: private Android branch commit `032c3737fcd7fab5022c3db0920f6c331653bf96`, test build `2026092824`. Still excludes original signing material, private backend, saved user data and deployment configuration.
+
+P0-3 build-only test branch ci/p0-3-timechain-20260928: copies only TimeChainScreen, PresenceApp, PresenceRoute from private Android branch feat/p0-3-android-timechain-20260928; preserves P0-2 v25 source and existing test signing. Test versionCode 2026092826; separate tag android-p0-3-acceptance-20260928; excludes runtime server, credentials, captures and user entries.

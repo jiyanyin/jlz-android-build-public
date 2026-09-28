@@ -8,6 +8,7 @@ sealed interface PresenceRoute {
     data object Home : PresenceRoute
     data object Drawer : PresenceRoute
     data object Timeline : PresenceRoute
+    data object TimeChain : PresenceRoute
     data class Between(val tab: String = "status") : PresenceRoute
     data object Welcome : PresenceRoute
     data object Study : PresenceRoute

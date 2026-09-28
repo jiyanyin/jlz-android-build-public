@@ -44,6 +44,7 @@ fun PresenceApp() {
                 is PresenceRoute.Home -> HomeScreen()
                 is PresenceRoute.Drawer -> AppDrawerScreen()
                 is PresenceRoute.Timeline -> TimelineScreen()
+                is PresenceRoute.TimeChain -> TimeChainScreen()
                 is PresenceRoute.Between -> BetweenScreen((route as PresenceRoute.Between).tab)
                 is PresenceRoute.Study -> StudyScreen()
                 is PresenceRoute.Trip -> TripScreen()
@@ -87,7 +88,8 @@ fun HomeScreen() {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("\u4e16\u754c\u4e4b\u95f4", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
             Row {
-                Text("\u65f6\u95f4\u7ebf", color = TextSecondary, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Timeline) }.padding(8.dp))
+                Text("时间链", color = TextPrimary, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.TimeChain) }.padding(6.dp))
+                Text("手机轨迹", color = TextSecondary, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Timeline) }.padding(6.dp))
                 Text("\u8bca\u65ad", color = TextTertiary, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Diagnostics) }.padding(8.dp))
             }
         }
