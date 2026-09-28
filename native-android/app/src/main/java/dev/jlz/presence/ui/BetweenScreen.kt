@@ -69,7 +69,7 @@ fun BetweenScreen(initialTab: String = "status") {
     var feedback by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
     var moment by remember { mutableStateOf("") }
-    var needsResponse by remember { mutableStateOf(false) }
+    var needsResponse by remember { mutableStateOf(true) }
 
     suspend fun reload() {
         view = withContext(Dispatchers.IO) {
@@ -268,7 +268,7 @@ fun BetweenScreen(initialTab: String = "status") {
                     Checkbox(checked = needsResponse, onCheckedChange = { needsResponse = it })
                     Column {
                         Text("希望纪临洲回应这条", color = TextPrimary)
-                        Text("不勾选就只是一条记录，不会变成待回复留言。", color = TextSecondary)
+                        Text("默认需要回应；偶尔只想记下来，可以取消勾选。", color = TextSecondary)
                     }
                 }
             }
@@ -300,7 +300,7 @@ fun BetweenScreen(initialTab: String = "status") {
                                     outbox.enqueue(id, "moment", body, at)
                                 }
                                 moment = ""
-                                needsResponse = false
+                                needsResponse = true
                                 reload()
                                 feedback = if (view.waiting == 0) "原话已同步"
                                     else "原话已保存在本机，稍后自动同步"
