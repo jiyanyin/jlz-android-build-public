@@ -114,9 +114,18 @@ class NativeRuntimeService : Service() {
         screenshotQueue = PendingScreenshotQueue(applicationContext)
         screenshotQueue.clearLegacyTestImagesOnce()
         // 2026-09-28 owner-authorized screenshot policy reset:
-        // old periodic LIFE/STUDY captures are discarded locally once.
-        screenshotQueue.clearAllScreenshotsOnce("20260928_app_switch_v1")
-        lifeStore.deleteScreenshotTimelineRecordsBefore(1790561160000L)
+        // discard every pre-cutover screenshot transport item exactly once,
+        // including diagnostic/manual images queued while the policy was being rebuilt.
+        screenshotQueue.clearAllScreenshotsOnce("20260928_app_switch_v2_final")
+        val resetPrefs = getSharedPreferences(
+            "jlz_presence_capture_policy_reset_v2", Context.MODE_PRIVATE
+        )
+        if (!resetPrefs.getBoolean("timeline_done", false)) {
+            lifeStore.deleteScreenshotTimelineRecordsBefore(Long.MAX_VALUE)
+            check(resetPrefs.edit().putBoolean("timeline_done", true).commit()) {
+                "capture_timeline_reset_marker_not_saved"
+            }
+        }
         settingsRepository = RuntimeSettingsRepository(applicationContext)
         deviceActivityJournal = DeviceActivityJournal(applicationContext)
         deviceSystem = DeviceSystemController(applicationContext)
