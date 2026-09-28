@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -84,7 +86,11 @@ fun HomeScreen() {
     val launcherRepo = remember { LauncherRepository(context) }
     val apps = remember { launcherRepo.loadLaunchableApps().filter { !it.hidden } }
     val pinned = apps.filter { it.pinned }
-    Column(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp)) {
+    // Home contains an expandable V3 status editor. A plain Column clips the
+    // four sliders and later fields outside the viewport. Give the HOME
+    // itself one vertical scroll owner; avoid nested vertical LazyColumns.
+    Column(Modifier.fillMaxSize().systemBarsPadding()
+        .verticalScroll(rememberScrollState()).padding(20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("\u4e16\u754c\u4e4b\u95f4", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
             Row {
@@ -125,8 +131,10 @@ fun HomeScreen() {
         SectionHeader("\u6700\u8fd1")
         val store = remember { LocalLifeStore(context) }
         val events = remember { store.listTimelineSince(System.currentTimeMillis() - 86400000L, 20) }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(events) { ev ->
+        // Already bounded to 20 recent rows; render in this same scroll
+        // container instead of measuring a nested LazyColumn at infinite height.
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            events.forEach { ev ->
                 IceGlassCard {
                     Text(ev.title, color = TextPrimary, style = MaterialTheme.typography.bodyLarge)
                     if (ev.detail.isNotBlank()) Text(ev.detail.take(100), color = TextSecondary, style = MaterialTheme.typography.bodyMedium)
