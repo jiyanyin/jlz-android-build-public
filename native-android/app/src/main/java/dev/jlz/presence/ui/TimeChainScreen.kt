@@ -121,10 +121,14 @@ private suspend fun buildChain(
         (it.category == "PHONE" || it.category == "APP") &&
             it.atMs >= start && it.atMs <= end
     }.forEach { source ->
-        val label = when (source.origin) {
-            "JLZ_RUNTIME" -> "手机记录 · Runtime 控制"
-            "USER_OR_NON_RUNTIME" -> "手机观测 · 非 Runtime，操作者未确认"
-            "WORK_TEST" -> "手机记录 · 测试"
+        val label = when {
+            // Unlocks have an owner-default policy; no extra identity chain.
+            source.title == "音音解锁手机" ||
+                source.title == "音音进入手机" -> "音音 · 手机解锁记录"
+            source.origin == "JLZ_RUNTIME" -> "手机记录 · Runtime 控制"
+            source.origin == "USER_OR_NON_RUNTIME" ->
+                "手机观测 · 非 Runtime 来源"
+            source.origin == "WORK_TEST" -> "手机记录 · 测试"
             else -> "手机观测 · " + source.source.ifBlank { "来源未明" }
         }
         merged["phone:" + source.id] = ChainItem(

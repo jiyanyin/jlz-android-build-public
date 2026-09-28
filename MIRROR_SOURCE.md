@@ -15,3 +15,5 @@ P0-2 expanded state-light UI snapshot from private commit `274bc1c81b8af2fe294dc
 P0-2 home-card + source timestamp/history and linked companion replies: private Android branch commit `032c3737fcd7fab5022c3db0920f6c331653bf96`, test build `2026092824`. Still excludes original signing material, private backend, saved user data and deployment configuration.
 
 P0-3 build-only test branch ci/p0-3-timechain-20260928: copies only TimeChainScreen, PresenceApp, PresenceRoute from private Android branch feat/p0-3-android-timechain-20260928; preserves P0-2 v25 source and existing test signing. Test versionCode 2026092826; separate tag android-p0-3-acceptance-20260928; excludes runtime server, credentials, captures and user entries.
+
+P0-3 simplified unlock attribution: screen unlock/present defaults to user, no separate Runtime identity inference; retain raw OS events and legacy protocol aliases. Mobile source e8a955e2dc6dde026e1c3608b8fad9cf2e344909; test build 2026092827. Only Android source copied to public mirror. No credentials, captures or user data.

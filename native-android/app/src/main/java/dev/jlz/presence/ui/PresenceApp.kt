@@ -245,15 +245,19 @@ fun TimelineScreen() {
         }
     }
 
-    fun originLabel(item: UnifiedTimelineItem): String = when (item.origin) {
-        "JLZ_RUNTIME" -> "纪临洲 · Runtime"
-        "USER" -> "你"
-        "USER_OR_NON_RUNTIME" -> "手机侧 · 非 Runtime"
-        "WORK_TEST" -> "Work 测试"
-        "SYSTEM" -> "系统"
-        "LOCAL" -> "本地"
-        "MIXED" -> "混合来源"
-        else -> item.origin.ifBlank { "未知来源" }
+    fun originLabel(item: UnifiedTimelineItem): String {
+        // Unlocks are owner-default events, no extra identity verification.
+        if (item.title == "音音解锁手机" || item.title == "音音进入手机") return "音音"
+        return when (item.origin) {
+            "JLZ_RUNTIME" -> "纪临洲 · Runtime"
+            "USER" -> "你"
+            "USER_OR_NON_RUNTIME" -> "手机侧 · 非 Runtime"
+            "WORK_TEST" -> "Work 测试"
+            "SYSTEM" -> "系统"
+            "LOCAL" -> "本地"
+            "MIXED" -> "混合来源"
+            else -> item.origin.ifBlank { "未知来源" }
+        }
     }
 
     fun categoryLabel(category: String): String = when (category) {
@@ -351,7 +355,7 @@ fun TimelineScreen() {
 
                 Spacer(Modifier.height(5.dp))
                 Text(
-                    "“手机侧 · 非 Runtime”只表示排除了已知 Runtime/Work，不把它冒充成确定的本人操作。",
+                    "手机解锁默认记作音音本人；其他操作仍按记录来源展示。",
                     color = TextTertiary,
                     style = MaterialTheme.typography.labelSmall
                 )

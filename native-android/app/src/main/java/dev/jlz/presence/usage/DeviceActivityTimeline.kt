@@ -96,8 +96,14 @@ class DeviceActivityJournal(context: Context) :
         deviceType: String = "phone",
         metadata: JSONObject = JSONObject()
     ): String {
-        val inferred = inferOrigin(eventType, AccessibilityActionGateway.currentPackage(), atMs)
-        val resolved = origin ?: inferred.first
+        // P0-3 simplification: this Android client cannot unlock the device.
+        // OS unlock/present events are attributed to the phone owner by default.
+        // No Runtime-command identity matching or extra confirmation chain.
+        val ownerUnlock = eventType == "KEYGUARD_HIDDEN" || eventType == "USER_PRESENT"
+        val inferred = if (ownerUnlock) Origin.USER_OR_NON_RUNTIME to null
+            else inferOrigin(eventType, AccessibilityActionGateway.currentPackage(), atMs)
+        val resolved = if (ownerUnlock) Origin.USER_OR_NON_RUNTIME
+            else origin ?: inferred.first
         val id = UUID.randomUUID().toString()
         writableDatabase.insert(
             "device_events", null,
@@ -110,8 +116,8 @@ class DeviceActivityJournal(context: Context) :
                 put("lock_state", lockState(context))
                 put("foreground_package", AccessibilityActionGateway.currentPackage())
                 put("origin", resolved.name)
-                put("actor", actorFor(resolved))
-                put("command_id", commandId ?: inferred.second)
+                put("actor", if (ownerUnlock) "user" else actorFor(resolved))
+                put("command_id", if (ownerUnlock) null else commandId ?: inferred.second)
                 put("intent_id", intentId)
                 put("device_id", deviceId)
                 put("device_type", deviceType)
@@ -191,9 +197,7 @@ class DeviceActivityJournal(context: Context) :
         val actions = when (eventType) {
             "SCREEN_ON" -> listOf("wake_screen", "unlock_secure", "unlock_with_local_pin")
             "SCREEN_OFF" -> listOf("screen_off", "phone_screen_off", "lock_screen")
-            "KEYGUARD_HIDDEN" -> listOf("unlock_if_non_secure", "unlock_secure", "unlock_with_local_pin")
             "KEYGUARD_SHOWN" -> listOf("screen_off", "phone_screen_off", "lock_screen")
-            "USER_PRESENT" -> listOf("unlock_if_non_secure", "unlock_secure", "unlock_with_local_pin")
             "APP_FOREGROUND_CHANGED" -> listOf("open_app")
             else -> emptyList()
         }
@@ -264,7 +268,9 @@ class DeviceActivityJournal(context: Context) :
                     .put("screen_interactive", type != "SCREEN_OFF")
                     .put("lock_state", if (type == "KEYGUARD_HIDDEN") "UNLOCKED" else JSONObject.NULL)
                     .put("foreground_package", JSONObject.NULL)
-                    .put("origin", origin.name).put("actor", actorFor(origin))
+                    .put("origin", origin.name).put(
+                        "actor", if (type == "KEYGUARD_HIDDEN") "user" else actorFor(origin)
+                    )
                     .put("command_id", inferred.second ?: JSONObject.NULL)
                     .put("intent_id", JSONObject.NULL)
                     .put("device_id", deviceId).put("device_type", "phone")
@@ -403,8 +409,7 @@ class DeviceActivityJournal(context: Context) :
 
         val firstMorningUnlock = events.firstOrNull {
             it.optString("event_type") == "KEYGUARD_HIDDEN" &&
-                it.optLong("wall_clock_timestamp") in morningStart..morningEnd &&
-                it.optString("origin") !in setOf(Origin.JLZ_RUNTIME.name, Origin.WORK_TEST.name)
+                it.optLong("wall_clock_timestamp") in morningStart..morningEnd
         }?.optLong("wall_clock_timestamp")?.takeIf { it > 0L }
 
         val cutoff = firstMorningUnlock ?: nowMs
@@ -414,8 +419,7 @@ class DeviceActivityJournal(context: Context) :
                 it.optString("origin") !in setOf(Origin.JLZ_RUNTIME.name, Origin.WORK_TEST.name)
         }?.optLong("wall_clock_timestamp")?.takeIf { it > 0L }
         val lastUserPresent = events.lastOrNull {
-            it.optString("event_type") == "USER_PRESENT" &&
-                it.optString("origin") !in setOf(Origin.JLZ_RUNTIME.name, Origin.WORK_TEST.name)
+            it.optString("event_type") == "USER_PRESENT"
         }?.optLong("wall_clock_timestamp")?.takeIf { it > 0L }
         val nonRuntimeSessions = sessions.filter {
             it.optString("origin") !in setOf(Origin.JLZ_RUNTIME.name, Origin.WORK_TEST.name)
@@ -488,20 +492,15 @@ class DeviceActivityJournal(context: Context) :
             ?.optLong("wall_clock_timestamp")?.takeIf { it > 0L }
         val lastDeviceUnlock = lastDeviceUnlockEvent
             ?.optLong("wall_clock_timestamp")?.takeIf { it > 0L }
-        val nonRuntimeUnlock = unlock.filter {
-            it.optString("origin") !in setOf(Origin.JLZ_RUNTIME.name, Origin.WORK_TEST.name)
-        }
-        val firstNonRuntimeUnlock = nonRuntimeUnlock.firstOrNull()
-            ?.optLong("wall_clock_timestamp")?.takeIf { it > 0L }
-        val lastNonRuntimeUnlock = nonRuntimeUnlock.lastOrNull()
-            ?.optLong("wall_clock_timestamp")?.takeIf { it > 0L }
+        // Legacy keys remain as aliases only. There is no longer a separate
+        // "prove it wasn't the Runtime" unlock classifier.
+        val firstNonRuntimeUnlock = firstDeviceUnlock
+        val lastNonRuntimeUnlock = lastDeviceUnlock
         val lastLockEvent = lock.lastOrNull()
         val lastLock = lastLockEvent?.optLong("wall_clock_timestamp")?.takeIf { it > 0L }
         val lastPresentEvent = present.lastOrNull()
         val lastPresent = lastPresentEvent?.optLong("wall_clock_timestamp")?.takeIf { it > 0L }
-        val lastNonRuntimePresent = present.lastOrNull {
-            it.optString("origin") !in setOf(Origin.JLZ_RUNTIME.name, Origin.WORK_TEST.name)
-        }?.optLong("wall_clock_timestamp")?.takeIf { it > 0L }
+        val lastNonRuntimePresent = lastPresent
         val currentInteractive = context.getSystemService(PowerManager::class.java)?.isInteractive == true
         val currentStart = if (currentInteractive && lastOn != null && (lastOff == null || lastOn > lastOff)) lastOn else null
         var previous: JSONObject? = null
@@ -530,8 +529,8 @@ class DeviceActivityJournal(context: Context) :
             .put("last_non_runtime_screen_off_at_ms", lastNonRuntimeOff ?: JSONObject.NULL)
             .put("last_lock_at_ms", lastLock ?: JSONObject.NULL)
             .put("last_lock_origin", lastLockEvent?.optString("origin") ?: JSONObject.NULL)
-            // Backward-compatible device-level unlock aliases. These are OS
-            // KEYGUARD_HIDDEN observations, not proof that the user unlocked.
+            // Screen-unlock timestamps are owner-default events. Keep older
+            // device/non-runtime key names as plain aliases for existing clients.
             .put("last_unlock_at_ms", lastDeviceUnlock ?: JSONObject.NULL)
             .put("last_device_unlock_at_ms", lastDeviceUnlock ?: JSONObject.NULL)
             .put("last_unlock_origin", lastDeviceUnlockEvent?.optString("origin") ?: JSONObject.NULL)
@@ -544,7 +543,7 @@ class DeviceActivityJournal(context: Context) :
             .put("last_non_runtime_user_present_at_ms", lastNonRuntimePresent ?: JSONObject.NULL)
             .put("last_non_runtime_interaction_at_ms", lastNonRuntimeInteraction ?: JSONObject.NULL)
             .put("unlock_semantics",
-                "device unlock fields are KEYGUARD_HIDDEN observations; non_runtime excludes known Runtime/Work but is not proof of human input")
+                "KEYGUARD_HIDDEN = user_by_default; non_runtime unlock keys are deprecated direct aliases")
             .put("current_screen_session_started_at_ms", currentStart ?: JSONObject.NULL)
             .put("previous_screen_session", previous ?: JSONObject.NULL)
             .put("lock_state", lockState(context))
