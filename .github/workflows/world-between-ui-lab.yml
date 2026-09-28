@@ -1,0 +1,71 @@
+name: World Between V2 UI Lab (test only)
+
+on:
+  push:
+    branches: [world-between-v2-ui-20260928]
+    paths:
+      - 'native-android/world-between-ui-lab/**'
+      - 'native-android/settings.gradle.kts'
+      - '.github/workflows/world-between-ui-lab.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: world-between-v2-ui-lab-\${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Assert offline and independent prototype
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          from html.parser import HTMLParser
+          base = Path("native-android/world-between-ui-lab")
+          doc = (base / "src/main/assets/index.html").read_text(encoding="utf8")
+          manifest = (base / "src/main/AndroidManifest.xml").read_text(encoding="utf8")
+          class Test(HTMLParser):
+              def __init__(self): super().__init__(); self.ids = set(); self.duplicates = set()
+              def handle_starttag(self, tag, attrs):
+                  for key, value in attrs:
+                      if key == "id":
+                          if value in self.ids: self.duplicates.add(value)
+                          self.ids.add(value)
+          parser = Test(); parser.feed(doc)
+          assert not parser.duplicates, parser.duplicates
+          assert "<!doctype html>" in doc.lower()
+          for expected in ("当前安排", "你我之间", "状态灯", "今日计划", "粉笔", "伴读", "记一下此刻", "生活时间线"):
+              assert expected in doc, expected
+          for forbidden in ("android.permission.INTERNET", "android.permission.ACCESS_FINE_LOCATION", "android.permission.BIND_ACCESSIBILITY_SERVICE"):
+              assert forbidden not in manifest, forbidden
+          assert 'dev.jlz.worldbetween.uilab' in (base/"build.gradle.kts").read_text()
+          print("ui-lab-static-checks: PASS")
+          PY
+
+      - name: Assemble isolated Android UI preview
+        working-directory: native-android
+        run: gradle :world-between-ui-lab:assembleDebug --no-daemon --stacktrace
+
+      - name: Upload preview APK (not production)
+        uses: actions/upload-artifact@v4
+        with:
+          name: World-Between-V2-UI-PREVIEW
+          path: native-android/world-between-ui-lab/build/outputs/apk/debug/world-between-ui-lab-debug.apk
+          if-no-files-found: error
+          retention-days: 7
