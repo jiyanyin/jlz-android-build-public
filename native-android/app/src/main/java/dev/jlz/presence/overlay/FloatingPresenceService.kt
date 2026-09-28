@@ -137,6 +137,9 @@ class FloatingPresenceService : Service() {
             if (panel == null) attachBubble()
             avatar?.setMood(idleMood())
             renderStatus()
+            if (intent?.getBooleanExtra(EXTRA_ATTENTION_NUDGE, false) == true) {
+                showTransient(staticMessage, 8_000L)
+            }
         }
         scope.launch {
             // Restored STUDY must not revive an already-ended session.
@@ -337,8 +340,7 @@ class FloatingPresenceService : Service() {
                                     eventId = event.id,
                                     metadataJson = JSONObject()
                                         .put("origin_package", packageName)
-                                        .put("session_id", sessionId)
-                                        .put("delivery", "local_only")
+                                                .put("delivery", "local_only")
                                         .toString()
                                 )
                                 event
@@ -500,10 +502,10 @@ class FloatingPresenceService : Service() {
         hint.visibility = if (hint.text.isBlank()) View.GONE else View.VISIBLE
     }
 
-    private fun showTransient(message: String) {
+    private fun showTransient(message: String, durationMs: Long = 2_800L) {
         status?.text = message
         status?.visibility = View.VISIBLE
-        transientUntilMs = System.currentTimeMillis() + 2_800L
+        transientUntilMs = System.currentTimeMillis() + durationMs.coerceIn(1_500L, 15_000L)
     }
 
     private fun currentObservedPackage(): String? {
@@ -554,7 +556,6 @@ class FloatingPresenceService : Service() {
         if (working) return
         working = true
         val packageName = currentObservedPackage()
-        val contextMode = mode.name
         val eventId = UUID.randomUUID().toString()
         closeMenu()
 
@@ -571,11 +572,7 @@ class FloatingPresenceService : Service() {
         }
 
         try {
-            val sessionId = withContext(Dispatchers.IO) {
-                study.state.first().let { state ->
-                    state.sessionId.takeIf { state.active && it.isNotBlank() }
-                }
-            }
+            val sessionId: String? = null
             when (capture) {
                 is ScreenshotCaptureResult.Unavailable -> {
                     withContext(Dispatchers.IO) {
@@ -583,7 +580,7 @@ class FloatingPresenceService : Service() {
                             kind = "screenshot",
                             originPackage = packageName,
                             studySessionId = sessionId,
-                            mode = contextMode,
+                            mode = "MANUAL",
                             deliveryStatus = "upload_failed",
                             detail = capture.reason,
                             id = eventId
@@ -610,7 +607,7 @@ class FloatingPresenceService : Service() {
                                 id = eventId,
                                 originPackage = packageName,
                                 studySessionId = sessionId,
-                                mode = if (sessionId != null) "STUDY" else "LIFE",
+                                mode = "MANUAL",
                                 deliveryStatus = "upload_failed",
                                 detail = saved.exceptionOrNull()?.message.orEmpty()
                             )
@@ -620,7 +617,7 @@ class FloatingPresenceService : Service() {
                     }
                     withContext(Dispatchers.IO) {
                         lifeStore.recordTimeline(
-                            type = if (sessionId != null) "study_screenshot" else "life_screenshot",
+                            type = "manual_screenshot",
                             title = "让我看看",
                             detail = packageName.orEmpty(),
                             eventId = eventId,
@@ -696,6 +693,34 @@ class FloatingPresenceService : Service() {
             }
         }
 
+        /**
+         * Local attention nudge used by the app-switch capture policy.
+         * It never opens ChatGPT or blocks the app; it only speaks through the
+         * already-running Q overlay after the configured long-stay threshold.
+         */
+        fun showAttentionNudge(context: Context, message: String): Boolean {
+            if (message.isBlank()) return false
+            val live = liveService
+            if (live != null) {
+                live.scope.launch(Dispatchers.Main.immediate) {
+                    live.avatar?.react("watch", live.idleMood())
+                    live.showTransient(message.take(80), 8_000L)
+                }
+                return true
+            }
+            if (!Settings.canDrawOverlays(context)) return false
+            val intent = Intent(context, FloatingPresenceService::class.java)
+                .putExtra(EXTRA_MESSAGE, message.take(80))
+                .putExtra(EXTRA_MODE, FloatingPresenceMode.LIFE.name)
+                .putExtra(EXTRA_ATTENTION_NUDGE, true)
+            if (Build.VERSION.SDK_INT >= 26) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+            return true
+        }
+
         /** Refresh the same running Q view after the approved art pack imports. */
         fun refreshArtworkAfterImport() {
             liveService?.avatar?.reloadArtwork()
@@ -733,6 +758,7 @@ class FloatingPresenceService : Service() {
         private const val NOTIFICATION_ID = 4201
         private const val EXTRA_MESSAGE = "message"
         private const val EXTRA_MODE = "mode"
+        private const val EXTRA_ATTENTION_NUDGE = "attention_nudge"
 
         fun start(
             context: Context,
