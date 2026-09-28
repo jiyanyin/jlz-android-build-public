@@ -12,8 +12,8 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026092820
-        versionName = "0.3.6-app-switch-capture.20"
+        versionCode = 2026092821
+        versionName = "0.3.6-app-switch-capture.21"
     }
 
     buildTypes {
