@@ -5,7 +5,7 @@ on:
     branches: [ci/status-light-v3-scrollfix-20260928]
     paths:
       - 'native-android/**'
-      - '.github/workflows/android-status-light-v3.yml'
+      - '.github/workflows/android-status-light-v3-scrollfix.yml'
   workflow_dispatch:
 
 concurrency:
