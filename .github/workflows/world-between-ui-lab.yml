@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: world-between-v2-ui-lab-\${{ github.ref }}
+  group: world-between-v2-ui-lab-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
