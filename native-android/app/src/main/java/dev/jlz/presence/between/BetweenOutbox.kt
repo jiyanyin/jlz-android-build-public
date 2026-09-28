@@ -104,7 +104,7 @@ class BetweenOutbox(context: Context) :
     fun sync(api: RuntimeApiClient, limit: Int = 40): List<String> {
         val confirmed = mutableListOf<String>()
         for (item in pending(limit)) {
-            val payload = runCatching { JSONObject(item.payloadJson) }.getOrElse { break }
+            val payload = try { JSONObject(item.payloadJson) } catch (_: Exception) { break }
             val response = try {
                 when (item.kind) {
                     "status" -> api.postBetweenStatus(payload)
