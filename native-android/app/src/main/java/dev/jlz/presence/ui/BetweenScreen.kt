@@ -141,6 +141,9 @@ fun BetweenScreen(initialTab: String = "status") {
                 statusNeedLines(status).forEach { needLine ->
                     Text(needLine, color = TextSecondary)
                 }
+                statusResponseLines(status).forEach { replyLine ->
+                    Text(replyLine, color = TextSecondary)
+                }
                 val levelText = status?.optString("response_level").orEmpty()
                 if (levelText.isNotBlank()) Text(
                     "回应浓度：" + levelText, color = TextSecondary
@@ -246,6 +249,9 @@ fun BetweenScreen(initialTab: String = "status") {
                     }
                     statusNeedLines(event).forEach { needLine ->
                         Text(needLine, color = TextSecondary)
+                    }
+                    statusResponseLines(event).forEach { replyLine ->
+                        Text(replyLine, color = TextSecondary)
                     }
                 }
             }

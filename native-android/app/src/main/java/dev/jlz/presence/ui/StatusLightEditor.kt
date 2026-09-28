@@ -191,6 +191,26 @@ internal fun statusNeedLines(status: JSONObject?): List<String> {
         ?.let { listOf("当时需要：$it") } ?: emptyList()
 }
 
+/** Human-readable multi-select reply preferences, with historical single-select fallback. */
+internal fun statusResponseLines(status: JSONObject?): List<String> {
+    if (status == null) return emptyList()
+    val metadata = status.optJSONObject("metadata_json")
+    val dimensions = status.optJSONObject("dimensions")
+        ?: metadata?.optJSONObject("dimensions")
+    val styles = dimensions?.optJSONArray("response_styles")
+    if (styles != null && styles.length() > 0) {
+        val selected = (0 until styles.length()).map { styles.optString(it) }
+            .filter { it.isNotBlank() }
+        if (selected.isNotEmpty()) return listOf("希望我这样回应：" + selected.joinToString("、"))
+    }
+    val oldStyle = dimensions?.optString("response_style").orEmpty()
+        .ifBlank { status.optString("response_style").ifBlank {
+            metadata?.optString("response_style").orEmpty()
+        } }
+    return oldStyle.takeIf { it.isNotBlank() }
+        ?.let { listOf("希望我这样回应：$it") } ?: emptyList()
+}
+
 /**
  * V3: four independent optional scales + expandable emotion/expression/body/needs.
  * All inputs are user-authored, without automatic psychiatric labels.
@@ -205,7 +225,7 @@ fun StatusLightEditor(busy: Boolean, onSave: (JSONObject) -> Unit) {
     var practicalNeeds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var bodySignals by remember { mutableStateOf<Set<String>>(emptySet()) }
     val body = remember { mutableStateMapOf<String, Int?>() }
-    var responseStyle by remember { mutableStateOf("") }
+    var responseStyles by remember { mutableStateOf<Set<String>>(emptySet()) }
     var note by remember { mutableStateOf("") }
 
     // The form is taller than a phone screen. In P0-3 the surrounding page
@@ -271,15 +291,24 @@ fun StatusLightEditor(busy: Boolean, onSave: (JSONObject) -> Unit) {
                 practicalNeeds = if (v in practicalNeeds) practicalNeeds - v
                     else if (practicalNeeds.size < 5) practicalNeeds + v else practicalNeeds
             }
-            ChoiceGrid("想听我怎样回应",
+            ChoiceGrid(
+                "想听我怎样回应",
                 listOf(
                     "热烈直白一点", "温柔地宠着我",
                     "强势一点但疼我", "主动向我讨亲近",
                     "多逗逗我", "先别分析",
                     "冷静简短就好", "现在先不用回复"
                 ),
-                setOfNotNull(responseStyle.takeIf { it.isNotBlank() })) { v ->
-                responseStyle = if (responseStyle == v) "" else v
+                responseStyles,
+                hint = "可以多选，最多五项；「现在先不用回复」与其他回应方式互斥。"
+            ) { v ->
+                responseStyles = when {
+                    v in responseStyles -> responseStyles - v
+                    v == "现在先不用回复" -> setOf(v)
+                    "现在先不用回复" in responseStyles -> setOf(v)
+                    responseStyles.size < 5 -> responseStyles + v
+                    else -> responseStyles
+                }
             }
         }
         OutlinedTextField(
@@ -290,7 +319,7 @@ fun StatusLightEditor(busy: Boolean, onSave: (JSONObject) -> Unit) {
         val canSave = axes.isNotEmpty() || emotions.isNotEmpty() ||
             expressions.isNotEmpty() || closenessNeeds.isNotEmpty() ||
             practicalNeeds.isNotEmpty() || body.isNotEmpty() ||
-            bodySignals.isNotEmpty() || responseStyle.isNotBlank() || note.isNotBlank()
+            bodySignals.isNotEmpty() || responseStyles.isNotEmpty() || note.isNotBlank()
         IceButton(
             text = "记下这个时刻", primary = true, enabled = !busy && canSave,
             modifier = Modifier.fillMaxWidth(),
@@ -310,8 +339,12 @@ fun StatusLightEditor(busy: Boolean, onSave: (JSONObject) -> Unit) {
                     dimensions.put("needs", jsonArray(closenessNeeds + practicalNeeds))
                 if (bodySignals.isNotEmpty())
                     dimensions.put("body_signals", jsonArray(bodySignals))
-                if (responseStyle.isNotBlank())
-                    dimensions.put("response_style", responseStyle)
+                if (responseStyles.isNotEmpty()) {
+                    dimensions.put("response_styles", jsonArray(responseStyles))
+                    // Old clients expect exactly one string; keep a compatible
+                    // first choice while the full set lives in response_styles.
+                    dimensions.put("response_style", responseStyles.first())
+                }
                 if (body.isNotEmpty())
                     dimensions.put("body_areas", jsonArray(body.keys.toSet()))
                 body.forEach { (key, value) ->

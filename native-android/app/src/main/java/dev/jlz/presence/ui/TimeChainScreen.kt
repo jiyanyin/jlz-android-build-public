@@ -88,6 +88,7 @@ private fun statusDetail(status: JSONObject): String {
         if (axes != "我的此刻") parts += axes
     }
     parts += statusNeedLines(status)
+    parts += statusResponseLines(status)
     val note = status.optString("detail")
     if (note.isNotBlank()) parts += note
     val energy = status.optInt("energy", -1)
