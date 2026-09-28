@@ -15,6 +15,7 @@ private val Context.presencePlanDataStore by preferencesDataStore(name = "jlz_pr
 
 enum class PresencePlanStepStatus {
     PENDING,
+    RUNNING,
     COMPLETED,
     FAILED,
     EXPIRED
@@ -53,6 +54,7 @@ data class PresencePlan(
             "pending",
             steps.count { it.status == PresencePlanStepStatus.PENDING }
         )
+        .put("running", steps.count { it.status == PresencePlanStepStatus.RUNNING })
         .put(
             "completed",
             steps.count { it.status == PresencePlanStepStatus.COMPLETED }
@@ -97,21 +99,37 @@ class PresencePlanRepository(private val context: Context) {
         val label = root.optString("label")
             .takeIf { it.isNotBlank() }
             ?: "接下来一小时"
+        require(validUntil > now && validUntil <= now + 70 * 60_000L) {
+            "invalid_plan_window"
+        }
+
+        val previous = load()
+        // Retrying an already accepted plan must never reset completed
+        // steps to PENDING, causing the phone to ring twice.
+        if (previous?.planId == planId) return previous
 
         val array = root.optJSONArray("steps") ?: JSONArray()
+        require(array.length() in 1..12) { "invalid_plan_step_count" }
+        val stepIds = mutableSetOf<String>()
         val steps = buildList {
             for (index in 0 until array.length()) {
                 val item = array.optJSONObject(index) ?: continue
                 val stepId = item.optString("step_id")
                     .takeIf { it.isNotBlank() }
                     ?: "step-" + index
+                require(stepIds.add(stepId)) { "duplicate_plan_step_id" }
                 val action = item.optString("action").trim()
-                if (action.isBlank()) continue
+                require(action == "send_notification" || action == "presence_callback") {
+                    "unsupported_plan_step_action"
+                }
 
                 val condition = item.optJSONObject("condition")
                 val executeAt = item.optLong("execute_at_ms", generatedAt)
                 val expiresAt = item.optLong("expires_at_ms", validUntil)
-                    .coerceAtMost(validUntil)
+                require(executeAt >= now - 30_000L && executeAt <= validUntil &&
+                    expiresAt >= executeAt && expiresAt <= validUntil) {
+                    "invalid_plan_step_window"
+                }
 
                 add(
                     PresencePlanStep(
@@ -151,62 +169,82 @@ class PresencePlanRepository(private val context: Context) {
         context.presencePlanDataStore.edit { it.remove(Keys.planJson) }
     }
 
-    suspend fun dueSteps(
+    /**
+     * Claim steps BEFORE side effects. Both the command loop and the 15-second
+     * plan loop can wake at the same time; DataStore.edit makes one claimant
+     * the sole executor. A crash while RUNNING is reported as unknown at
+     * expiry, never retried blindly (which could duplicate a call).
+     */
+    suspend fun claimDueSteps(
         nowMs: Long,
         semanticPlace: String?,
         foregroundPackage: String?
     ): Pair<PresencePlan?, List<PresencePlanStep>> {
-        val current = load() ?: return null to emptyList()
-        var changed = false
-
-        val normalized = current.steps.map { step ->
-            if (
-                step.status == PresencePlanStepStatus.PENDING &&
-                (nowMs > current.validUntilMs || nowMs > step.expiresAtMs)
-            ) {
-                changed = true
-                step.copy(status = PresencePlanStepStatus.EXPIRED, result = "expired")
-            } else {
-                step
+        var selected: Pair<PresencePlan?, List<PresencePlanStep>> = null to emptyList()
+        context.presencePlanDataStore.edit { prefs ->
+            val current = prefs[Keys.planJson]?.let(::decode) ?: return@edit
+            var changed = false
+            val claimed = mutableListOf<PresencePlanStep>()
+            val updatedSteps = current.steps.map { step ->
+                when {
+                    step.status == PresencePlanStepStatus.RUNNING &&
+                        (nowMs > current.validUntilMs || nowMs > step.expiresAtMs) -> {
+                        changed = true
+                        step.copy(status = PresencePlanStepStatus.FAILED,
+                            result = "outcome_unknown_after_interruption")
+                    }
+                    step.status == PresencePlanStepStatus.PENDING &&
+                        (nowMs > current.validUntilMs || nowMs > step.expiresAtMs) -> {
+                        changed = true
+                        step.copy(status = PresencePlanStepStatus.EXPIRED, result = "expired_without_execution")
+                    }
+                    step.status == PresencePlanStepStatus.PENDING &&
+                        nowMs >= step.executeAtMs && nowMs <= step.expiresAtMs &&
+                        matches(step.requiredSemanticPlace, semanticPlace) &&
+                        matches(step.requiredForegroundPackage, foregroundPackage) -> {
+                        changed = true
+                        val running = step.copy(status = PresencePlanStepStatus.RUNNING,
+                            result = "claimed_before_execution")
+                        claimed += running
+                        running
+                    }
+                    else -> step
+                }
             }
+            val next = if (changed) current.copy(steps = updatedSteps) else current
+            if (changed) prefs[Keys.planJson] = encode(next).toString()
+            selected = next to claimed
         }
-
-        val plan = if (changed) current.copy(steps = normalized) else current
-        if (changed) persist(plan)
-
-        if (nowMs > plan.validUntilMs) return plan to emptyList()
-
-        val due = plan.steps.filter { step ->
-            step.status == PresencePlanStepStatus.PENDING &&
-                nowMs >= step.executeAtMs &&
-                nowMs <= step.expiresAtMs &&
-                matches(step.requiredSemanticPlace, semanticPlace) &&
-                matches(step.requiredForegroundPackage, foregroundPackage)
-        }
-        return plan to due
+        return selected
     }
 
     suspend fun markResult(
+        planId: String,
         stepId: String,
         ok: Boolean,
         result: String
     ): PresencePlan? {
-        val current = load() ?: return null
-        val updated = current.copy(
-            steps = current.steps.map { step ->
-                if (step.stepId != stepId) step
+        var actual: PresencePlan? = null
+        context.presencePlanDataStore.edit { prefs ->
+            val current = prefs[Keys.planJson]?.let(::decode) ?: return@edit
+            if (current.planId != planId) {
+                // Old in-flight work must not overwrite a replacement plan.
+                actual = current
+                return@edit
+            }
+            val updatedSteps = current.steps.map { step ->
+                if (step.stepId != stepId || step.status != PresencePlanStepStatus.RUNNING) step
                 else step.copy(
-                    status = if (ok) {
-                        PresencePlanStepStatus.COMPLETED
-                    } else {
-                        PresencePlanStepStatus.FAILED
-                    },
+                    status = if (ok) PresencePlanStepStatus.COMPLETED
+                        else PresencePlanStepStatus.FAILED,
                     result = result.take(500)
                 )
             }
-        )
-        persist(updated)
-        return updated
+            val next = current.copy(steps = updatedSteps)
+            prefs[Keys.planJson] = encode(next).toString()
+            actual = next
+        }
+        return actual
     }
 
     suspend fun summaryJson(): JSONObject? = load()?.summaryJson()

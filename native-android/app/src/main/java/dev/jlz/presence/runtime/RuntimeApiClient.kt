@@ -246,7 +246,8 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         dedupeSeconds: Int = 0,
         eventId: String? = null,
         sourcePackage: String? = null,
-        createdAtIso: String? = null
+        createdAtIso: String? = null,
+        status: String = "completed"
     ): JSONObject = postJson(
         "/api/activity/events",
         JSONObject()
@@ -255,6 +256,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
             .put("type", type)
             .put("title", title)
             .put("subtitle", subtitle)
+            .put("status", status)
             .put("metadata_json", metadata)
             .put("dedupe_seconds", dedupeSeconds.coerceIn(0, 300))
             .also { body ->
@@ -272,6 +274,17 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         )
         check(response.optBoolean("ok", false)) { "between_state_unavailable" }
         return response.optJSONObject("between") ?: JSONObject()
+    }
+
+    /** Read-only P0-4 intervention echo; not a command and not an effect inference. */
+    fun getInterventionEcho(limit: Int = 100): JSONObject {
+        val device = URLEncoder.encode(settings.deviceId, Charsets.UTF_8.name())
+        val response = getJson(
+            "/api/agency/echo?device_id=" + device +
+                "&limit=" + limit.coerceIn(1, 120)
+        )
+        check(response.optBoolean("ok", false)) { "intervention_echo_unavailable" }
+        return response
     }
 
     fun postBetweenStatus(payload: JSONObject): JSONObject {

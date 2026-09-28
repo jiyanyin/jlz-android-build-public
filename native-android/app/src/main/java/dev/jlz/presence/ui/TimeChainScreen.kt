@@ -1,6 +1,8 @@
 package dev.jlz.presence.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -64,6 +66,7 @@ private data class ChainView(
     val items: List<ChainItem> = emptyList(),
     val pending: Int = 0,
     val remoteAvailable: Boolean = false,
+    val echoAvailable: Boolean = false,
     val phoneAvailable: Boolean = true,
     val error: String = ""
 )
@@ -155,29 +158,47 @@ private suspend fun buildChain(
     // records are real user-written facts even if the server is unavailable.
     store.listTimelineSince(start, 500)
         .filter { it.createdAtMs in start..end &&
-            it.type in setOf("between_status", "between_moment") }
+            it.type in setOf("between_status", "between_moment", "presence_plan") }
         .forEach { ev ->
             val isMoment = ev.type == "between_moment"
+            val isEcho = ev.type == "presence_plan"
             val meta = runCatching { JSONObject(ev.metadataJson) }
                 .getOrDefault(JSONObject())
             val actor = meta.optString("actor", "user")
-            val lane = if (isMoment) "moment" else "status"
-            val recordId = "user:" + lane + ":" + ev.id
+            val lane = when {
+                isEcho -> "echo"
+                isMoment -> "moment"
+                else -> "status"
+            }
+            val recordId = if (isEcho) "echo:" + ev.id
+                else "user:" + lane + ":" + ev.id
+            val echoDetail = if (meta.has("execution_status"))
+                "手机本机记录：" + meta.optString("execution_status") +
+                    " · " + meta.optString("verification_status") +
+                    " · 未确认用户实际效果"
+                else "仅本机计划记录，不是手机执行回执"
             merged[recordId] = ChainItem(
                 key = recordId,
                 atMs = ev.createdAtMs,
                 lane = lane,
                 title = if (isMoment) "你我之间" else ev.title,
-                detail = if (isMoment) ev.detail else
-                    statusDetail(meta).ifBlank { ev.detail },
-                provenance = if (actor == "assistant") "纪临洲 · 本机记录"
-                    else "音音主动填写 · 本机待核对同步",
+                detail = when {
+                    isEcho -> echoDetail
+                    isMoment -> ev.detail
+                    else -> statusDetail(meta).ifBlank { ev.detail }
+                },
+                provenance = when {
+                    isEcho -> "Android 本机 · 尚未核对服务器回执"
+                    actor == "assistant" -> "纪临洲 · 本机记录"
+                    else -> "音音主动填写 · 本机待核对同步"
+                },
                 remoteVerified = false
             )
         }
 
     val runtime = settings.load()
     var remoteAvailable = false
+    var echoAvailable = false
     if (runtime.baseUrl.isNotBlank() && runtime.token.isNotBlank()) {
         val api = RuntimeApiClient(runtime)
         // An older Runtime can reject extra status dimensions. Its outbox
@@ -259,6 +280,48 @@ private suspend fun buildChain(
             error = if (error.isBlank()) "Runtime 暂不可用；下面保留手机本地记录"
                 else error + "；Runtime 暂不可用"
         }
+
+        // P0-4: read only the explicit Runtime receipts. The original phone
+        // diary entry has the same echo ID and is replaced only when a matching
+        // server event is available; a nearby unrelated app event is not proof.
+        val echo = runCatching { api.getInterventionEcho(120) }.getOrNull()
+        if (echo != null) {
+            echoAvailable = true
+            val events = echo.optJSONArray("events")
+            if (events != null) for (i in 0 until events.length()) {
+                val item = events.optJSONObject(i) ?: continue
+                val id = item.optString("event_id")
+                val at = isoMillis(item.optString("created_at"))
+                    .takeIf { it > 0L } ?: item.optLong("executed_at_ms", 0L)
+                if (id.isBlank() || at !in start..end) continue
+                val stage = item.optString("stage")
+                val stageText = when (stage) {
+                    "queued" -> "服务器已排队；手机尚未确认收到"
+                    "dispatched" -> "已下发；尚无手机接收回执"
+                    "phone_received" -> "手机已收到；尚无执行回执"
+                    "phone_executed" -> "手机已上报执行；未核验用户实际反应"
+                    "phone_failed" -> "手机上报执行失败"
+                    "missing_phone_receipt" -> "缺少手机接收时间；无法确认执行"
+                    "effect_observed" -> "另有明确关联的效果证据"
+                    else -> "状态未明：" + stage
+                }
+                val linked = item.optString("effect_evidence_event_id")
+                val detail = stageText + if (linked.isNotBlank())
+                    " · 关联证据 " + linked.take(8) else ""
+                val key = "echo:" + id
+                merged[key] = ChainItem(
+                    key = key, atMs = at, lane = "echo",
+                    title = item.optString("title").ifBlank {
+                        item.optString("action").ifBlank { "介入动作" }
+                    },
+                    detail = detail,
+                    provenance = if (item.optString("source") == "presence_plan")
+                        "Android 计划执行 · Runtime 回执"
+                    else "官端介入 · Runtime 回执",
+                    linkedId = item.optString("intent_id")
+                )
+            }
+        }
     }
     return ChainView(
         items = merged.values.sortedWith(
@@ -266,6 +329,7 @@ private suspend fun buildChain(
         ).take(350),
         pending = outbox.pendingCount(),
         remoteAvailable = remoteAvailable,
+        echoAvailable = echoAvailable,
         phoneAvailable = phone != null,
         error = error
     )
@@ -293,11 +357,12 @@ fun TimeChainScreen() {
     }
     LaunchedEffect(filter) { reload() }
 
-    val tabs = listOf("日记", "状态灯", "手机流水")
+    val tabs = listOf("日记", "状态灯", "回响", "手机流水")
     val shown = view.items.filter {
         when (filter) {
             "日记" -> it.lane == "moment" || it.lane == "reply"
             "状态灯" -> it.lane == "status"
+            "回响" -> it.lane == "echo"
             "手机流水" -> it.lane == "phone"
             else -> false
         }
@@ -325,13 +390,20 @@ fun TimeChainScreen() {
                 color = TextSecondary
             )
             if (!view.remoteAvailable) Text(
-                "云端暂不可用或尚未配置，已显示本机资料。",
+                "云端状态记录暂不可用或尚未配置，已显示本机资料。",
+                color = TextSecondary
+            )
+            if (filter == "回响" && !view.echoAvailable) Text(
+                "Runtime 回响接口暂不可用，仅显示手机本机计划记录；不等于已同步。",
                 color = TextSecondary
             )
             if (view.error.isNotBlank()) Text(view.error, color = TextSecondary)
         }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 tabs.forEach { value ->
                     FilterChip(selected = filter == value,
                         onClick = { filter = value }, label = { Text(value) })
@@ -349,6 +421,7 @@ fun TimeChainScreen() {
                         " 条 · 我的回复 " +
                         shown.count { it.lane == "reply" } + " 条"
                     "状态灯" -> "今天的状态更新 " + shown.size + " 条"
+                    "回响" -> "今天的介入与回执 " + shown.size + " 条"
                     else -> "手机原始记录 " + shown.size +
                         " 条（后台只发送每小时聚合摘要）"
                 },
@@ -373,6 +446,7 @@ fun TimeChainScreen() {
                             "status" -> "状态灯"
                             "moment" -> "你我之间"
                             "reply" -> "纪临洲"
+                            "echo" -> "回响"
                             else -> "手机记录"
                         },
                         color = TextSecondary, style = MaterialTheme.typography.labelMedium
@@ -383,7 +457,8 @@ fun TimeChainScreen() {
                 if (item.detail.isNotBlank()) Text(item.detail, color = TextPrimary,
                     style = MaterialTheme.typography.bodyMedium)
                 if (item.linkedId.isNotBlank()) Text(
-                    "↳ 回复留言：" + item.linkedId.take(8),
+                    (if (item.lane == "echo") "↳ 关联意图：" else "↳ 回复留言：") +
+                        item.linkedId.take(8),
                     color = TextSecondary, style = MaterialTheme.typography.labelSmall
                 )
                 Text(item.provenance, color = TextSecondary,

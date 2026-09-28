@@ -480,7 +480,11 @@ class NativeRuntimeService : Service() {
                     beforeState = beforeState,
                     deviceId = command.deviceId
                 )
-                val execution = execute(command, api)
+                // An invalid plan or unexpected action exception must return a
+                // FAILED receipt; leaving the command DISPATCHED forever loses
+                // the only causal link between request and phone action.
+                val execution = runCatching { execute(command, api) }
+                    .getOrElse { false to ("execution_exception:" + it.javaClass.simpleName) }
                 val executedAtMs = System.currentTimeMillis()
                 val afterState = deviceSystem.systemState()
                 val parsedResult = runCatching { JSONObject(execution.second) }.getOrNull()
@@ -1004,7 +1008,7 @@ class NativeRuntimeService : Service() {
         foregroundPackage: String?
     ) {
         val now = System.currentTimeMillis()
-        val (plan, due) = presencePlanRepository.dueSteps(
+        val (plan, due) = presencePlanRepository.claimDueSteps(
             nowMs = now,
             semanticPlace = semanticPlace,
             foregroundPackage = foregroundPackage
@@ -1014,6 +1018,7 @@ class NativeRuntimeService : Service() {
         due.forEach { step ->
             if (step.action == "set_presence_plan" || step.action == "clear_presence_plan") {
                 presencePlanRepository.markResult(
+                    planId = plan.planId,
                     stepId = step.stepId,
                     ok = false,
                     result = "nested_presence_plan_control_not_allowed"
@@ -1052,42 +1057,61 @@ class NativeRuntimeService : Service() {
             val result = runCatching { execute(synthetic, api) }
                 .getOrElse { false to (it.message ?: it.javaClass.simpleName) }
             val parsedSynthetic = runCatching { JSONObject(result.second) }.getOrNull()
+            val executedAt = System.currentTimeMillis()
+            val verification = parsedSynthetic?.optString("verification_status")
+                ?.takeIf { it.isNotBlank() }
+                ?: if (result.first) "phone_reported_success" else "failed"
+            val verifiedAt = System.currentTimeMillis()
             deviceActivityJournal.recordCommandResult(
                 commandId = synthetic.id,
-                executedAtMs = System.currentTimeMillis(),
-                verifiedAtMs = System.currentTimeMillis(),
+                executedAtMs = executedAt,
+                verifiedAtMs = verifiedAt,
                 executionStatus = if (result.first) "executed" else "failed",
-                verificationStatus = parsedSynthetic?.optString("verification_status")
-                    ?.takeIf { it.isNotBlank() }
-                    ?: if (result.first) "phone_reported_success" else "failed",
+                verificationStatus = verification,
                 afterState = deviceSystem.systemState()
             )
-
             presencePlanRepository.markResult(
+                planId = plan.planId,
                 stepId = step.stepId,
                 ok = result.first,
                 result = result.second
             )
 
+            // This is a PHONE execution receipt, not proof that a notification
+            // was seen, an app opened, or the user followed an instruction.
+            val receipt = JSONObject()
+                .put("plan_id", plan.planId)
+                .put("step_id", step.stepId)
+                .put("command_id", synthetic.id)
+                .put("intent_id", synthetic.intentId)
+                .put("origin", synthetic.origin)
+                .put("phone_received_at_ms", receivedAt)
+                .put("executed_at_ms", executedAt)
+                .put("verified_at_ms", verifiedAt)
+                .put("execution_status", if (result.first) "executed" else "failed")
+                .put("verification_status", verification)
+                .put("effect_observed", false)
+                .put("result", result.second.take(500))
             lifeStore.recordTimeline(
                 type = "presence_plan",
                 title = "计划执行 · " + step.action,
-                detail = result.second,
-                eventId = plan.planId,
-                intentId = step.stepId
+                detail = result.second.take(500),
+                eventId = synthetic.id,
+                intentId = step.stepId,
+                id = synthetic.id,
+                createdAtMs = executedAt,
+                metadataJson = receipt.toString()
             )
-
             runCatching {
                 api.postActivityEvent(
                     source = "presence_plan",
                     type = "agency",
                     title = "计划执行 · " + step.action,
-                    subtitle = result.second,
-                    metadata = JSONObject()
-                        .put("plan_id", plan.planId)
-                        .put("step_id", step.stepId)
-                        .put("ok", result.first),
-                    dedupeSeconds = 0
+                    subtitle = result.second.take(220),
+                    metadata = receipt,
+                    dedupeSeconds = 0,
+                    eventId = synthetic.id,
+                    status = if (result.first) "completed" else "failed"
                 )
             }
         }
