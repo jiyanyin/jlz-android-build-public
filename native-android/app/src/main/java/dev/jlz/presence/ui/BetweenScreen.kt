@@ -129,7 +129,7 @@ fun BetweenScreen(initialTab: String = "status") {
             IceGlassCard {
                 Text("此刻的你", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    status?.optString("state").orEmpty().ifBlank { "还没更新状态灯" },
+                    statusSummary(status),
                     color = TextPrimary
                 )
                 val detail = status?.optString("detail").orEmpty()
@@ -138,7 +138,10 @@ fun BetweenScreen(initialTab: String = "status") {
                 if (energyText in 1..5) Text("能量 $energyText/5", color = TextSecondary)
                 val mindText = status?.optInt("mental_energy", -1) ?: -1
                 if (mindText in 1..5) Text("脑力 " + mindText + "/5", color = TextSecondary)
-                val needText = status?.optString("need").orEmpty()
+                val newNeeds = status?.optJSONObject("dimensions")?.optJSONArray("needs")
+                val needText = if (newNeeds != null && newNeeds.length() > 0)
+                    (0 until newNeeds.length()).joinToString("、") { newNeeds.optString(it) }
+                else status?.optString("need").orEmpty()
                 if (needText.isNotBlank()) Text("想让我：" + needText, color = TextSecondary)
                 val levelText = status?.optString("response_level").orEmpty()
                 if (levelText.isNotBlank()) Text(
@@ -227,7 +230,10 @@ fun BetweenScreen(initialTab: String = "status") {
                     ?: 0L
                 IceGlassCard {
                     Text(
-                        event.optString("state").ifBlank { event.optString("title") },
+                        if (event.optJSONObject("dimensions") != null ||
+                            meta?.optJSONObject("dimensions") != null)
+                            statusSummary(event)
+                        else event.optString("state").ifBlank { event.optString("title") },
                         color = TextPrimary, style = MaterialTheme.typography.titleSmall
                     )
                     Text(
@@ -240,9 +246,11 @@ fun BetweenScreen(initialTab: String = "status") {
                     if (event.optBoolean("local_only", false)) {
                         Text("已记在本机 · 等待同步", color = TextSecondary)
                     }
-                    val chosenNeed = event.optString("need").ifBlank {
-                        meta?.optString("need").orEmpty()
-                    }
+                    val choices = event.optJSONObject("dimensions")?.optJSONArray("needs")
+                        ?: meta?.optJSONObject("dimensions")?.optJSONArray("needs")
+                    val chosenNeed = if (choices != null && choices.length() > 0)
+                        (0 until choices.length()).joinToString("、") { choices.optString(it) }
+                    else event.optString("need").ifBlank { meta?.optString("need").orEmpty() }
                     if (chosenNeed.isNotBlank()) Text(
                         "当时需要：" + chosenNeed, color = TextSecondary
                     )
