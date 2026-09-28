@@ -47,6 +47,7 @@ fun PresenceApp() {
                 is PresenceRoute.Drawer -> AppDrawerScreen()
                 is PresenceRoute.Timeline -> TimelineScreen()
                 is PresenceRoute.TimeChain -> TimeChainScreen()
+                is PresenceRoute.Echo -> TimeChainScreen(initialTab = "回响")
                 is PresenceRoute.Between -> BetweenScreen((route as PresenceRoute.Between).tab)
                 is PresenceRoute.Study -> StudyScreen()
                 is PresenceRoute.Trip -> TripScreen()
@@ -99,7 +100,21 @@ fun HomeScreen() {
                 Text("\u8bca\u65ad", color = TextTertiary, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Diagnostics) }.padding(8.dp))
             }
         }
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
+        // P0-4: echo is a primary HOME destination, never a hidden second
+        // filter behind the technical TimeChain button.
+        IceGlassCard {
+            Text("✦ 回响 · 我的介入", color = TextPrimary,
+                style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(6.dp))
+            Text("我发出的提醒、来电和计划，手机实际收到与执行了什么，都在这里。",
+                color = TextSecondary, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(12.dp))
+            IceButton("打开回响 →", onClick = {
+                PresenceRouteBus.open(PresenceRoute.Echo)
+            }, modifier = Modifier.fillMaxWidth(), primary = true)
+        }
+        Spacer(Modifier.height(20.dp))
         SectionHeader("\u5b66\u4e60\u4e0e\u5b98\u7aef")
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             pinned.forEach { app ->

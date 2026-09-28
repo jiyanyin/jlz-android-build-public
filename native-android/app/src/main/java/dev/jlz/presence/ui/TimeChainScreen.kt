@@ -336,7 +336,7 @@ private suspend fun buildChain(
 }
 
 @Composable
-fun TimeChainScreen() {
+fun TimeChainScreen(initialTab: String = "日记") {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val store = remember(context) { LocalLifeStore(context.applicationContext) }
@@ -344,7 +344,7 @@ fun TimeChainScreen() {
     val settings = remember(context) { RuntimeSettingsRepository(context.applicationContext) }
     var view by remember { mutableStateOf(ChainView()) }
     var loading by remember { mutableStateOf(false) }
-    var filter by remember { mutableStateOf("日记") }
+    var filter by remember(initialTab) { mutableStateOf(initialTab) }
 
     suspend fun reload() {
         loading = true
@@ -375,15 +375,17 @@ fun TimeChainScreen() {
     ) {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("你我之间 · 今日记录", color = TextPrimary,
+                Text(if (filter == "回响") "回响 · 我做过的事" else "你我之间 · 今日记录", color = TextPrimary,
                     style = MaterialTheme.typography.headlineSmall)
                 IceButton("返回", onClick = { PresenceRouteBus.open(PresenceRoute.Home) })
             }
         }
         item {
-            Text("今天 · 你的留言和我的回复", color = TextPrimary,
-                style = MaterialTheme.typography.titleMedium)
-            Text("默认只看我们写下的话；状态灯供我读取，手机流水放在技术页按需查看。",
+            Text(if (filter == "回响") "今天 · 我的介入与手机回执" else "今天 · 你的留言和我的回复",
+                color = TextPrimary, style = MaterialTheme.typography.titleMedium)
+            Text(if (filter == "回响")
+                "排队不代表送达，执行不代表你已经照做。每条记录都会标明证据来源。"
+                else "默认只看我们写下的话；状态灯供我读取，手机流水放在技术页按需查看。",
                 color = TextSecondary, style = MaterialTheme.typography.bodySmall)
             if (view.pending > 0) Text(
                 "另有 " + view.pending + " 条本机待确认同步，不会因刷新而删除。",
