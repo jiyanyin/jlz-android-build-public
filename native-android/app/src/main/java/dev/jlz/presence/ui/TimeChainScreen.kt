@@ -82,6 +82,16 @@ private fun isoMillis(text: String?): Long =
 
 private fun statusDetail(status: JSONObject): String {
     val parts = mutableListOf<String>()
+    val axes = statusSummary(status)
+    if (status.optJSONObject("dimensions") != null ||
+        status.optJSONObject("metadata_json")?.optJSONObject("dimensions") != null) {
+        if (axes != "我的此刻") parts += axes
+        val dims = status.optJSONObject("dimensions")
+            ?: status.optJSONObject("metadata_json")?.optJSONObject("dimensions")
+        val needs = dims?.optJSONArray("needs")
+        if (needs != null && needs.length() > 0)
+            parts += "需要：" + (0 until needs.length()).joinToString("、") { needs.optString(it) }
+    }
     val note = status.optString("detail")
     if (note.isNotBlank()) parts += note
     val energy = status.optInt("energy", -1)
