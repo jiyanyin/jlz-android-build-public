@@ -22,6 +22,7 @@ import dev.jlz.presence.usage.ForegroundUsageTracker
 import dev.jlz.presence.usage.ForegroundUsageStore
 import dev.jlz.presence.usage.SystemUsageSnapshot
 import dev.jlz.presence.usage.DeviceActivityJournal
+import dev.jlz.presence.usage.HourlyBehaviorDigest
 import dev.jlz.presence.screen.ScreenObservationBus
 import java.time.LocalDate
 import java.time.ZoneId
@@ -310,6 +311,29 @@ class NativeRuntimeService : Service() {
                             }
                         })
                 }
+                // Send compact daily totals (top 12 only). Keep the full
+                // underlying UsageEvents journal on device for investigations.
+                // This does not alter other usage_state fields or gates.
+                if (usageJson.optBoolean("usage_permission_ready", false)) {
+                    val originalTotals = usageJson.optJSONArray("totals") ?: JSONArray()
+                    if (originalTotals.length() > 12) {
+                        val limited = JSONArray()
+                        var otherMs = 0L
+                        for (i in 0 until originalTotals.length()) {
+                            val entry = originalTotals.optJSONObject(i) ?: continue
+                            if (i < 12) limited.put(entry)
+                            else otherMs += entry.optLong("duration_ms").coerceAtLeast(0L)
+                        }
+                        usageJson.put("totals", limited)
+                        usageJson.put("other_app_duration_ms", otherMs)
+                        usageJson.put("omitted_app_count", originalTotals.length() - limited.length())
+                    }
+                }
+                usageJson.put("behavior_digest_schema", "jlz_behavior_hour_v1")
+                    .put("last_confirmed_hour_end_ms",
+                        HourlyBehaviorDigest.lastConfirmedHourEnd(
+                            applicationContext, settings.deviceId
+                        ))
                 // V2: Health Connect telemetry removed by product decision.
                 api.postDeviceState(
                     DeviceStateSnapshot(
@@ -326,6 +350,16 @@ class NativeRuntimeService : Service() {
                         calendar = NativeCalendarBridge(applicationContext).snapshot()
                     )
                 )
+
+                // At most ONE completed-hour aggregate after a successful
+                // regular heartbeat. The existing Runtime activity endpoint
+                // preserves original-hour timestamps and deduplicates by ID.
+                // If network/ACK fails, the same hour is retried next tick.
+                runCatching {
+                    HourlyBehaviorDigest.sendDue(
+                        applicationContext, api, settings.deviceId
+                    )
+                }
 
                 NativeClientDiagnostics.update {
                     it.copy(

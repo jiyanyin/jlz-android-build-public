@@ -245,7 +245,8 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         metadata: JSONObject = JSONObject(),
         dedupeSeconds: Int = 0,
         eventId: String? = null,
-        sourcePackage: String? = null
+        sourcePackage: String? = null,
+        createdAtIso: String? = null
     ): JSONObject = postJson(
         "/api/activity/events",
         JSONObject()
@@ -259,6 +260,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
             .also { body ->
                 eventId?.let { body.put("id", it) }
                 sourcePackage?.let { body.put("package_name", it) }
+                createdAtIso?.let { body.put("created_at", it) }
             }
     )
 

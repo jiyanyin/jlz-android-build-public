@@ -106,13 +106,18 @@ private suspend fun buildChain(
     outbox: BetweenOutbox,
     settings: RuntimeSettingsRepository,
     start: Long,
-    end: Long
+    end: Long,
+    includePhone: Boolean = false
 ): ChainView {
     val merged = LinkedHashMap<String, ChainItem>()
     var error = ""
-    val phone = runCatching { UnifiedPhoneTimeline(context).today(end, 500) }
-        .onFailure { error = "手机客观轨迹读取失败：" + (it.message ?: "未知") }
-        .getOrNull()
+    // The everyday diary must not do heavy UsageEvents scans just to show
+    // the user's own words. Load raw phone events only in the technical view.
+    val phone = if (includePhone) {
+        runCatching { UnifiedPhoneTimeline(context).today(end, 500) }
+            .onFailure { error = "手机客观轨迹读取失败：" + (it.message ?: "未知") }
+            .getOrNull()
+    } else null
 
     // P0-1: use the actual on-device UsageEvents and screen journal. The
     // older UnifiedPhoneTimeline includes local life too, which we handle
@@ -270,28 +275,28 @@ fun TimeChainScreen() {
     val settings = remember(context) { RuntimeSettingsRepository(context.applicationContext) }
     var view by remember { mutableStateOf(ChainView()) }
     var loading by remember { mutableStateOf(false) }
-    var filter by remember { mutableStateOf("全部") }
+    var filter by remember { mutableStateOf("日记") }
 
     suspend fun reload() {
         loading = true
         view = withContext(Dispatchers.IO) {
             val end = System.currentTimeMillis()
             buildChain(context.applicationContext, store, outbox, settings,
-                dayStartMs(end), end)
+                dayStartMs(end), end, includePhone = filter == "手机流水")
         }
         loading = false
     }
-    LaunchedEffect(Unit) { reload() }
+    LaunchedEffect(filter) { reload() }
 
-    val tabs = listOf("全部", "状态灯", "你我之间", "手机轨迹", "我的回复")
-    val laneFilter = when (filter) {
-        "状态灯" -> "status"
-        "你我之间" -> "moment"
-        "手机轨迹" -> "phone"
-        "我的回复" -> "reply"
-        else -> ""
+    val tabs = listOf("日记", "状态灯", "手机流水")
+    val shown = view.items.filter {
+        when (filter) {
+            "日记" -> it.lane == "moment" || it.lane == "reply"
+            "状态灯" -> it.lane == "status"
+            "手机流水" -> it.lane == "phone"
+            else -> false
+        }
     }
-    val shown = view.items.filter { laneFilter.isEmpty() || it.lane == laneFilter }
     val clock = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
 
     LazyColumn(
@@ -300,15 +305,15 @@ fun TimeChainScreen() {
     ) {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("时间链", color = TextPrimary,
+                Text("你我之间 · 今日记录", color = TextPrimary,
                     style = MaterialTheme.typography.headlineSmall)
                 IceButton("返回", onClick = { PresenceRouteBus.open(PresenceRoute.Home) })
             }
         }
         item {
-            Text("今天 · 按发生时间排列", color = TextPrimary,
+            Text("今天 · 你的留言和我的回复", color = TextPrimary,
                 style = MaterialTheme.typography.titleMedium)
-            Text("手机观测 ≠ 你的主观感受；我的回复 ≠ 手机已弹窗。每条都有来源。",
+            Text("默认只看我们写下的话；状态灯供我读取，手机流水放在技术页按需查看。",
                 color = TextSecondary, style = MaterialTheme.typography.bodySmall)
             if (view.pending > 0) Text(
                 "另有 " + view.pending + " 条本机待确认同步，不会因刷新而删除。",
@@ -322,28 +327,26 @@ fun TimeChainScreen() {
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                tabs.take(3).forEach { value ->
+                tabs.forEach { value ->
                     FilterChip(selected = filter == value,
                         onClick = { filter = value }, label = { Text(value) })
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                tabs.drop(3).forEach { value ->
-                    FilterChip(selected = filter == value,
-                        onClick = { filter = value }, label = { Text(value) })
-                }
-                IceButton(if (loading) "读取中" else "刷新", onClick = {
-                    if (!loading) scope.launch { reload() }
-                }, enabled = !loading)
-            }
+            IceButton(if (loading) "读取中" else "刷新", onClick = {
+                if (!loading) scope.launch { reload() }
+            }, enabled = !loading)
         }
         item {
             Text(
-                "显示 " + shown.size + " 条 · " +
-                    "手机 " + shown.count { it.lane == "phone" } +
-                    " / 状态 " + shown.count { it.lane == "status" } +
-                    " / 随手记 " + shown.count { it.lane == "moment" } +
-                    " / 回复 " + shown.count { it.lane == "reply" },
+                when (filter) {
+                    "日记" -> "今天：你的留言 " +
+                        shown.count { it.lane == "moment" } +
+                        " 条 · 我的回复 " +
+                        shown.count { it.lane == "reply" } + " 条"
+                    "状态灯" -> "今天的状态更新 " + shown.size + " 条"
+                    else -> "手机原始记录 " + shown.size +
+                        " 条（后台只发送每小时聚合摘要）"
+                },
                 color = TextSecondary, style = MaterialTheme.typography.labelMedium
             )
         }
