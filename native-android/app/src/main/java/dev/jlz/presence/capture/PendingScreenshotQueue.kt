@@ -22,6 +22,32 @@ class PendingScreenshotQueue(private val context: Context) {
     data class SendResult(val sent: Boolean, val eventId: String, val reason: String)
 
     /**
+     * Owner-authorized full screenshot reset for the 2026-09-28 capture-policy cutover.
+     * Deletes screenshot transport files and screenshot event rows only.
+     * Notes, replies, focus state and other local data are untouched.
+     */
+    @Synchronized
+    fun clearAllScreenshotsOnce(marker: String): Int {
+        val prefs = context.applicationContext.getSharedPreferences(
+            "jlz_presence_capture_full_reset_v1", Context.MODE_PRIVATE
+        )
+        val key = "done:" + marker
+        if (prefs.getBoolean(key, false)) return 0
+
+        var removed = 0
+        if (root.isDirectory) {
+            root.listFiles().orEmpty().forEach { file ->
+                if (file.delete()) removed++
+            }
+        }
+        journal.deleteScreenshotRecordsBefore(Long.MAX_VALUE)
+        check(prefs.edit().putBoolean(key, true).commit()) {
+            "capture_full_reset_marker_not_saved"
+        }
+        return removed
+    }
+
+    /**
      * One-time screenshot clean slate authorized 2026-09-27 11:55 Asia/Shanghai.
      * The server resets the same earlier screenshot cutoff. Prevent an old
      * phone-side retry from repopulating wiped server captures.
@@ -118,7 +144,12 @@ class PendingScreenshotQueue(private val context: Context) {
                 id = eventId,
                 originPackage = sourcePackage,
                 studySessionId = studySessionId,
-                mode = if (studySessionId != null) "STUDY" else "LIFE",
+                mode = when {
+                    origin.startsWith("automatic_app_") -> "APP"
+                    origin == "manual_q" -> "MANUAL"
+                    origin == "official_gpt_request" -> "RUNTIME"
+                    else -> "CAPTURE"
+                },
                 deliveryStatus = "upload_pending",
                 detail = "saved_on_phone_until_matching_server_ack"
             )
@@ -236,9 +267,11 @@ class PendingScreenshotQueue(private val context: Context) {
     private fun originRank(origin: String): Int = when {
         origin == "official_gpt_request" -> 0
         origin == "manual_q" -> 1
-        origin.contains("work", ignoreCase = true) -> 2
-        origin.startsWith("automatic_") -> 3
-        else -> 4
+        origin.startsWith("automatic_app_switch") -> 2
+        origin.startsWith("automatic_app_stay") -> 3
+        origin.contains("work", ignoreCase = true) -> 4
+        origin.startsWith("automatic_") -> 5
+        else -> 6
     }
 
     private fun maxRetries(origin: String): Int =
