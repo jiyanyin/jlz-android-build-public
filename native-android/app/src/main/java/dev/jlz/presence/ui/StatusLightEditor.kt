@@ -164,6 +164,33 @@ private fun ChoiceGrid(
 
 private fun jsonArray(values: Set<String>) = JSONArray().apply { values.forEach { put(it) } }
 
+/** Display categorized needs while retaining old mixed-need snapshots. */
+internal fun statusNeedLines(status: JSONObject?): List<String> {
+    if (status == null) return emptyList()
+    val metadata = status.optJSONObject("metadata_json")
+    val dimensions = status.optJSONObject("dimensions")
+        ?: metadata?.optJSONObject("dimensions")
+    fun tags(array: JSONArray?): String =
+        if (array == null) "" else (0 until array.length())
+            .map { array.optString(it) }
+            .filter { it.isNotBlank() }.joinToString("、")
+    val closeness = tags(dimensions?.optJSONArray("closeness_needs"))
+    val practical = tags(dimensions?.optJSONArray("practical_needs"))
+    if (dimensions?.has("closeness_needs") == true ||
+        dimensions?.has("practical_needs") == true) {
+        return listOfNotNull(
+            closeness.takeIf { it.isNotBlank() }?.let { "亲密愿望：$it" },
+            practical.takeIf { it.isNotBlank() }?.let { "生活协助：$it" }
+        )
+    }
+    val legacy = tags(dimensions?.optJSONArray("needs"))
+        .ifBlank { status.optString("need").ifBlank {
+            metadata?.optString("need").orEmpty()
+        } }
+    return legacy.takeIf { it.isNotBlank() }
+        ?.let { listOf("当时需要：$it") } ?: emptyList()
+}
+
 /**
  * V3: four independent optional scales + expandable emotion/expression/body/needs.
  * All inputs are user-authored, without automatic psychiatric labels.
@@ -174,7 +201,8 @@ fun StatusLightEditor(busy: Boolean, onSave: (JSONObject) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     var emotions by remember { mutableStateOf<Set<String>>(emptySet()) }
     var expressions by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var needs by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var closenessNeeds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var practicalNeeds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var bodySignals by remember { mutableStateOf<Set<String>>(emptySet()) }
     val body = remember { mutableStateMapOf<String, Int?>() }
     var responseStyle by remember { mutableStateOf("") }
@@ -233,15 +261,15 @@ fun StatusLightEditor(busy: Boolean, onSave: (JSONObject) -> Unit) {
                 bodySignals = if (v in bodySignals) bodySignals - v
                     else if (bodySignals.size < 5) bodySignals + v else bodySignals
             }
-            ChoiceGrid("我想怎样和你亲近", CLOSENESS_NEED_TAGS, needs,
-                hint = "可以告诉我你希望的亲密方式，而不是给我布置任务。最多选五项。") { v ->
-                needs = if (v in needs) needs - v
-                    else if (needs.size < 5) needs + v else needs
+            ChoiceGrid("我想怎样和你亲近", CLOSENESS_NEED_TAGS, closenessNeeds,
+                hint = "只记录亲密愿望；最多五项，不占用生活协助的名额。") { v ->
+                closenessNeeds = if (v in closenessNeeds) closenessNeeds - v
+                    else if (closenessNeeds.size < 5) closenessNeeds + v else closenessNeeds
             }
-            ChoiceGrid("生活里的帮助（选填）", PRACTICAL_NEED_TAGS, needs,
-                hint = "这些是另外的支持，不会取代亲近。") { v ->
-                needs = if (v in needs) needs - v
-                    else if (needs.size < 5) needs + v else needs
+            ChoiceGrid("生活里的帮助（选填）", PRACTICAL_NEED_TAGS, practicalNeeds,
+                hint = "独立记录生活协助；即使亲密愿望已经选满也可以选择。") { v ->
+                practicalNeeds = if (v in practicalNeeds) practicalNeeds - v
+                    else if (practicalNeeds.size < 5) practicalNeeds + v else practicalNeeds
             }
             ChoiceGrid("想听我怎样回应",
                 listOf(
@@ -260,7 +288,8 @@ fun StatusLightEditor(busy: Boolean, onSave: (JSONObject) -> Unit) {
             label = { Text("一句原话（选填）") }
         )
         val canSave = axes.isNotEmpty() || emotions.isNotEmpty() ||
-            expressions.isNotEmpty() || needs.isNotEmpty() || body.isNotEmpty() ||
+            expressions.isNotEmpty() || closenessNeeds.isNotEmpty() ||
+            practicalNeeds.isNotEmpty() || body.isNotEmpty() ||
             bodySignals.isNotEmpty() || responseStyle.isNotBlank() || note.isNotBlank()
         IceButton(
             text = "记下这个时刻", primary = true, enabled = !busy && canSave,
@@ -271,7 +300,14 @@ fun StatusLightEditor(busy: Boolean, onSave: (JSONObject) -> Unit) {
                 if (emotions.isNotEmpty()) dimensions.put("emotions", jsonArray(emotions))
                 if (expressions.isNotEmpty())
                     dimensions.put("external_expression", jsonArray(expressions))
-                if (needs.isNotEmpty()) dimensions.put("needs", jsonArray(needs))
+                // Category-specific fields let the companion distinguish wanting
+                // affection from requesting help. The union is for old readers.
+                if (closenessNeeds.isNotEmpty())
+                    dimensions.put("closeness_needs", jsonArray(closenessNeeds))
+                if (practicalNeeds.isNotEmpty())
+                    dimensions.put("practical_needs", jsonArray(practicalNeeds))
+                if (closenessNeeds.isNotEmpty() || practicalNeeds.isNotEmpty())
+                    dimensions.put("needs", jsonArray(closenessNeeds + practicalNeeds))
                 if (bodySignals.isNotEmpty())
                     dimensions.put("body_signals", jsonArray(bodySignals))
                 if (responseStyle.isNotBlank())
