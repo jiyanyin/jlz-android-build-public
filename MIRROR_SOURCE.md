@@ -9,3 +9,5 @@ A separately configured GitHub Actions secret provides the existing stable signi
 The workflow only publishes a test release tag; it never overwrites `android-native-latest`.
 
 Excluded by design: private Git history, Runtime/MCP/server sources, keystores, credentials, captures, user data, environment files, and private deployment configuration.
+
+P0-2 expanded state-light UI snapshot from private commit `274bc1c81b8af2fe294dc037ca423bd805320a72` plus `StatusLightEditor.kt`; this test build has versionCode `2026092823` and is not a production release. Public build changes include only Android Kotlin source and test-version metadata.

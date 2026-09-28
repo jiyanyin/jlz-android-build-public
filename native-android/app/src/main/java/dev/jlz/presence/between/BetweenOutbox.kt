@@ -117,6 +117,32 @@ class BetweenOutbox(context: Context) :
 
             val eventId = response.optJSONObject("event")?.optString("id").orEmpty()
             if (eventId != item.id) break
+            if (item.kind == "status") {
+                // Legacy Runtime accepted the record ID but silently DROPPED
+                // the new emotion/energy/need dimensions. Do not call this
+                // delivered until the durable server echoes every supplied
+                // field from its actually persisted snapshot.
+                val saved = response.optJSONObject("snapshot") ?: break
+                val fields = listOf(
+                    "state", "detail", "energy", "need", "response_level",
+                    "emotions", "mental_energy", "physical_energy", "attention",
+                    "body_signals", "response_style", "avoid"
+                )
+                val allFieldsPersisted = fields.all { field ->
+                    if (!payload.has(field)) true else {
+                        val original = payload.opt(field)
+                        val confirmed = saved.opt(field)
+                        when {
+                            original is org.json.JSONArray &&
+                                confirmed is org.json.JSONArray ->
+                                    original.toString() == confirmed.toString()
+                            original == null || confirmed == null -> false
+                            else -> original.toString() == confirmed.toString()
+                        }
+                    }
+                }
+                if (!allFieldsPersisted) break
+            }
 
             writableDatabase.update(
                 "pending_between",

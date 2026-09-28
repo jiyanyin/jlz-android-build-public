@@ -65,11 +65,6 @@ fun BetweenScreen(initialTab: String = "status") {
     var view by remember { mutableStateOf(BetweenView(null, emptyList(), null, 0)) }
     var feedback by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
-    var mood by remember { mutableStateOf("") }
-    var energy by remember { mutableStateOf(3) }
-    var need by remember { mutableStateOf("") }
-    var intensity by remember { mutableStateOf("正常") }
-    var note by remember { mutableStateOf("") }
     var moment by remember { mutableStateOf("") }
     var needsResponse by remember { mutableStateOf(false) }
 
@@ -130,6 +125,14 @@ fun BetweenScreen(initialTab: String = "status") {
                 if (detail.isNotBlank()) Text(detail, color = TextSecondary)
                 val energyText = status?.optInt("energy", -1) ?: -1
                 if (energyText in 1..5) Text("能量 $energyText/5", color = TextSecondary)
+                val mindText = status?.optInt("mental_energy", -1) ?: -1
+                if (mindText in 1..5) Text("脑力 " + mindText + "/5", color = TextSecondary)
+                val needText = status?.optString("need").orEmpty()
+                if (needText.isNotBlank()) Text("想让我：" + needText, color = TextSecondary)
+                val levelText = status?.optString("response_level").orEmpty()
+                if (levelText.isNotBlank()) Text(
+                    "回应浓度：" + levelText, color = TextSecondary
+                )
                 if (other != null) {
                     Text("纪临洲 · " + other.optString("state", "未更新"), color = TextSecondary)
                 }
@@ -142,98 +145,74 @@ fun BetweenScreen(initialTab: String = "status") {
         }
         if (tab == "status") {
             item {
-                Text("更新状态灯", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
-                Text("只写你愿意告诉我的状态；我不会替你改灯。", color = TextSecondary)
-            }
-            item {
-                OutlinedTextField(
-                    value = mood, onValueChange = { mood = it.take(80) },
-                    label = { Text("整体感受 / 主要情绪") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-            }
-            item {
-                Text("现在的能量 · $energy/5", color = TextPrimary)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    (1..5).forEach { number ->
-                        FilterChip(energy == number, { energy = number }, label = { Text("$number") })
-                    }
-                }
-            }
-            item {
-                OutlinedTextField(
-                    value = need, onValueChange = { need = it.take(120) },
-                    label = { Text("现在需要什么？") }, modifier = Modifier.fillMaxWidth()
-                )
-            }
-            item {
-                Text("希望我怎样回应", color = TextPrimary)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("轻", "正常", "高").forEach { choice ->
-                        FilterChip(
-                            intensity == choice, { intensity = choice },
-                            label = { Text(choice) }
-                        )
-                    }
-                }
-            }
-            item {
-                OutlinedTextField(
-                    value = note, onValueChange = { note = it.take(240) },
-                    label = { Text("补充一句（可选）") }, modifier = Modifier.fillMaxWidth()
-                )
-            }
-            item {
-                IceButton(
-                    "记下我的状态", enabled = mood.isNotBlank() && !saving, primary = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = {
-                        saving = true
-                        scope.launch {
-                            val id = UUID.randomUUID().toString()
-                            val at = System.currentTimeMillis()
-                            val state = mood.trim()
-                            val detail = note.trim()
-                            val needs = need.trim()
-                            val density = intensity
-                            val level = energy
-                            runCatching {
-                                withContext(Dispatchers.IO) {
-                                    val body = JSONObject()
-                                        .put("event_id", id).put("updated_at_ms", at)
-                                        .put("state", state).put("detail", detail)
-                                        .put("energy", level).put("need", needs)
-                                        .put("response_level", density)
-                                    // The local evidence and outbound event share one identity.
-                                    store.recordTimeline(
-                                        type = "between_status", title = state,
-                                        detail = detail, eventId = id, id = id,
-                                        createdAtMs = at,
-                                        metadataJson = JSONObject()
-                                            .put("actor", "user").put("source", "user_direct")
-                                            .put("energy", level).put("need", needs)
-                                            .put("response_level", density).toString()
-                                    )
-                                    outbox.enqueue(id, "status", body, at)
-                                }
-                                reload()
-                                feedback = if (view.waiting == 0) "状态灯已同步"
-                                    else "状态已保存在本机，等待连接恢复"
-                            }.onFailure { feedback = "保存失败：" + (it.message ?: "未知错误") }
-                            saving = false
+                StatusLightEditor(busy = saving, onSave = { draft ->
+                    saving = true
+                    scope.launch {
+                        val id = UUID.randomUUID().toString()
+                        val at = System.currentTimeMillis()
+                        val body = JSONObject(draft.toString())
+                            .put("event_id", id)
+                            .put("updated_at_ms", at)
+                        runCatching {
+                            withContext(Dispatchers.IO) {
+                                // Original choices and notes are saved before network IO.
+                                store.recordTimeline(
+                                    type = "between_status",
+                                    title = body.optString("state"),
+                                    detail = body.optString("detail"),
+                                    eventId = id, id = id,
+                                    createdAtMs = at,
+                                    metadataJson = JSONObject(body.toString())
+                                        .put("actor", "user")
+                                        .put("source", "user_direct")
+                                        .toString()
+                                )
+                                outbox.enqueue(id, "status", body, at)
+                            }
+                            reload()
+                            feedback = if (view.waiting == 0) "新状态已收到服务器确认"
+                                else "已保存本机，网络恢复后会继续补送"
+                        }.onFailure {
+                            feedback = "保存失败：" + (it.message ?: "未知错误")
                         }
+                        saving = false
                     }
-                )
+                })
             }
             item {
-                val arr = view.remote?.optJSONArray("status_history")
-                if (arr != null && arr.length() > 0) {
-                    Text("状态变化 · 最近 ${arr.length()} 条", color = TextSecondary)
-                    (0 until minOf(5, arr.length())).forEach { index ->
-                        val event = arr.optJSONObject(index) ?: return@forEach
-                        Text(event.optString("title"), color = TextSecondary)
+                Text("状态变化 · 不覆盖以前的我", color = TextPrimary,
+                    style = MaterialTheme.typography.titleMedium)
+                Text("只显示你主动写下的快照。每次更新都保留发生时间。",
+                    color = TextSecondary)
+            }
+            val history = view.remote?.optJSONArray("status_history")
+            val statuses = if (history == null) emptyList() else
+                (0 until history.length()).mapNotNull { history.optJSONObject(it) }
+            items(statuses, key = {
+                "status-" + it.optString("event_id").ifBlank { it.optString("id") }
+            }) { event ->
+                val meta = event.optJSONObject("metadata_json")
+                val recorded = event.optLong("updated_at_ms", 0L).takeIf { it > 0L }
+                    ?: meta?.optLong("updated_at_ms", 0L)
+                    ?: 0L
+                IceGlassCard {
+                    Text(
+                        event.optString("state").ifBlank { event.optString("title") },
+                        color = TextPrimary, style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(
+                        if (recorded > 0L) java.text.SimpleDateFormat(
+                            "MM-dd HH:mm", java.util.Locale.getDefault()
+                        ).format(java.util.Date(recorded))
+                        else event.optString("updated_at", event.optString("created_at")),
+                        color = TextSecondary
+                    )
+                    val chosenNeed = event.optString("need").ifBlank {
+                        meta?.optString("need").orEmpty()
                     }
+                    if (chosenNeed.isNotBlank()) Text(
+                        "当时需要：" + chosenNeed, color = TextSecondary
+                    )
                 }
             }
         } else {
