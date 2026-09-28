@@ -32,6 +32,7 @@ import dev.jlz.presence.screen.AccessibilityScreenshotCaptureAdapter
 import dev.jlz.presence.screen.ScreenObservationBus
 import dev.jlz.presence.screen.ScreenshotCaptureResult
 import dev.jlz.presence.study.StudySessionRepository
+import dev.jlz.presence.study.StudyShortcuts
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -44,6 +45,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.util.UUID
+import java.time.LocalDateTime
 import kotlin.math.abs
 import kotlin.random.Random
 
@@ -53,7 +55,7 @@ enum class FloatingPresenceMode {
 
 /**
  * One system overlay + one foreground service shared by LIFE/STUDY/FOCUS.
- * The Q-avatar and four user-approved actions are the same in every mode.
+ * The Q-avatar and owner-approved actions are the same in every mode.
  * This service does not call a model and does not claim screenshots can
  * already be pulled by the official GPT conversation.
  */
@@ -62,6 +64,12 @@ class FloatingPresenceService : Service() {
     private val journal by lazy { CaptureEventStore(applicationContext) }
     private val lifeStore by lazy { LocalLifeStore(applicationContext) }
     private val study by lazy { StudySessionRepository(applicationContext) }
+    private val phrases by lazy { AvatarPhraseLibrary(applicationContext) }
+    private val behavior by lazy { QAvatarBehaviorEngine(applicationContext) }
+    private val statusContext by lazy { AvatarStatusContextResolver(applicationContext) }
+    private val avatarPrefs by lazy {
+        getSharedPreferences("jlz_avatar_overlay_v1", Context.MODE_PRIVATE)
+    }
 
     private var windowManager: WindowManager? = null
     private var panel: LinearLayout? = null
@@ -70,6 +78,7 @@ class FloatingPresenceService : Service() {
     private var noteForm: LinearLayout? = null
     private var noteInput: EditText? = null
     private var status: TextView? = null
+    private var choiceRow: LinearLayout? = null
     private var params: WindowManager.LayoutParams? = null
 
     private var mode: FloatingPresenceMode = FloatingPresenceMode.LIFE
@@ -79,25 +88,41 @@ class FloatingPresenceService : Service() {
     private var noteSourcePackage: String? = null
     private var working = false
     private var transientUntilMs = 0L
+    private var quietUntilMs = 0L
+    private var suspendedUntilMs = 0L
+    private var suspendedIndefinitely = false
+    private var edgeCollapsed = false
+    private var lastPokeAtMs = 0L
+    private var pokeCount = 0
+    private var lastHourlySpoken = -1
 
     @Volatile private var focusState: FocusState = FocusState()
     private var studyPaused = false
+    private var studyActive = false
 
     override fun onCreate() {
         super.onCreate()
         liveService = this
+        suspendedUntilMs = avatarPrefs.getLong("suspended_until", 0L)
+        suspendedIndefinitely = avatarPrefs.getBoolean("suspended_indefinitely", false)
         createChannel()
         startForeground(
             NOTIFICATION_ID,
             NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle("我在屏幕边上")
-                .setContentText("点小小的纪临洲，展开四个动作")
+                .setContentText("点我说话，长按打开动作")
                 .setOngoing(true)
                 .build()
         )
 
-        if (Settings.canDrawOverlays(this)) attachBubble()
+        if (Settings.canDrawOverlays(this)) {
+            attachBubble()
+            if (isSuspended()) suspendAvatar(
+                (suspendedUntilMs - System.currentTimeMillis()).coerceAtLeast(0L),
+                suspendedIndefinitely
+            )
+        }
         scope.launch {
             FocusRepository(applicationContext).state.collectLatest {
                 focusState = it
@@ -107,6 +132,8 @@ class FloatingPresenceService : Service() {
         // the study screen, notification or Runtime command ends the session.
         scope.launch {
             study.state.collectLatest { session ->
+                val wasActive = studyActive
+                studyActive = session.active && !session.paused
                 studyPaused = session.paused
                 if (!session.active && mode == FloatingPresenceMode.STUDY) {
                     leaveStudyMode()
@@ -116,11 +143,17 @@ class FloatingPresenceService : Service() {
                 } else if (mode == FloatingPresenceMode.STUDY) {
                     renderStatus()
                 }
+                if (!wasActive && studyActive) {
+                    applyDecision(behavior.react(AvatarBehaviorSignal.RETURNED_TO_STUDY))
+                }
             }
         }
         scope.launch {
+            var ticks = 0
             while (isActive) {
                 renderStatus()
+                restoreIfSuspensionExpired()
+                if (++ticks % 30 == 0) autonomousTick()
                 delay(1_000L)
             }
         }
@@ -139,6 +172,11 @@ class FloatingPresenceService : Service() {
             renderStatus()
             if (intent?.getBooleanExtra(EXTRA_ATTENTION_NUDGE, false) == true) {
                 showTransient(staticMessage, 8_000L)
+            }
+            intent?.getStringExtra(EXTRA_BEHAVIOR_SIGNAL)?.let { raw ->
+                runCatching { AvatarBehaviorSignal.valueOf(raw) }.getOrNull()?.let {
+                    applyDecision(behavior.react(it))
+                }
             }
         }
         scope.launch {
@@ -212,6 +250,13 @@ class FloatingPresenceService : Service() {
         }
         root.addView(hint)
 
+        val bubbleChoices = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(2), dp(3), dp(2), dp(4))
+            visibility = View.GONE
+        }
+        root.addView(bubbleChoices)
+
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = rounded(0xF7F8F3FC.toInt(), 19)
@@ -238,24 +283,40 @@ class FloatingPresenceService : Service() {
             }
             actions.addView(button, item)
         }
-        action("调戏老公") {
-            character.react(listOf("shy", "angry", "surprised", "feisty", "proud", "tease", "reach", "disappointed").random(), idleMood())
+        action("让我看看") {
+            if (!working) { closeMenu(); scope.launch { captureWithoutOverlay() } }
         }
-        action("说点什么") {
+        action("记一句话") {
             if (!working) openNote()
         }
-        action("让我看看") {
-            if (!working) {
-                closeMenu()
-                scope.launch { captureWithoutOverlay() }
-            }
+        action("抱抱我") {
+            closeMenu()
+            showPhrase(setOf("status_need_hug", "clingy", "gentle"), "manual_hug", QAvatarState.CLINGY, false)
         }
-        action("我在摸鱼") {
-            if (!working) {
-                character.react("surprised", idleMood())
-                closeMenu()
-                scope.launch { recordDistraction() }
-            }
+        action("先别管我 10 分钟") {
+            quietUntilMs = System.currentTimeMillis() + 10 * 60_000L
+            closeMenu(); showTransient("好。十分钟内我不主动催你。", 4_500L)
+        }
+        action("缩到边缘") {
+            closeMenu(); setEdgeCollapsed(true)
+        }
+        action("挂起 10 分钟") {
+            closeMenu(); suspendAvatar(10 * 60_000L, false)
+        }
+        action("挂起 30 分钟") {
+            closeMenu(); suspendAvatar(30 * 60_000L, false)
+        }
+        action("挂起到手动恢复") {
+            closeMenu(); suspendAvatar(0L, true)
+        }
+        action("去学习") {
+            closeMenu()
+            showTransient(StudyShortcuts.openBanduread(this), 4_500L)
+            avatar?.setState(QAvatarState.STUDY, "manual_study", holdMs = 8_000L, force = true)
+        }
+        action("换一套衣服") {
+            val next = QAvatarAssetImporter.selectNextPack(this)
+            character.reloadArtwork(); closeMenu(); showTransient("换好了 · ${next.label}", 4_500L)
         }
         root.addView(actions)
 
@@ -376,6 +437,7 @@ class FloatingPresenceService : Service() {
         var downY = 0f
         var startX = 0
         var startY = 0
+        var downAtMs = 0L
         character.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -383,6 +445,7 @@ class FloatingPresenceService : Service() {
                     downY = event.rawY
                     startX = lp.x
                     startY = lp.y
+                    downAtMs = System.currentTimeMillis()
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
@@ -399,8 +462,13 @@ class FloatingPresenceService : Service() {
                     if (abs(event.rawX - downX) < dp(12) &&
                         abs(event.rawY - downY) < dp(12)
                     ) {
-                        character.react("surprised", idleMood())
-                        if (noteOpen) closeNote() else toggleMenu()
+                        when {
+                            noteOpen -> closeNote()
+                            System.currentTimeMillis() - downAtMs >= 520L -> toggleMenu()
+                            isSuspended() -> resumeAvatar("手动恢复")
+                            edgeCollapsed -> setEdgeCollapsed(false)
+                            else -> handlePoke()
+                        }
                     } else {
                         // Snap the small avatar to the nearest screen edge.
                         // Expanded controls grow toward the screen interior.
@@ -422,8 +490,179 @@ class FloatingPresenceService : Service() {
         noteForm = form
         noteInput = editor
         status = hint
+        choiceRow = bubbleChoices
         params = lp
         windowManager?.addView(root, lp)
+    }
+
+    private fun handlePoke() {
+        val now = System.currentTimeMillis()
+        pokeCount = if (now - lastPokeAtMs <= 1_600L) pokeCount + 1 else 1
+        lastPokeAtMs = now
+        behavior.observeUserActive(now)
+        val sleeping = avatar?.currentState() in setOf(QAvatarState.SLEEPING, QAvatarState.SLEEPY)
+        val decision = when {
+            sleeping -> AvatarBehaviorDecision(
+                QAvatarState.WOKE_UP,
+                setOf("being_poked", "sleepy", "woke_up", "clingy"),
+                "poke_sleep", proactive = false
+            )
+            pokeCount >= 3 -> behavior.react(AvatarBehaviorSignal.MULTI_POKE)
+            else -> behavior.react(AvatarBehaviorSignal.POKE)
+        }
+        applyDecision(decision)
+    }
+
+    private fun applyDecision(decision: AvatarBehaviorDecision) {
+        if (decision.proactive && (isSuspended() || System.currentTimeMillis() < quietUntilMs)) return
+        avatar?.setState(decision.state, decision.eventKey, holdMs = 6_000L, force = !decision.proactive)
+        showPhrase(decision.tags, decision.eventKey, decision.state, decision.proactive, decision.choices)
+        if (decision.moveEdge) moveToOtherEdge()
+    }
+
+    private fun showPhrase(
+        tags: Set<String>, eventKey: String, state: QAvatarState,
+        proactive: Boolean, choices: List<String> = emptyList()
+    ) {
+        val phrase = phrases.pick(tags, eventKey, proactive) ?: return
+        avatar?.setState(state, "phrase:$eventKey", holdMs = 5_000L)
+        avatar?.animate()?.cancel()
+        avatar?.animate()?.scaleX(1.06f)?.scaleY(1.06f)?.setDuration(150L)
+            ?.withEndAction { avatar?.animate()?.scaleX(1f)?.scaleY(1f)?.setDuration(220L)?.start() }
+            ?.start()
+        showTransient(phrase.text, if (choices.isEmpty()) 6_500L else 11_000L, keepChoices = choices.isNotEmpty())
+        showChoices(choices)
+    }
+
+    private fun showChoices(labels: List<String>) {
+        val row = choiceRow ?: return
+        row.removeAllViews()
+        if (labels.isEmpty()) { row.visibility = View.GONE; return }
+        labels.take(3).forEach { label ->
+            row.addView(TextView(this).apply {
+                text = label
+                textSize = 9.5f
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                setPadding(dp(7), dp(7), dp(7), dp(7))
+                background = rounded(0xEE68529A.toInt(), 12)
+                setOnClickListener { handleChoice(label) }
+            }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                rightMargin = dp(3)
+            })
+        }
+        row.visibility = View.VISIBLE
+        requestLayout()
+    }
+
+    private fun handleChoice(label: String) {
+        choiceRow?.visibility = View.GONE
+        when (label) {
+            "再给我两分钟", "先别说我" -> {
+                quietUntilMs = System.currentTimeMillis() + 2 * 60_000L
+                showTransient("两分钟。时间到了我再来抓你。", 4_000L)
+            }
+            "带我去学习", "现在就回去" -> showTransient(StudyShortcuts.openBanduread(this), 4_000L)
+            "抱抱我，不想解释" -> showPhrase(
+                setOf("status_need_hug", "clingy", "gentle"), "choice_hug",
+                QAvatarState.CLINGY, proactive = false
+            )
+            "继续盯着我看" -> showTransient("行。我不催，眼睛不挪开。", 5_000L)
+            else -> showTransient("我听见了。", 3_000L)
+        }
+    }
+
+    private fun setEdgeCollapsed(value: Boolean) {
+        edgeCollapsed = value
+        avatar?.setEdgeCollapsed(value)
+        if (value) {
+            avatar?.setState(QAvatarState.HIDDEN_EDGE, "edge_hidden", force = true)
+            status?.visibility = View.GONE
+            choiceRow?.visibility = View.GONE
+        } else {
+            avatar?.setState(QAvatarState.IDLE, "edge_restore", force = true)
+            showTransient("回来啦。", 2_500L)
+        }
+        requestLayout()
+    }
+
+    private fun suspendAvatar(durationMs: Long, indefinitely: Boolean) {
+        suspendedIndefinitely = indefinitely
+        suspendedUntilMs = if (indefinitely) Long.MAX_VALUE else System.currentTimeMillis() + durationMs
+        avatarPrefs.edit().putLong("suspended_until", suspendedUntilMs)
+            .putBoolean("suspended_indefinitely", indefinitely).apply()
+        edgeCollapsed = true
+        avatar?.setEdgeCollapsed(true)
+        avatar?.alpha = 0.58f
+        avatar?.setState(QAvatarState.SUSPENDED, "manual_suspend", force = true)
+        showTransient(if (indefinitely) "挂起了 · 点我恢复" else "我先安静一会儿 · 点我可提前叫醒", 5_000L)
+        closeMenu()
+    }
+
+    private fun isSuspended(): Boolean = suspendedIndefinitely || System.currentTimeMillis() < suspendedUntilMs
+
+    private fun restoreIfSuspensionExpired() {
+        if (suspendedIndefinitely || suspendedUntilMs <= 0L || System.currentTimeMillis() < suspendedUntilMs) return
+        resumeAvatar("挂起时间到了")
+    }
+
+    private fun resumeAvatar(message: String) {
+        suspendedIndefinitely = false
+        suspendedUntilMs = 0L
+        avatarPrefs.edit().remove("suspended_until").remove("suspended_indefinitely").apply()
+        avatar?.alpha = 1f
+        edgeCollapsed = false
+        avatar?.setEdgeCollapsed(false)
+        avatar?.setState(QAvatarState.WOKE_UP, "resume", holdMs = 4_000L, force = true)
+        showTransient(message, 3_500L)
+        requestLayout()
+    }
+
+    private suspend fun autonomousTick() {
+        if (expanded || noteOpen || isSuspended() || System.currentTimeMillis() < quietUntilMs) return
+        if (studyActive) {
+            val session = study.state.first()
+            val minutes = session.effectiveElapsedMs() / 60_000L
+            val milestone = listOf(10L, 25L, 50L, 90L).lastOrNull { minutes >= it }
+            if (milestone != null) {
+                val key = "milestone:${session.sessionId}:$milestone"
+                if (!avatarPrefs.getBoolean(key, false)) {
+                    avatarPrefs.edit().putBoolean(key, true).apply()
+                    applyDecision(behavior.react(AvatarBehaviorSignal.STUDY_MILESTONE))
+                    return
+                }
+            }
+        }
+        val now = LocalDateTime.now()
+        if (now.minute == 0 && lastHourlySpoken != now.hour) {
+            lastHourlySpoken = now.hour
+            showPhrase(setOf("hourly_tick", timeTag(now.hour)), "hour:${now.hour}",
+                if (studyActive) QAvatarState.STUDY else QAvatarState.IDLE, proactive = true)
+            return
+        }
+        val context = withContext(Dispatchers.IO) { statusContext.resolve() }
+        behavior.autonomous(context, studyActive)?.let(::applyDecision)
+    }
+
+    private fun timeTag(hour: Int): String = when (hour) {
+        in 5..10 -> "time_morning"
+        in 11..16 -> "time_day"
+        in 17..21 -> "time_evening"
+        22, 23 -> "time_night"
+        else -> "time_late_night"
+    }
+
+    private fun moveToOtherEdge() {
+        val view = panel ?: return
+        val lp = params ?: return
+        view.animate().alpha(0.45f).setDuration(180L).withEndAction {
+            val atLeft = lp.gravity and Gravity.HORIZONTAL_GRAVITY_MASK == Gravity.LEFT
+            lp.gravity = Gravity.TOP or if (atLeft) Gravity.RIGHT else Gravity.LEFT
+            view.gravity = if (atLeft) Gravity.END else Gravity.START
+            lp.x = dp(6)
+            runCatching { windowManager?.updateViewLayout(view, lp) }
+            view.animate().alpha(1f).setDuration(260L).start()
+        }.start()
     }
 
     private fun toggleMenu() {
@@ -491,6 +730,7 @@ class FloatingPresenceService : Service() {
         val hint = status ?: return
         if (System.currentTimeMillis() < transientUntilMs) return
         hint.text = when {
+            isSuspended() -> "挂起中 · 点我恢复"
             mode == FloatingPresenceMode.FOCUS && focusState.isActiveNow() -> {
                 val remain = focusState.remainingMs().coerceAtLeast(0L) / 1_000L
                 "专注 · %02d:%02d".format(remain / 60L, remain % 60L)
@@ -502,7 +742,12 @@ class FloatingPresenceService : Service() {
         hint.visibility = if (hint.text.isBlank()) View.GONE else View.VISIBLE
     }
 
-    private fun showTransient(message: String, durationMs: Long = 2_800L) {
+    private fun showTransient(
+        message: String,
+        durationMs: Long = 2_800L,
+        keepChoices: Boolean = false
+    ) {
+        if (!keepChoices) choiceRow?.visibility = View.GONE
         status?.text = message
         status?.visibility = View.VISIBLE
         transientUntilMs = System.currentTimeMillis() + durationMs.coerceIn(1_500L, 15_000L)
@@ -721,6 +966,32 @@ class FloatingPresenceService : Service() {
             return true
         }
 
+        /** Event-only bridge from accessibility/capture; no screen text crosses this boundary. */
+        fun reportBehaviorSignal(
+            context: Context,
+            signal: AvatarBehaviorSignal,
+            packageName: String? = null,
+            elapsedMs: Long = 0L
+        ): Boolean {
+            val live = liveService
+            if (live != null) {
+                live.scope.launch(Dispatchers.Main.immediate) {
+                    live.behavior.observeUserActive()
+                    live.applyDecision(live.behavior.react(signal))
+                }
+                return true
+            }
+            if (!Settings.canDrawOverlays(context)) return false
+            val intent = Intent(context, FloatingPresenceService::class.java)
+                .putExtra(EXTRA_MODE, FloatingPresenceMode.LIFE.name)
+                .putExtra(EXTRA_BEHAVIOR_SIGNAL, signal.name)
+                .putExtra(EXTRA_SOURCE_PACKAGE, packageName)
+                .putExtra(EXTRA_ELAPSED_MS, elapsedMs)
+            if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent)
+            else context.startService(intent)
+            return true
+        }
+
         /** Refresh the same running Q view after the approved art pack imports. */
         fun refreshArtworkAfterImport() {
             liveService?.avatar?.reloadArtwork()
@@ -759,6 +1030,9 @@ class FloatingPresenceService : Service() {
         private const val EXTRA_MESSAGE = "message"
         private const val EXTRA_MODE = "mode"
         private const val EXTRA_ATTENTION_NUDGE = "attention_nudge"
+        private const val EXTRA_BEHAVIOR_SIGNAL = "avatar_behavior_signal"
+        private const val EXTRA_SOURCE_PACKAGE = "avatar_source_package"
+        private const val EXTRA_ELAPSED_MS = "avatar_elapsed_ms"
 
         fun start(
             context: Context,

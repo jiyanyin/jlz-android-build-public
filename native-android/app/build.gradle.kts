@@ -12,8 +12,8 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026092835
-        versionName = "0.3.6-p0-4-echo.35"
+        versionCode = 2026092901
+        versionName = "0.4.0-avatar-smart-capture-v1"
     }
 
     buildTypes {

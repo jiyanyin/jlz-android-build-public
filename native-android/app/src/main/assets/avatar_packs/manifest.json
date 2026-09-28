@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "packs": [
+    {"id":"winter_white","label":"白金围巾 · 冬日陪伴"},
+    {"id":"purple_coat","label":"深紫长风衣 · 夜色纪临洲"},
+    {"id":"wolf_guard","label":"狼犬拟人 · 守着你"},
+    {"id":"black_suit","label":"黑西装 · 冷脸监管"}
+  ],
+  "fallback_order": ["requested_action", "same_state_default", "idle"]
+}

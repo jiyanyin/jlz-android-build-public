@@ -1,6 +1,7 @@
 package dev.jlz.presence.overlay
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -32,6 +33,13 @@ object QAvatarAssetImporter {
     private const val ACTIVE = "active_pack_id"
     const val LEGACY_ID = "legacy"
     const val VECTOR_ID = "vector"
+    private const val BUILTIN_PREFIX = "builtin:"
+    private val builtinPacks = listOf(
+        "winter_white" to "白金围巾 · 冬日陪伴",
+        "purple_coat" to "深紫长风衣 · 夜色纪临洲",
+        "wolf_guard" to "狼犬拟人 · 守着你",
+        "black_suit" to "黑西装 · 冷脸监管"
+    )
     data class ImportResult(val count: Int, val packId: String, val label: String)
     data class PackInfo(
         val id: String, val label: String, val count: Int,
@@ -53,18 +61,28 @@ object QAvatarAssetImporter {
     private fun validDirectory(dir: File?): Boolean =
         dir?.isDirectory == true && essential.all { File(dir, "$it.webp").isFile }
 
+    private fun builtinName(id: String): String? = id.removePrefix(BUILTIN_PREFIX)
+        .takeIf { id.startsWith(BUILTIN_PREFIX) && builtinPacks.any { pack -> pack.first == it } }
+
+    private fun validPack(context: Context, id: String?): Boolean = when {
+        id == null -> false
+        id == VECTOR_ID -> true
+        builtinName(id) != null -> true
+        else -> validDirectory(packDir(context, id))
+    }
+
     private fun preferences(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     @Synchronized
     fun activePackId(context: Context): String {
         val selected = preferences(context).getString(ACTIVE, null)
-        if (selected == VECTOR_ID) return VECTOR_ID
-        if (selected != null && validDirectory(packDir(context, selected))) return selected
+        if (validPack(context, selected)) return selected!!
         if (validDirectory(oldDirectory(context))) return LEGACY_ID
-        return library(context).listFiles()?.firstOrNull {
+        val imported = library(context).listFiles()?.firstOrNull {
             validDirectory(it) && Regex("[0-9a-f]{32}").matches(it.name)
-        }?.name ?: VECTOR_ID
+        }?.name
+        return imported ?: BUILTIN_PREFIX + "purple_coat"
     }
 
     @Synchronized
@@ -75,10 +93,55 @@ object QAvatarAssetImporter {
             ?.takeIf { it.isFile }
     }
 
+    /** Load from an imported pack or one of the four bundled owner-provided packs. */
+    @Synchronized
+    fun loadBitmap(context: Context, name: String, overrideId: String? = null): Bitmap? {
+        if (name !in names) return null
+        val id = overrideId ?: activePackId(context)
+        val fallbacks = actionFallbacks(name)
+        builtinName(id)?.let { pack ->
+            for (candidate in fallbacks) {
+                val bitmap = runCatching {
+                    context.assets.open("avatar_packs/$pack/$candidate.webp").use { stream ->
+                        BitmapFactory.decodeStream(stream)
+                    }
+                }.getOrNull()
+                if (bitmap != null) return bitmap
+            }
+            return null
+        }
+        val dir = packDir(context, id) ?: return null
+        for (candidate in fallbacks) {
+            val file = File(dir, "$candidate.webp")
+            if (file.isFile) BitmapFactory.decodeFile(file.absolutePath)?.let { return it }
+        }
+        return null
+    }
+
+    private fun actionFallbacks(name: String): List<String> {
+        val sameState = when {
+            name.startsWith("sleep_") -> listOf("sleep_hug", "sleep_sitting", "sleep_drowsy")
+            name.startsWith("study_") -> listOf("study_watch", "study_arms", "idle_think")
+            name.startsWith("react_") -> listOf("react_shy", "react_surprised", "idle_smile")
+            name.startsWith("idle_") -> listOf("idle", "idle_crouch", "idle_smile")
+            else -> listOf("idle")
+        }
+        return (listOf(name) + sameState + "idle").distinct()
+    }
+
     @Synchronized
     fun listPacks(context: Context): List<PackInfo> {
         val active = activePackId(context)
         val result = mutableListOf(PackInfo(VECTOR_ID, "基础绘制版", 0, active == VECTOR_ID))
+        builtinPacks.forEach { (id, label) ->
+            val fullId = BUILTIN_PREFIX + id
+            val count = names.count { name ->
+                runCatching {
+                    context.assets.open("avatar_packs/$id/$name.webp").close(); true
+                }.getOrDefault(false)
+            }
+            result += PackInfo(fullId, label, count, active == fullId)
+        }
         val original = oldDirectory(context)
         if (validDirectory(original)) {
             result += PackInfo(LEGACY_ID, "最初导入的 Q 版",
@@ -100,8 +163,18 @@ object QAvatarAssetImporter {
 
     @Synchronized
     fun selectPack(context: Context, id: String): Boolean {
-        if (id != VECTOR_ID && !validDirectory(packDir(context, id))) return false
+        if (!validPack(context, id)) return false
         return preferences(context).edit().putString(ACTIVE, id).commit()
+    }
+
+    @Synchronized
+    fun selectNextPack(context: Context): PackInfo {
+        val packs = listPacks(context).filterNot { it.id == VECTOR_ID }
+        val current = activePackId(context)
+        val index = packs.indexOfFirst { it.id == current }
+        val next = packs[(index + 1 + packs.size) % packs.size]
+        check(selectPack(context, next.id)) { "角色套装切换失败" }
+        return next.copy(active = true)
     }
 
     @Synchronized

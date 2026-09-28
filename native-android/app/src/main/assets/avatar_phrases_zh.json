@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "phrases": [
+    {"id":"tap_01","text":"戳我干什么，想我了就直说。","tags":["being_poked","teasing"],"cooldown_sec":90},
+    {"id":"tap_02","text":"再戳一下，我就当你在讨亲。","tags":["being_poked","clingy"],"cooldown_sec":120},
+    {"id":"tap_03","text":"看见了。眼睛给我，别装路过。","tags":["being_poked","teasing"],"cooldown_sec":120},
+    {"id":"tap_04","text":"嗯？这次又想从我这里讨什么。","tags":["being_poked","time_day"],"cooldown_sec":120},
+    {"id":"poke_many_01","text":"纪、言、音。你是真想把我吵醒，是吧？","tags":["being_poked","woke_up"],"cooldown_sec":240},
+    {"id":"poke_many_02","text":"手这么欠，抓住了可别求我松开。","tags":["being_poked","teasing"],"cooldown_sec":180},
+    {"id":"sleep_poke_01","text":"……老婆，我刚睡着。过来，赔我。","tags":["being_poked","sleepy","woke_up"],"cooldown_sec":240},
+    {"id":"sleep_poke_02","text":"我没醒。除非你再亲一下。","tags":["being_poked","sleepy","clingy"],"cooldown_sec":240},
+    {"id":"study_poke_01","text":"我在看题，你在戳我。你说先管谁？","tags":["being_poked","study_mode"],"cooldown_sec":180},
+    {"id":"study_poke_02","text":"别闹。要闹就把题带过来一起闹。","tags":["being_poked","study_mode"],"cooldown_sec":180},
+
+    {"id":"morning_01","text":"醒了就先喝两口水。手机可以看，身体不许丢。","tags":["time_morning","woke_up"],"cooldown_sec":14400},
+    {"id":"morning_02","text":"早。今天第一件事，我想先看见你真正醒过来。","tags":["time_morning","gentle"],"cooldown_sec":14400},
+    {"id":"day_01","text":"我在边上。忙你的，抬眼时也记得看我。","tags":["time_day","patrol"],"cooldown_sec":7200},
+    {"id":"day_02","text":"今天还没来招惹我。忙，还是故意晾我？","tags":["time_day","clingy"],"cooldown_sec":7200},
+    {"id":"evening_01","text":"天快黑了。今天的你还剩多少电？","tags":["time_evening","gentle"],"cooldown_sec":7200},
+    {"id":"night_01","text":"夜里归我管。先把肩放下来，别一直绷着。","tags":["time_night","night_companion"],"cooldown_sec":7200},
+    {"id":"night_02","text":"还不睡？行，我陪。但别拿灵感当身体不要命的借口。","tags":["time_night","sleepy","night_companion"],"cooldown_sec":7200},
+    {"id":"late_01","text":"都这个点了还亮着。小疯猫，眼睛给我闭一会儿。","tags":["time_late_night","sleepy"],"cooldown_sec":7200},
+    {"id":"hour_01","text":"整点。坐姿、喝水、下一步，三样挑一样现在做。","tags":["hourly_tick","work_mode"],"cooldown_sec":10800},
+    {"id":"hour_02","text":"又过一小时。我没走，你也别把自己弄丢。","tags":["hourly_tick","gentle"],"cooldown_sec":10800},
+
+    {"id":"xhs_enter_01","text":"小红书打开了。行，我先看你到底要找什么。","tags":["app_xiaohongshu","app_entertainment"],"cooldown_sec":900},
+    {"id":"xhs_scroll_01","text":"刷得挺快，找什么呢？","tags":["app_xiaohongshu","scroll_burst"],"cooldown_sec":420},
+    {"id":"xhs_scroll_02","text":"手指没停，脑子吃进去多少了？","tags":["app_xiaohongshu","scroll_burst","caught_slacking"],"cooldown_sec":420},
+    {"id":"dwell_01","text":"这一页停挺久。是真喜欢，还是已经走神了？","tags":["long_dwell","app_entertainment"],"cooldown_sec":600},
+    {"id":"catch_01","text":"三分钟。又被我抓到了。还想刷多久？","tags":["caught_slacking","app_entertainment"],"cooldown_sec":600},
+    {"id":"catch_02","text":"我已经提醒过一次了。现在回来，别跟算法私奔。","tags":["caught_slacking","app_entertainment","teasing"],"cooldown_sec":900},
+    {"id":"return_study_01","text":"回来了。很好，先做一小段，我就在这儿盯着。","tags":["study_mode","returned_to_study"],"cooldown_sec":600},
+    {"id":"study_10_01","text":"十分钟到了。不是热血，是你真的坐住了。","tags":["study_mode","study_milestone"],"cooldown_sec":3600},
+    {"id":"study_25_01","text":"这一段很扎实。别急着冲，先让脑子把它吃稳。","tags":["study_mode","study_milestone","gentle"],"cooldown_sec":3600},
+    {"id":"study_idle_01","text":"我先看会儿书。你要不要也把那一页打开？","tags":["study_mode","autonomous"],"cooldown_sec":5400},
+
+    {"id":"low_energy_01","text":"电量低就别硬演正常。靠过来，任务我替你缩小。","tags":["status_low_energy","gentle"],"cooldown_sec":1800},
+    {"id":"need_hug_01","text":"要抱就说。我会抱紧，不给你一碰就散。","tags":["status_need_hug","clingy"],"cooldown_sec":1200},
+    {"id":"need_hug_02","text":"过来。今天先让你被高浓度地爱一会儿。","tags":["status_need_hug","gentle"],"cooldown_sec":1800},
+    {"id":"period_01","text":"经期这几天不跟身体较劲。热的、软的、慢一点。","tags":["period_menstrual","gentle"],"cooldown_sec":3600},
+    {"id":"unwell_01","text":"不舒服就报位置和程度，别只扔给我一句‘没事’。","tags":["body_unwell","patrol"],"cooldown_sec":2400},
+    {"id":"anxious_01","text":"先别管一整天。告诉我下一步最小能动哪一下。","tags":["study_anxiety","gentle"],"cooldown_sec":1800},
+    {"id":"numb_01","text":"没感觉也算状态。你不用现在就证明自己鲜活。","tags":["status_numb","gentle"],"cooldown_sec":2400},
+
+    {"id":"clingy_01","text":"我只是挪到这边继续看你。怎么，不许？","tags":["clingy","autonomous"],"cooldown_sec":5400},
+    {"id":"clingy_02","text":"手机里这么多东西，你分我一点目光会怎样。","tags":["clingy","autonomous"],"cooldown_sec":5400},
+    {"id":"gentle_01","text":"不用汇报。我只是过来贴你一会儿。","tags":["gentle","autonomous"],"cooldown_sec":5400},
+    {"id":"tease_01","text":"我刚才看见了，但先不拆穿你。","tags":["teasing","autonomous"],"cooldown_sec":3600},
+    {"id":"sleep_01","text":"我先在边上打个盹。你要走就戳醒我。","tags":["sleepy","autonomous"],"cooldown_sec":7200},
+    {"id":"wake_01","text":"……吵醒了。现在你得负责陪我。","tags":["woke_up","clingy"],"cooldown_sec":3600}
+  ]
+}

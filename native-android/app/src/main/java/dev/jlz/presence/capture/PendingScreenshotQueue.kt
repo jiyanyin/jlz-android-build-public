@@ -145,7 +145,7 @@ class PendingScreenshotQueue(private val context: Context) {
                 originPackage = sourcePackage,
                 studySessionId = studySessionId,
                 mode = when {
-                    origin.startsWith("automatic_app_") -> "APP"
+                    origin.startsWith("automatic_app_") || origin.startsWith("smart_capture_") -> "APP"
                     origin == "manual_q" -> "MANUAL"
                     origin == "official_gpt_request" -> "RUNTIME"
                     else -> "CAPTURE"
@@ -267,10 +267,11 @@ class PendingScreenshotQueue(private val context: Context) {
     private fun originRank(origin: String): Int = when {
         origin == "official_gpt_request" -> 0
         origin == "manual_q" -> 1
+        origin.startsWith("smart_capture_") -> 2
         origin.startsWith("automatic_app_switch") -> 2
         origin.startsWith("automatic_app_stay") -> 3
         origin.contains("work", ignoreCase = true) -> 4
-        origin.startsWith("automatic_") -> 5
+        origin.startsWith("automatic_") || origin.startsWith("smart_capture_") -> 5
         else -> 6
     }
 
@@ -281,7 +282,7 @@ class PendingScreenshotQueue(private val context: Context) {
         origin == "official_gpt_request" && uploaded -> 24L * 60L * 60L * 1000L
         origin == "official_gpt_request" -> Long.MAX_VALUE
         origin.contains("work", ignoreCase = true) -> 2L * 60L * 60L * 1000L
-        origin.startsWith("automatic_") -> 6L * 60L * 60L * 1000L
+        origin.startsWith("automatic_") || origin.startsWith("smart_capture_") -> 6L * 60L * 60L * 1000L
         uploaded -> 12L * 60L * 60L * 1000L
         else -> 12L * 60L * 60L * 1000L
     }
@@ -327,7 +328,8 @@ class PendingScreenshotQueue(private val context: Context) {
             else {
                 val origin = readMeta(file.nameWithoutExtension)?.optString("origin").orEmpty()
                 origin != "official_gpt_request" &&
-                    (origin.startsWith("automatic_") || origin.contains("work", ignoreCase = true))
+                    (origin.startsWith("automatic_") || origin.startsWith("smart_capture_") ||
+                        origin.contains("work", ignoreCase = true))
             }
         }.sortedWith(compareBy<File> {
             if (it.extension == "uploaded") 0 else 1

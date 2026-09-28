@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Rect
 import android.graphics.RectF
 import java.io.File
 import android.view.View
@@ -41,11 +42,37 @@ object QAvatarScale {
 
 class ChibiPresenceView(context: Context) : View(context) {
     private var sizeDp: Int = QAvatarScale.get(context)
+    private var edgeCollapsed = false
+    private val stateMachine = QAvatarStateMachine()
+    private var spriteOverride: String? = null
+    private var blink = false
+    private val idleMotion = object : Runnable {
+        override fun run() {
+            if (!isAttachedToWindow) return
+            blink = true
+            invalidate()
+            postDelayed({ blink = false; invalidate() }, 110L)
+            if (!edgeCollapsed && stateMachine.current() !in setOf(QAvatarState.SUSPENDED, QAvatarState.SLEEPING)) {
+                animate().cancel()
+                animate().scaleY(0.975f).scaleX(1.015f).setDuration(420L)
+                    .withEndAction { animate().scaleY(1f).scaleX(1f).setDuration(520L).start() }
+                    .start()
+            }
+            postDelayed(this, Random.nextLong(2_400L, 5_400L))
+        }
+    }
 
     fun setSizeDp(valueDp: Int) {
         val adjusted = valueDp.coerceIn(QAvatarScale.MIN_DP, QAvatarScale.MAX_DP)
         if (sizeDp == adjusted) return
         sizeDp = adjusted
+        requestLayout()
+        invalidate()
+    }
+
+    fun setEdgeCollapsed(value: Boolean) {
+        if (edgeCollapsed == value) return
+        edgeCollapsed = value
         requestLayout()
         invalidate()
     }
@@ -66,23 +93,9 @@ class ChibiPresenceView(context: Context) : View(context) {
         reloadArtwork()
     }
     private val artworkPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val sleepingPose = listOf("sleep_hug", "sleep_blanket", "sleep_sitting")[Random.nextInt(3)]
-    private val studyingPose = listOf("study_watch", "study_crouch", "study_read")[Random.nextInt(3)]
-
-    private fun spriteName(): String = when (mood) {
-        "watch" -> studyingPose
-        "sleep" -> sleepingPose
-        "shy" -> "react_shy"
-        "angry" -> "react_angry"
-        "surprised" -> "react_surprised"
-        "feisty" -> "react_feisty"
-        "tease" -> "react_tease"
-        "reach" -> "react_reach"
-        "disappointed" -> "react_disappointed"
-        "proud" -> "react_proud"
-        "idle", "thinking" -> listOf("idle", "idle_crouch", "idle_arms")[pose]
-        else -> "idle"
-    }
+    private fun spriteName(): String = spriteOverride
+        ?: QAvatarActionPool.poolFor(stateMachine.current()).randomOrNull()
+        ?: "idle"
 
     private fun spriteFor(name: String): Bitmap? {
         val desiredPack = previewPackId ?: QAvatarAssetImporter.activePackId(context)
@@ -92,18 +105,8 @@ class ChibiPresenceView(context: Context) : View(context) {
         }
         if (!imageCache.containsKey(name)) {
             imageCache[name] = runCatching {
-                val imageFile = QAvatarAssetImporter.spriteFile(
-                    context, name, previewPackId
-                )
-                if (imageFile != null) {
-                    BitmapFactory.decodeFile(imageFile.absolutePath)
-                } else if (desiredPack == QAvatarAssetImporter.VECTOR_ID) {
-                    null
-                } else {
-                    context.assets.open("avatar/$name.webp").use { stream ->
-                        BitmapFactory.decodeStream(stream)
-                    }
-                }
+                if (desiredPack == QAvatarAssetImporter.VECTOR_ID) null
+                else QAvatarAssetImporter.loadBitmap(context, name, previewPackId)
             }.getOrNull()
         }
         return imageCache[name]
@@ -119,32 +122,60 @@ class ChibiPresenceView(context: Context) : View(context) {
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         reloadArtwork()
+        removeCallbacks(idleMotion)
+        postDelayed(idleMotion, Random.nextLong(1_000L, 2_600L))
     }
+
+    override fun onDetachedFromWindow() {
+        removeCallbacks(idleMotion)
+        super.onDetachedFromWindow()
+    }
+
+    fun setState(state: QAvatarState, reason: String, holdMs: Long = 0L, force: Boolean = false) {
+        val transition = stateMachine.transitionTo(state, reason, holdMs, force) ?: return
+        spriteOverride = QAvatarActionPool.poolFor(transition.to).randomOrNull()
+        invalidate()
+    }
+
+    fun currentState(): QAvatarState = stateMachine.current()
 
     fun setMood(value: String) {
         mood = value
+        val state = when (value) {
+            "watch" -> QAvatarState.STUDY
+            "sleep" -> QAvatarState.SLEEPING
+            "shy", "reach" -> QAvatarState.GENTLE
+            "angry", "feisty" -> QAvatarState.CATCH_MONITOR
+            "surprised", "tease", "proud" -> QAvatarState.TEASE
+            "disappointed", "thinking" -> QAvatarState.SLEEPY
+            else -> QAvatarState.IDLE
+        }
+        stateMachine.transitionTo(state, "legacy_mood:$value", force = true)
+        spriteOverride = when (value) {
+            "shy", "angry", "surprised", "feisty", "tease", "reach", "disappointed", "proud" -> "react_$value"
+            else -> QAvatarActionPool.poolFor(state).randomOrNull()
+        }
         invalidate()
     }
 
     fun react(value: String, after: String = "watch") {
         animate().cancel()
-        mood = value
-        invalidate()
+        setMood(value)
         animate().scaleX(1.1f).scaleY(0.9f).rotation(if (pose % 2 == 0) 8f else -8f)
             .setDuration(170L)
             .withEndAction {
                 animate().scaleX(1f).scaleY(1f).rotation(0f).setDuration(220L)
                     .withEndAction {
                         postDelayed({
-                            mood = after
-                            invalidate()
+                            setMood(after)
                         }, 500L)
                     }.start()
             }.start()
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val side = (resources.displayMetrics.density * sizeDp + 0.5f).roundToInt()
+        val resolvedDp = if (edgeCollapsed) 46 else sizeDp
+        val side = (resources.displayMetrics.density * resolvedDp + 0.5f).roundToInt()
         setMeasuredDimension(side, side)
     }
 
@@ -153,11 +184,11 @@ class ChibiPresenceView(context: Context) : View(context) {
         val sprite = spriteFor(spriteName())
         if (sprite != null) {
             artworkPaint.isFilterBitmap = true
-            canvas.drawBitmap(
-                sprite, null,
-                RectF(0f, 0f, width.toFloat(), height.toFloat()),
-                artworkPaint
-            )
+            artworkPaint.alpha = if (blink) 215 else 255
+            val source = if (edgeCollapsed) {
+                Rect(0, 0, sprite.width, (sprite.height * 0.58f).toInt().coerceAtLeast(1))
+            } else null
+            canvas.drawBitmap(sprite, source, RectF(0f, 0f, width.toFloat(), height.toFloat()), artworkPaint)
             return
         }
         val scale = width / 120f
