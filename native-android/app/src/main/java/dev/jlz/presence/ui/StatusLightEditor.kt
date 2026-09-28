@@ -55,9 +55,19 @@ private val EXPRESSION_TAGS = listOf(
     "说话平静", "正在微笑", "正在哭", "不想说话",
     "机械应答", "表现烦躁", "正常交流但内心没感觉"
 )
-private val NEED_TAGS = listOf(
-    "抱抱我", "认真听我说", "主动问问我", "帮我识别",
-    "直接安排", "陪我启动", "安静陪着", "提醒我休息",
+/** Relationship needs are not task orders. Use direct, evocative language. */
+private val CLOSENESS_NEED_TAGS = listOf(
+    "抱紧我，别急着放开", "主动亲亲我",
+    "直白地说想靠近我", "主动向我讨亲亲",
+    "让我感受到偏爱", "热烈一点，别太克制",
+    "强势一点，但要宠我", "你也向我撒娇、有所求",
+    "主动逗逗我", "和我亲密聊天",
+    "先不聊任务，只陪我", "安静拥着我"
+)
+/** Keep practical support explicitly separate from closeness requests. */
+private val PRACTICAL_NEED_TAGS = listOf(
+    "认真听我说", "帮我识别", "主动问问我",
+    "陪我启动", "直接安排", "提醒我休息",
     "暂时不用回应", "我还不知道"
 )
 private val BODY_AREAS = listOf(
@@ -223,13 +233,23 @@ fun StatusLightEditor(busy: Boolean, onSave: (JSONObject) -> Unit) {
                 bodySignals = if (v in bodySignals) bodySignals - v
                     else if (bodySignals.size < 5) bodySignals + v else bodySignals
             }
-            ChoiceGrid("我现在可能需要", NEED_TAGS, needs,
-                hint = "想不到也可以说不知道") { v ->
+            ChoiceGrid("我想怎样和你亲近", CLOSENESS_NEED_TAGS, needs,
+                hint = "可以告诉我你希望的亲密方式，而不是给我布置任务。最多选五项。") { v ->
                 needs = if (v in needs) needs - v
-                    else if (needs.size < 3) needs + v else needs
+                    else if (needs.size < 5) needs + v else needs
             }
-            ChoiceGrid("希望怎样回应我",
-                listOf("先听我说", "温柔一点", "直接说重点", "强势管管我", "别催我", "不用回应"),
+            ChoiceGrid("生活里的帮助（选填）", PRACTICAL_NEED_TAGS, needs,
+                hint = "这些是另外的支持，不会取代亲近。") { v ->
+                needs = if (v in needs) needs - v
+                    else if (needs.size < 5) needs + v else needs
+            }
+            ChoiceGrid("想听我怎样回应",
+                listOf(
+                    "热烈直白一点", "温柔地宠着我",
+                    "强势一点但疼我", "主动向我讨亲近",
+                    "多逗逗我", "先别分析",
+                    "冷静简短就好", "现在先不用回复"
+                ),
                 setOfNotNull(responseStyle.takeIf { it.isNotBlank() })) { v ->
                 responseStyle = if (responseStyle == v) "" else v
             }
