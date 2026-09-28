@@ -138,11 +138,9 @@ fun BetweenScreen(initialTab: String = "status") {
                 if (energyText in 1..5) Text("能量 $energyText/5", color = TextSecondary)
                 val mindText = status?.optInt("mental_energy", -1) ?: -1
                 if (mindText in 1..5) Text("脑力 " + mindText + "/5", color = TextSecondary)
-                val newNeeds = status?.optJSONObject("dimensions")?.optJSONArray("needs")
-                val needText = if (newNeeds != null && newNeeds.length() > 0)
-                    (0 until newNeeds.length()).joinToString("、") { newNeeds.optString(it) }
-                else status?.optString("need").orEmpty()
-                if (needText.isNotBlank()) Text("想让我：" + needText, color = TextSecondary)
+                statusNeedLines(status).forEach { needLine ->
+                    Text(needLine, color = TextSecondary)
+                }
                 val levelText = status?.optString("response_level").orEmpty()
                 if (levelText.isNotBlank()) Text(
                     "回应浓度：" + levelText, color = TextSecondary
@@ -246,14 +244,9 @@ fun BetweenScreen(initialTab: String = "status") {
                     if (event.optBoolean("local_only", false)) {
                         Text("已记在本机 · 等待同步", color = TextSecondary)
                     }
-                    val choices = event.optJSONObject("dimensions")?.optJSONArray("needs")
-                        ?: meta?.optJSONObject("dimensions")?.optJSONArray("needs")
-                    val chosenNeed = if (choices != null && choices.length() > 0)
-                        (0 until choices.length()).joinToString("、") { choices.optString(it) }
-                    else event.optString("need").ifBlank { meta?.optString("need").orEmpty() }
-                    if (chosenNeed.isNotBlank()) Text(
-                        "当时需要：" + chosenNeed, color = TextSecondary
-                    )
+                    statusNeedLines(event).forEach { needLine ->
+                        Text(needLine, color = TextSecondary)
+                    }
                 }
             }
         } else {
