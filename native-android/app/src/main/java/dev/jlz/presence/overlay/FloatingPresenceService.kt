@@ -641,7 +641,11 @@ class FloatingPresenceService : Service() {
                     val result = withContext(Dispatchers.IO) {
                         runCatching {
                             PendingScreenshotQueue(applicationContext)
-                                .sendPending(RuntimeApiClient(settings), limit = 10)
+                                .sendPending(
+                                    api = RuntimeApiClient(settings),
+                                    limit = 1,
+                                    priorityEventId = eventId
+                                )
                         }
                     }
                     val mine = result.getOrNull()?.find { it.eventId == eventId }
