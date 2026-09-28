@@ -63,17 +63,12 @@ object AccessibilityScreenshotGateway {
                                 return
                             }
 
-                            var mimeType = "image/png"
+                            // Screenshot pixels are evidence, not source art.
+                            // JPEG keeps text/UI fully readable for review while
+                            // cutting upload latency dramatically versus full-screen PNG.
+                            val mimeType = "image/jpeg"
                             val output = ByteArrayOutputStream()
-                            bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
-                            // Large lossless screenshots can exceed the finite
-                            // local outbox quota. Re-encode once instead of
-                            // reporting an opaque IllegalStateException.
-                            if (output.size() > 10 * 1024 * 1024) {
-                                output.reset()
-                                bitmap.compress(Bitmap.CompressFormat.JPEG, 88, output)
-                                mimeType = "image/jpeg"
-                            }
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 86, output)
                             bitmap.recycle()
                             if (continuation.isActive) {
                                 continuation.resume(
