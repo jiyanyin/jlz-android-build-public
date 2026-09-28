@@ -17,6 +17,7 @@ import dev.jlz.presence.agency.PresencePlanRepository
 import dev.jlz.presence.capture.CaptureEventStore
 import dev.jlz.presence.capture.PendingScreenshotQueue
 import dev.jlz.presence.data.LocalLifeStore
+import dev.jlz.presence.between.BetweenOutbox
 import dev.jlz.presence.usage.ForegroundUsageTracker
 import dev.jlz.presence.usage.ForegroundUsageStore
 import dev.jlz.presence.usage.SystemUsageSnapshot
@@ -71,6 +72,7 @@ class NativeRuntimeService : Service() {
     private lateinit var personaRepository: PersonaStateRepository
     private lateinit var presencePlanRepository: PresencePlanRepository
     private lateinit var lifeStore: LocalLifeStore
+    private lateinit var betweenOutbox: BetweenOutbox
     private lateinit var captureEvents: CaptureEventStore
     private lateinit var screenshotQueue: PendingScreenshotQueue
     private lateinit var settingsRepository: RuntimeSettingsRepository
@@ -110,6 +112,7 @@ class NativeRuntimeService : Service() {
         personaRepository = PersonaStateRepository(applicationContext)
         presencePlanRepository = PresencePlanRepository(applicationContext)
         lifeStore = LocalLifeStore(applicationContext)
+        betweenOutbox = BetweenOutbox(applicationContext)
         captureEvents = CaptureEventStore(applicationContext)
         screenshotQueue = PendingScreenshotQueue(applicationContext)
         screenshotQueue.clearLegacyTestImagesOnce()
@@ -255,6 +258,9 @@ class NativeRuntimeService : Service() {
                 // a manual chat refresh. A deterministic inbox ID prevents
                 // duplicate messages after a response-timeout retry.
                 syncCapturedNotes(api)
+                // P0-2 local-first status and moments; keep the original event IDs
+                // on retries. An ordinary moment is NOT an inbox message.
+                runCatching { betweenOutbox.sync(api, limit = 40) }
                 // A reply typed into an Android notification is locally durable
                 // even if the original network attempt failed or was interrupted.
                 runCatching { PendingReplyStore(applicationContext).sync(api, limit = 40) }

@@ -44,6 +44,7 @@ fun PresenceApp() {
                 is PresenceRoute.Home -> HomeScreen()
                 is PresenceRoute.Drawer -> AppDrawerScreen()
                 is PresenceRoute.Timeline -> TimelineScreen()
+                is PresenceRoute.Between -> BetweenScreen((route as PresenceRoute.Between).tab)
                 is PresenceRoute.Study -> StudyScreen()
                 is PresenceRoute.Trip -> TripScreen()
                 is PresenceRoute.PermissionDoctor -> PermissionDoctorScreen()
@@ -104,6 +105,16 @@ fun HomeScreen() {
             }
         }
         Spacer(Modifier.height(24.dp))
+        SectionHeader("你我之间")
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            IceButton("状态灯", onClick = {
+                PresenceRouteBus.open(PresenceRoute.Between("status"))
+            }, modifier = Modifier.weight(1f))
+            IceButton("你我之间", onClick = {
+                PresenceRouteBus.open(PresenceRoute.Between("moments"))
+            }, modifier = Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(14.dp))
         SectionHeader("\u5feb\u6377")
         IceGlassCard {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

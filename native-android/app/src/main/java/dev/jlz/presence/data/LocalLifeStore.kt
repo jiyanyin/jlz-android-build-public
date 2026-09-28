@@ -268,10 +268,12 @@ class LocalLifeStore(context: Context) :
     fun addLifeEntry(
         kind: String,
         text: String,
-        createdAtMs: Long = System.currentTimeMillis()
+        createdAtMs: Long = System.currentTimeMillis(),
+        id: String = UUID.randomUUID().toString(),
+        metadataJson: String = "{}"
     ): LifeEntry {
         val entry = LifeEntry(
-            id = UUID.randomUUID().toString(),
+            id = id,
             kind = kind,
             text = text,
             createdAtMs = createdAtMs
@@ -286,7 +288,8 @@ class LocalLifeStore(context: Context) :
                 put("created_at_ms", entry.createdAtMs)
             }
         )
-        recordTimeline(kind, kind, text, createdAtMs = createdAtMs)
+        recordTimeline(kind, kind, text, eventId = entry.id,
+            metadataJson = metadataJson, createdAtMs = createdAtMs, id = entry.id)
         return entry
     }
 

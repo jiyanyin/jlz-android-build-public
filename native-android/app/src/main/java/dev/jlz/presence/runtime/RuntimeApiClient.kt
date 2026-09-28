@@ -262,6 +262,36 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
             }
     )
 
+    fun getBetweenState(limit: Int = 80): JSONObject {
+        val q = URLEncoder.encode(settings.deviceId, Charsets.UTF_8.name())
+        val response = getJson(
+            "/api/between/state?device_id=" + q +
+                "&limit=" + limit.coerceIn(1, 200)
+        )
+        check(response.optBoolean("ok", false)) { "between_state_unavailable" }
+        return response.optJSONObject("between") ?: JSONObject()
+    }
+
+    fun postBetweenStatus(payload: JSONObject): JSONObject {
+        val body = JSONObject(payload.toString())
+            .put("device_id", settings.deviceId)
+            .put("actor", "user")
+            .put("source", "user_direct")
+        val response = postJson("/api/between/status", body)
+        check(response.optBoolean("ok", false)) { "between_status_not_accepted" }
+        return response
+    }
+
+    fun postBetweenMoment(payload: JSONObject): JSONObject {
+        val body = JSONObject(payload.toString())
+            .put("device_id", settings.deviceId)
+            .put("actor", "user")
+            .put("source", "user_direct")
+        val response = postJson("/api/between/moment", body)
+        check(response.optBoolean("ok", false)) { "between_moment_not_accepted" }
+        return response
+    }
+
     fun postStudyEvent(event: String, metadata: JSONObject = JSONObject()): JSONObject =
         postJson(
             "/api/study/event",
