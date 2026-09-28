@@ -61,7 +61,7 @@ jobs:
       - name: Upload isolated test APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: JLZ-Presence-StatusV3-Choices-2026092831
+          name: JLZ-Presence-StatusV3-Choices-2026092832
           path: native-android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
       - name: Publish test-only APK release (never replace stable latest)
@@ -71,7 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="android-status-v3-choices-20260928"
-          notes="Status Light V3 experimental Android build 2026092831. NOT yet phone-verified. Build-only mirror; no Runtime/server secrets. Do not replace android-native-latest."
+          notes="Status Light V3 experimental Android build 2026092832; intimacy and practical needs are separate. NOT yet phone-verified. Build-only mirror; no Runtime/server secrets. Do not replace android-native-latest."
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" /tmp/JLZ-Presence-StatusV3-Choices.apk /tmp/JLZ-Presence-StatusV3-Choices-SHA256.txt --clobber --repo "$GITHUB_REPOSITORY"
             gh release edit "$tag" --title "JLZ Presence · Status V3 choices test" --notes "$notes" --repo "$GITHUB_REPOSITORY"
