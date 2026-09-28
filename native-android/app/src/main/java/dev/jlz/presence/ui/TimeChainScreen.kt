@@ -100,7 +100,7 @@ private fun statusDetail(status: JSONObject): String {
     return parts.joinToString(" · ")
 }
 
-private fun buildChain(
+private suspend fun buildChain(
     context: android.content.Context,
     store: LocalLifeStore,
     outbox: BetweenOutbox,
