@@ -30,6 +30,7 @@ import dev.jlz.presence.data.TimelineEvent
 import dev.jlz.presence.navigation.PresenceRoute
 import dev.jlz.presence.navigation.PresenceRouteBus
 import dev.jlz.presence.runtime.RuntimeApiClient
+import dev.jlz.presence.runtime.InboxMessage
 import dev.jlz.presence.runtime.RuntimeSettingsRepository
 import dev.jlz.presence.ui.components.IceButton
 import dev.jlz.presence.ui.components.IceGlassCard
@@ -43,8 +44,10 @@ import java.util.UUID
 
 private data class BetweenView(
     val localStatus: JSONObject?,
+    val localStatuses: List<TimelineEvent>,
     val localMoments: List<TimelineEvent>,
     val remote: JSONObject?,
+    val replies: Map<String, List<InboxMessage>>,
     val waiting: Int
 )
 
@@ -62,7 +65,7 @@ fun BetweenScreen(initialTab: String = "status") {
     val settingsRepo = remember(context) { RuntimeSettingsRepository(context.applicationContext) }
 
     var tab by remember(initialTab) { mutableStateOf(initialTab) }
-    var view by remember { mutableStateOf(BetweenView(null, emptyList(), null, 0)) }
+    var view by remember { mutableStateOf(BetweenView(null, emptyList(), emptyList(), null, emptyMap(), 0)) }
     var feedback by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
     var moment by remember { mutableStateOf("") }
@@ -71,16 +74,24 @@ fun BetweenScreen(initialTab: String = "status") {
     suspend fun reload() {
         view = withContext(Dispatchers.IO) {
             val settings = settingsRepo.load()
+            var replies: Map<String, List<InboxMessage>> = emptyMap()
             val remote = if (settings.baseUrl.isNotBlank() && settings.token.isNotBlank()) {
                 val api = RuntimeApiClient(settings)
                 runCatching { outbox.sync(api, limit = 40) }
+                replies = runCatching {
+                    api.getInbox(200).filter {
+                        it.role == "companion" && !it.eventId.isNullOrBlank()
+                    }.groupBy { it.eventId.orEmpty() }
+                }.getOrDefault(emptyMap())
                 runCatching { api.getBetweenState(80) }.getOrNull()
             } else null
+            val written = store.listTimelineSince(0L, 400)
             BetweenView(
                 localStatus = outbox.latest("status"),
-                localMoments = store.listTimelineSince(0L, 200)
-                    .filter { it.type == "between_moment" }.take(30),
+                localStatuses = written.filter { it.type == "between_status" }.take(80),
+                localMoments = written.filter { it.type == "between_moment" }.take(40),
                 remote = remote,
+                replies = replies,
                 waiting = outbox.pendingCount()
             )
         }
@@ -186,8 +197,27 @@ fun BetweenScreen(initialTab: String = "status") {
                     color = TextSecondary)
             }
             val history = view.remote?.optJSONArray("status_history")
-            val statuses = if (history == null) emptyList() else
+            val remoteStatuses = if (history == null) emptyList() else
                 (0 until history.length()).mapNotNull { history.optJSONObject(it) }
+            val returnedIds = remoteStatuses.map {
+                it.optString("event_id").ifBlank { it.optString("id") }
+            }.toSet()
+            val localOnly = view.localStatuses.filter { it.id !in returnedIds }.map { entry ->
+                JSONObject()
+                    .put("event_id", entry.id)
+                    .put("state", entry.title)
+                    .put("detail", entry.detail)
+                    .put("updated_at_ms", entry.createdAtMs)
+                    .put("metadata_json", runCatching { JSONObject(entry.metadataJson) }
+                        .getOrDefault(JSONObject()))
+                    .put("local_only", true)
+            }
+            val statuses = (remoteStatuses + localOnly).sortedByDescending { event ->
+                event.optLong("updated_at_ms", 0L).takeIf { it > 0L }
+                    ?: event.optJSONObject("metadata_json")
+                        ?.optLong("updated_at_ms", 0L)
+                    ?: 0L
+            }
             items(statuses, key = {
                 "status-" + it.optString("event_id").ifBlank { it.optString("id") }
             }) { event ->
@@ -207,6 +237,9 @@ fun BetweenScreen(initialTab: String = "status") {
                         else event.optString("updated_at", event.optString("created_at")),
                         color = TextSecondary
                     )
+                    if (event.optBoolean("local_only", false)) {
+                        Text("已记在本机 · 等待同步", color = TextSecondary)
+                    }
                     val chosenNeed = event.optString("need").ifBlank {
                         meta?.optString("need").orEmpty()
                     }
@@ -289,8 +322,32 @@ fun BetweenScreen(initialTab: String = "status") {
                         if (item.optString("actor") == "jlz") "纪临洲" else "音音",
                         color = TextSecondary
                     )
-                    Text(item.optString("text"), color = TextPrimary)
-                    if (item.optBoolean("needs_response", false)) {
+                    Text(
+                        item.optString("text").ifBlank {
+                            item.optJSONObject("metadata_json")?.optString("text").orEmpty()
+                                .ifBlank { item.optString("subtitle") }
+                        },
+                        color = TextPrimary
+                    )
+                    val timestamp = item.optLong("created_at_ms", 0L).takeIf { it > 0L }
+                        ?: item.optJSONObject("metadata_json")
+                            ?.optLong("created_at_ms", 0L)
+                        ?: 0L
+                    if (timestamp > 0L) {
+                        Text(java.text.SimpleDateFormat(
+                            "MM-dd HH:mm", java.util.Locale.getDefault()
+                        ).format(java.util.Date(timestamp)), color = TextSecondary)
+                    }
+                    view.replies[item.optString("id")].orEmpty().forEach { answer ->
+                        Text("纪临洲回复", color = TextSecondary,
+                            style = MaterialTheme.typography.labelMedium)
+                        Text(answer.text, color = TextPrimary)
+                    }
+                    val responseWanted = item.optBoolean(
+                        "needs_response", item.optJSONObject("metadata_json")
+                            ?.optBoolean("needs_response", false) == true
+                    )
+                    if (responseWanted) {
                         Text(
                             "回应状态：" + item.optString("response_state", "pending"),
                             color = TextSecondary

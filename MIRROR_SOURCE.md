@@ -11,3 +11,5 @@ The workflow only publishes a test release tag; it never overwrites `android-nat
 Excluded by design: private Git history, Runtime/MCP/server sources, keystores, credentials, captures, user data, environment files, and private deployment configuration.
 
 P0-2 expanded state-light UI snapshot from private commit `274bc1c81b8af2fe294dc037ca423bd805320a72` plus `StatusLightEditor.kt`; this test build has versionCode `2026092823` and is not a production release. Public build changes include only Android Kotlin source and test-version metadata.
+
+P0-2 home-card + source timestamp/history and linked companion replies: private Android branch commit `032c3737fcd7fab5022c3db0920f6c331653bf96`, test build `2026092824`. Still excludes original signing material, private backend, saved user data and deployment configuration.
