@@ -8,10 +8,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -22,57 +24,122 @@ import dev.jlz.presence.ui.theme.TextPrimary
 import dev.jlz.presence.ui.theme.TextSecondary
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.roundToInt
 
-/** Subjective input only. These choices are self-reports, NOT inferred diagnoses. */
-private val OVERALL_STATES = listOf(
-    "开心", "轻松", "平静", "放空", "茫然", "烦躁",
-    "焦虑", "难过", "生气", "疲惫", "期待", "说不清"
+/** Self-report dimensions. Null means not answered, never a score of 50. */
+internal data class StatusAxis(
+    val key: String, val title: String, val question: String,
+    val low: String, val high: String
 )
-private val QUICK_NEEDS = listOf(
-    "认真听我说", "主动问问我", "直接安排", "陪我启动",
-    "贴贴安慰", "安静陪着", "提醒我休息", "暂时不知道"
+
+internal val STATUS_AXES = listOf(
+    StatusAxis("self_presence", "自我在场感", "正在生活、说话、行动的人，像我自己吗？",
+        "像在自动运行", "我就是我"),
+    StatusAxis("emotion_access", "情绪可感度", "能不能接触到自己的情绪？不要求说出名字。",
+        "摸不到情绪", "感受得很清楚"),
+    StatusAxis("emotional_vividness", "情感鲜活度", "情绪和情感有没有温度和鲜活感？",
+        "麻木、冷淡", "鲜活、有温度"),
+    StatusAxis("agitation", "宁静—烦躁", "此刻内在有多躁动、紧绷？",
+        "宁静、松弛", "烦躁、紧绷")
 )
 private val EMOTION_TAGS = listOf(
-    "愉快", "满足", "安心", "期待", "兴奋", "紧张", "烦躁",
-    "生气", "委屈", "难过", "担心", "孤独", "无聊", "麻木", "没感觉", "混合着"
+    "开心", "安心", "兴奋", "被打动", "满足", "好奇",
+    "委屈", "失落", "难过", "孤独", "生气", "烦躁",
+    "担心", "害怕", "茫然", "麻木", "没感觉", "说不清"
 )
-private val ATTENTION_STATES = listOf(
-    "脑子清楚", "有点迟钝", "容易走神", "念头很乱",
-    "启动很难", "已经投入", "不确定"
+private val EXPRESSION_TAGS = listOf(
+    "说话平静", "正在微笑", "正在哭", "不想说话",
+    "机械应答", "表现烦躁", "正常交流但内心没感觉"
+)
+private val NEED_TAGS = listOf(
+    "抱抱我", "认真听我说", "主动问问我", "帮我识别",
+    "直接安排", "陪我启动", "安静陪着", "提醒我休息",
+    "暂时不用回应", "我还不知道"
+)
+private val BODY_AREAS = listOf(
+    "头部" to "body_head", "眼睛" to "body_eyes",
+    "喉咙" to "body_throat", "胸口" to "body_chest",
+    "胃腹" to "body_stomach", "肩颈" to "body_shoulders",
+    "四肢" to "body_limbs", "全身" to "body_whole"
 )
 private val BODY_SIGNALS = listOf(
-    "身体轻松", "犯困", "乏力", "饿", "渴", "疼",
-    "紧绷", "坐不住", "不舒服", "说不清"
-)
-private val RESPONSE_STYLES = listOf(
-    "温柔一点", "直接说重点", "强势管管我", "主动追问", "只陪伴", "先听我说"
-)
-private val AVOID_TAGS = listOf(
-    "别催学习", "别讲大道理", "别长篇分析",
-    "别打电话", "不要弹窗", "先别替我决定"
+    "疼痛", "紧绷", "发沉", "麻木", "乏力",
+    "呼吸变化", "流泪", "发热", "发冷", "其他"
 )
 
 @Composable
-private fun ChoiceGrid(
-    title: String,
-    choices: List<String>,
-    selected: Set<String>,
-    columns: Int = 3,
-    hint: String = "",
-    onChoice: (String) -> Unit
+internal fun StatusSlider(
+    title: String, question: String, low: String, high: String,
+    value: Int?, onChange: (Int?) -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(title, color = TextPrimary, style = MaterialTheme.typography.titleSmall)
+            Text(value?.let { it.toString() + "/100" } ?: "未填写",
+                color = TextSecondary, style = MaterialTheme.typography.labelMedium)
+        }
+        if (question.isNotBlank())
+            Text(question, color = TextSecondary, style = MaterialTheme.typography.labelSmall)
+        Slider(
+            value = (value ?: 50).toFloat(),
+            onValueChange = { onChange(it.roundToInt().coerceIn(0, 100)) },
+            valueRange = 0f..100f, modifier = Modifier.fillMaxWidth()
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(low, color = TextSecondary, style = MaterialTheme.typography.labelSmall)
+            Text(high, color = TextSecondary, style = MaterialTheme.typography.labelSmall)
+        }
+        if (value != null) TextButton(onClick = { onChange(null) }) { Text("清空") }
+    }
+}
+
+@Composable
+internal fun StatusSliders(values: Map<String, Int>, onChange: (String, Int?) -> Unit) {
+    STATUS_AXES.forEach { axis ->
+        StatusSlider(axis.title, axis.question, axis.low, axis.high, values[axis.key]) {
+            onChange(axis.key, it)
+        }
+    }
+}
+
+/** State is a neutral legacy API label, NOT an invented mood. */
+internal fun statusDraft(axes: Map<String, Int>): JSONObject =
+    JSONObject().put("state", "我的此刻").put("schema_version", 1)
+        .put("dimensions", JSONObject().apply {
+            axes.forEach { (key, value) ->
+                if (STATUS_AXES.any { it.key == key } && value in 0..100) put(key, value)
+            }
+        })
+
+internal fun statusSummary(status: JSONObject?): String {
+    if (status == null) return "还没有更新状态灯"
+    val dims = status.optJSONObject("dimensions")
+        ?: status.optJSONObject("metadata_json")?.optJSONObject("dimensions")
+    if (dims == null) return status.optString("state").ifBlank { "还没有更新状态灯" }
+    val pieces = STATUS_AXES.mapNotNull { axis ->
+        val value = dims.optInt(axis.key, -1)
+        if (value in 0..100) axis.title + " " + value else null
+    }
+    return pieces.joinToString(" · ").ifBlank {
+        status.optString("state").ifBlank { "我的此刻" }
+    }
+}
+
+@Composable
+private fun ChoiceGrid(
+    title: String, choices: List<String>, selected: Set<String>,
+    hint: String = "", onChoice: (String) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(title, color = TextPrimary, style = MaterialTheme.typography.titleSmall)
-        if (hint.isNotBlank()) Text(hint, color = TextSecondary, style = MaterialTheme.typography.labelSmall)
-        choices.chunked(columns).forEach { group ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
+        if (hint.isNotBlank())
+            Text(hint, color = TextSecondary, style = MaterialTheme.typography.labelSmall)
+        choices.chunked(2).forEach { group ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 group.forEach { option ->
                     FilterChip(
-                        selected = option in selected,
-                        onClick = { onChoice(option) },
+                        selected = option in selected, onClick = { onChoice(option) },
+                        modifier = Modifier.weight(1f),
                         label = { Text(option, style = MaterialTheme.typography.labelSmall) }
                     )
                 }
@@ -81,165 +148,105 @@ private fun ChoiceGrid(
     }
 }
 
-@Composable
-private fun EnergyChoice(
-    title: String,
-    value: Int?,
-    onChange: (Int?) -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(title + " · " + (value?.toString()?.plus("/5") ?: "未填写"),
-            color = TextPrimary, style = MaterialTheme.typography.titleSmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            (1..5).forEach { number ->
-                FilterChip(
-                    selected = value == number,
-                    onClick = { onChange(if (value == number) null else number) },
-                    label = { Text(number.toString()) }
-                )
-            }
-        }
-    }
-}
-
-private fun asJsonArray(values: Set<String>): JSONArray =
-    JSONArray().apply { values.forEach { put(it) } }
+private fun jsonArray(values: Set<String>) = JSONArray().apply { values.forEach { put(it) } }
 
 /**
- * The top half is intentionally quick; the expanded half makes room for
- * mental clarity, body state, multiple emotions and explicit "don't" rules.
- *
- * Never silently invent an energy score or replace a prior snapshot:
- * each save emits a fresh immutable event from the caller.
+ * V3: four independent optional scales + expandable emotion/expression/body/needs.
+ * All inputs are user-authored, without automatic psychiatric labels.
  */
 @Composable
-fun StatusLightEditor(
-    busy: Boolean,
-    onSave: (JSONObject) -> Unit
-) {
-    var state by remember { mutableStateOf("") }
-    var energy by remember { mutableStateOf<Int?>(null) }
-    var needs by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var responseLevel by remember { mutableStateOf("") }
-    var detailsExpanded by remember { mutableStateOf(false) }
-
+fun StatusLightEditor(busy: Boolean, onSave: (JSONObject) -> Unit) {
+    val axes = remember { mutableStateMapOf<String, Int>() }
+    var expanded by remember { mutableStateOf(false) }
     var emotions by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var attention by remember { mutableStateOf("") }
-    var mentalEnergy by remember { mutableStateOf<Int?>(null) }
-    var physicalEnergy by remember { mutableStateOf<Int?>(null) }
+    var expressions by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var needs by remember { mutableStateOf<Set<String>>(emptySet()) }
     var bodySignals by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val body = remember { mutableStateMapOf<String, Int?>() }
     var responseStyle by remember { mutableStateOf("") }
-    var avoid by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var needOther by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
 
     Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
-        Text("更新状态灯", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
-        Text("不用把自己分析明白才能填写。你说不清，也是一条有效的状态。",
+        Text("状态灯 · 记录此刻的我", color = TextPrimary,
+            style = MaterialTheme.typography.titleMedium)
+        Text("只填你知道的。说不清就留空；指针居中不代表自动填写50分。",
             color = TextSecondary, style = MaterialTheme.typography.bodySmall)
-
-        ChoiceGrid(
-            title = "① 这一刻整体是什么感觉？", choices = OVERALL_STATES,
-            selected = setOfNotNull(state.takeIf { it.isNotBlank() }),
-            onChoice = { state = if (state == it) "" else it }
-        )
-        EnergyChoice("② 现在总体还能量多少？", energy) { energy = it }
-        ChoiceGrid(
-            title = "③ 现在想要我做什么？",
-            hint = "可选 1–3 个；不知道就留空",
-            choices = QUICK_NEEDS, columns = 2, selected = needs,
-            onChoice = { choice ->
-                needs = if (choice in needs) needs - choice
-                    else if (needs.size < 3) needs + choice else needs
+        StatusSliders(axes) { key, value ->
+            if (value == null) axes.remove(key) else axes[key] = value
+        }
+        TextButton(onClick = { expanded = !expanded }) {
+            Text(if (expanded) "收起选填项 ↑" else "选填：情绪 / 对外表达 / 身体 / 需要 ↓")
+        }
+        if (expanded) {
+            ChoiceGrid("我能辨认出的情绪", EMOTION_TAGS, emotions,
+                hint = "可多选，也可以完全不选") { v ->
+                emotions = if (v in emotions) emotions - v
+                    else if (emotions.size < 5) emotions + v else emotions
             }
-        )
-        ChoiceGrid(
-            title = "④ 我的回应浓度", choices = listOf("轻", "正常", "高"),
-            selected = setOfNotNull(responseLevel.takeIf { it.isNotBlank() }),
-            onChoice = { responseLevel = if (responseLevel == it) "" else it }
-        )
-        TextButton(onClick = { detailsExpanded = !detailsExpanded }) {
-            Text(if (detailsExpanded) "收起细项 ↑" else "展开：情绪 / 脑力 / 身体 / 我该怎么回应 ↓")
+            ChoiceGrid("我表现出来的样子", EXPRESSION_TAGS, expressions,
+                hint = "外在表达可以和内心感受不一致") { v ->
+                expressions = if (v in expressions) expressions - v
+                    else if (expressions.size < 5) expressions + v else expressions
+            }
+            ChoiceGrid("身体哪里不舒服？", BODY_AREAS.map { it.first },
+                body.keys.mapNotNull { key ->
+                    BODY_AREAS.find { it.second == key }?.first
+                }.toSet(), hint = "点选部位，再按需调整不适程度") { label ->
+                val key = BODY_AREAS.first { it.first == label }.second
+                if (body.containsKey(key)) body.remove(key) else body[key] = null
+            }
+            BODY_AREAS.forEach { (label, key) ->
+                if (body.containsKey(key))
+                    StatusSlider(label + " · 不适程度", "", "没有明显不适",
+                        "明显不适", body[key]) { value -> body[key] = value }
+            }
+            ChoiceGrid("身体的具体信号", BODY_SIGNALS, bodySignals) { v ->
+                bodySignals = if (v in bodySignals) bodySignals - v
+                    else if (bodySignals.size < 5) bodySignals + v else bodySignals
+            }
+            ChoiceGrid("我现在可能需要", NEED_TAGS, needs,
+                hint = "想不到也可以说不知道") { v ->
+                needs = if (v in needs) needs - v
+                    else if (needs.size < 3) needs + v else needs
+            }
+            ChoiceGrid("希望怎样回应我",
+                listOf("先听我说", "温柔一点", "直接说重点", "强势管管我", "别催我", "不用回应"),
+                setOfNotNull(responseStyle.takeIf { it.isNotBlank() })) { v ->
+                responseStyle = if (responseStyle == v) "" else v
+            }
         }
-        if (detailsExpanded) {
-            ChoiceGrid(
-                title = "情绪可以不止一种", hint = "最多选 5 个，不需要勉强确定",
-                choices = EMOTION_TAGS, selected = emotions,
-                onChoice = { choice ->
-                    emotions = if (choice in emotions) emotions - choice
-                        else if (emotions.size < 5) emotions + choice else emotions
-                }
-            )
-            EnergyChoice("脑力 / 思考的余量", mentalEnergy) { mentalEnergy = it }
-            EnergyChoice("身体还有多少力气", physicalEnergy) { physicalEnergy = it }
-            ChoiceGrid(
-                title = "注意力与启动状态", choices = ATTENTION_STATES,
-                selected = setOfNotNull(attention.takeIf { it.isNotBlank() }),
-                columns = 2,
-                onChoice = { attention = if (attention == it) "" else it }
-            )
-            ChoiceGrid(
-                title = "身体此刻的感受", choices = BODY_SIGNALS,
-                selected = bodySignals,
-                onChoice = { choice ->
-                    bodySignals = if (choice in bodySignals) bodySignals - choice
-                        else if (bodySignals.size < 4) bodySignals + choice else bodySignals
-                }
-            )
-            ChoiceGrid(
-                title = "希望我的说话方式", choices = RESPONSE_STYLES,
-                selected = setOfNotNull(responseStyle.takeIf { it.isNotBlank() }),
-                columns = 2,
-                onChoice = { responseStyle = if (responseStyle == it) "" else it }
-            )
-            ChoiceGrid(
-                title = "现在不要我做什么", choices = AVOID_TAGS,
-                selected = avoid, columns = 2,
-                hint = "只约束这次状态，不自动改变永久设置",
-                onChoice = { choice ->
-                    avoid = if (choice in avoid) avoid - choice
-                        else if (avoid.size < 3) avoid + choice else avoid
-                }
-            )
-            OutlinedTextField(
-                value = needOther,
-                onValueChange = { needOther = it.take(120) },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("还有什么特别需要我做的？（可选）") }
-            )
-            OutlinedTextField(
-                value = note,
-                onValueChange = { note = it.take(240) },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("想补充的一句话（原话保存）") },
-                minLines = 2
-            )
-        }
+        OutlinedTextField(
+            value = note, onValueChange = { note = it.take(240) },
+            modifier = Modifier.fillMaxWidth(), minLines = 2,
+            label = { Text("一句原话（选填）") }
+        )
+        val canSave = axes.isNotEmpty() || emotions.isNotEmpty() ||
+            expressions.isNotEmpty() || needs.isNotEmpty() || body.isNotEmpty() ||
+            bodySignals.isNotEmpty() || responseStyle.isNotBlank() || note.isNotBlank()
         IceButton(
-            text = "更新此刻状态",
-            primary = true,
-            enabled = !busy && state.isNotBlank(),
+            text = "记下这个时刻", primary = true, enabled = !busy && canSave,
             modifier = Modifier.fillMaxWidth(),
             onClick = {
-                val body = JSONObject()
-                    .put("state", state)
-                    .put("need", (needs.toList() + needOther.trim().takeIf { it.isNotBlank() }.orEmpty()
-                        .let { if (it.isBlank()) emptyList() else listOf(it) })
-                        .joinToString("；"))
-                    .put("response_level", responseLevel)
-                    .put("emotions", asJsonArray(emotions))
-                    .put("attention", attention)
-                    .put("body_signals", asJsonArray(bodySignals))
-                    .put("response_style", responseStyle)
-                    .put("avoid", avoid.joinToString("；"))
-                    .put("detail", note)
-                energy?.let { body.put("energy", it) }
-                mentalEnergy?.let { body.put("mental_energy", it) }
-                physicalEnergy?.let { body.put("physical_energy", it) }
-                onSave(body)
+                val draft = statusDraft(axes)
+                val dimensions = draft.getJSONObject("dimensions")
+                if (emotions.isNotEmpty()) dimensions.put("emotions", jsonArray(emotions))
+                if (expressions.isNotEmpty())
+                    dimensions.put("external_expression", jsonArray(expressions))
+                if (needs.isNotEmpty()) dimensions.put("needs", jsonArray(needs))
+                if (bodySignals.isNotEmpty())
+                    dimensions.put("body_signals", jsonArray(bodySignals))
+                if (responseStyle.isNotBlank())
+                    dimensions.put("response_style", responseStyle)
+                if (body.isNotEmpty())
+                    dimensions.put("body_areas", jsonArray(body.keys.toSet()))
+                body.forEach { (key, value) ->
+                    if (value != null) dimensions.put(key, value)
+                }
+                if (note.isNotBlank()) draft.put("detail", note)
+                onSave(draft)
             }
         )
-        Text("每点一次「更新」都会生成一条新快照。选中的内容属于你的主动报告，不是我的推断。",
+        Text("只保存实际填写的项目；保留原话和历史。我的猜测不会覆盖你的记录。",
             color = TextSecondary, style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.padding(bottom = 6.dp))
     }
