@@ -145,30 +145,49 @@ class BetweenOutbox(context: Context) :
                 // the new emotion/energy/need dimensions. Do not call this
                 // delivered until the durable server echoes every supplied
                 // field from its actually persisted snapshot.
+                // Both the durable archive and the current small fast-path
+                // expose the persisted status, under snapshot or status.
                 val saved = response.optJSONObject("snapshot")
+                    ?: response.optJSONObject("status")
                 if (saved == null) {
                     deferUnconfirmedStatus(item.id)
                     continue
+                }
+                val savedDimensions = saved.optJSONObject("dimensions")
+                fun matching(original: Any?, confirmed: Any?): Boolean = when {
+                    original == null || confirmed == null -> false
+                    original is org.json.JSONArray &&
+                        confirmed is org.json.JSONArray ->
+                            original.toString() == confirmed.toString()
+                    else -> original.toString() == confirmed.toString()
                 }
                 val fields = listOf(
                     "state", "detail", "energy", "need", "response_level",
                     "emotions", "mental_energy", "physical_energy", "attention",
                     "body_signals", "response_style", "avoid"
                 )
-                val allFieldsPersisted = fields.all { field ->
-                    if (!payload.has(field)) true else {
-                        val original = payload.opt(field)
-                        val confirmed = saved.opt(field)
-                        when {
-                            original is org.json.JSONArray &&
-                                confirmed is org.json.JSONArray ->
-                                    original.toString() == confirmed.toString()
-                            original == null || confirmed == null -> false
-                            else -> original.toString() == confirmed.toString()
+                val oldFieldsPersisted = fields.all { field ->
+                    !payload.has(field) || matching(
+                        payload.opt(field),
+                        if (saved.has(field)) saved.opt(field) else savedDimensions?.opt(field)
+                    )
+                }
+                var dimensionsPersisted = true
+                val submitted = payload.optJSONObject("dimensions")
+                if (submitted != null) {
+                    if (savedDimensions == null) dimensionsPersisted = false
+                    else {
+                        val keys = submitted.keys()
+                        while (keys.hasNext()) {
+                            val key = keys.next()
+                            if (!matching(submitted.opt(key), savedDimensions.opt(key))) {
+                                dimensionsPersisted = false
+                                break
+                            }
                         }
                     }
                 }
-                if (!allFieldsPersisted) {
+                if (!oldFieldsPersisted || !dimensionsPersisted) {
                     // Never acknowledge a partially persisted status; but do
                     // continue to deliver independently authored life notes.
                     deferUnconfirmedStatus(item.id)
