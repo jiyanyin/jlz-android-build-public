@@ -86,12 +86,8 @@ private fun statusDetail(status: JSONObject): String {
     if (status.optJSONObject("dimensions") != null ||
         status.optJSONObject("metadata_json")?.optJSONObject("dimensions") != null) {
         if (axes != "我的此刻") parts += axes
-        val dims = status.optJSONObject("dimensions")
-            ?: status.optJSONObject("metadata_json")?.optJSONObject("dimensions")
-        val needs = dims?.optJSONArray("needs")
-        if (needs != null && needs.length() > 0)
-            parts += "需要：" + (0 until needs.length()).joinToString("、") { needs.optString(it) }
     }
+    parts += statusNeedLines(status)
     val note = status.optString("detail")
     if (note.isNotBlank()) parts += note
     val energy = status.optInt("energy", -1)
@@ -100,8 +96,6 @@ private fun statusDetail(status: JSONObject): String {
     if (mental in 1..5) parts += "脑力 $mental/5"
     val physical = status.optInt("physical_energy", -1)
     if (physical in 1..5) parts += "体力 $physical/5"
-    val needs = status.optString("need")
-    if (needs.isNotBlank()) parts += "需要：$needs"
     val emotions = status.optJSONArray("emotions")
     if (emotions != null && emotions.length() > 0) {
         parts += "情绪：" + (0 until emotions.length())
