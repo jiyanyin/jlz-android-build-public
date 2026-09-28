@@ -235,9 +235,10 @@ class PendingScreenshotQueue(private val context: Context) {
 
     private fun originRank(origin: String): Int = when {
         origin == "official_gpt_request" -> 0
-        origin.contains("work", ignoreCase = true) -> 1
-        origin.startsWith("automatic_") -> 2
-        else -> 3
+        origin == "manual_q" -> 1
+        origin.contains("work", ignoreCase = true) -> 2
+        origin.startsWith("automatic_") -> 3
+        else -> 4
     }
 
     private fun maxRetries(origin: String): Int =
