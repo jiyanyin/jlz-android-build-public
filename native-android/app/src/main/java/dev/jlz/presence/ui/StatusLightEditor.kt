@@ -4,6 +4,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import dev.jlz.presence.ui.components.IceButton
 import dev.jlz.presence.ui.theme.TextPrimary
@@ -166,11 +170,26 @@ fun StatusLightEditor(busy: Boolean, onSave: (JSONObject) -> Unit) {
     var responseStyle by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
 
-    Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
+    // The form is taller than a phone screen. In P0-3 the surrounding page
+    // is already a LazyColumn; do not leave this whole form as a single
+    // unbounded, difficult-to-drag LazyColumn item. Give the editor a finite
+    // height and its own vertical scroll area, independent of horizontal
+    // Material Slider gestures. Other page/history scrolling is unchanged.
+    val viewportDp = (LocalConfiguration.current.screenHeightDp - 180)
+        .coerceIn(280, 640)
+    val formScrollState = rememberScrollState()
+    Column(
+        modifier = Modifier.fillMaxWidth()
+            .heightIn(max = viewportDp.dp)
+            .verticalScroll(formScrollState),
+        verticalArrangement = Arrangement.spacedBy(13.dp)
+    ) {
         Text("状态灯 · 记录此刻的我", color = TextPrimary,
             style = MaterialTheme.typography.titleMedium)
         Text("只填你知道的。说不清就留空；指针居中不代表自动填写50分。",
             color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+        Text("在表单内上下滑动可继续填写；滑杆左右拖动才改变分数。",
+            color = TextSecondary, style = MaterialTheme.typography.labelSmall)
         StatusSliders(axes) { key, value ->
             if (value == null) axes.remove(key) else axes[key] = value
         }
