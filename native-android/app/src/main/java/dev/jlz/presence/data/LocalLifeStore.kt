@@ -179,6 +179,20 @@ class LocalLifeStore(context: Context) :
         return result
     }
 
+    /** Remove screenshot-only timeline metadata from before a policy reset. */
+    @Synchronized
+    fun deleteScreenshotTimelineRecordsBefore(cutoffMs: Long): Int =
+        writableDatabase.delete(
+            "timeline_events",
+            "created_at_ms < ? AND type IN (?, ?, ?)",
+            arrayOf(
+                cutoffMs.toString(),
+                "study_screenshot",
+                "life_screenshot",
+                "manual_screenshot"
+            )
+        )
+
     @Synchronized
     fun addPendingThought(
         kind: String,
