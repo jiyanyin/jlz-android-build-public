@@ -61,7 +61,7 @@ jobs:
       - name: Upload isolated test APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: JLZ-Presence-P0-2-test-2026092824
+          name: JLZ-Presence-P0-2-test-2026092825
           path: native-android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
       - name: Publish test-only APK release (never replace stable latest)
@@ -71,7 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           tag="android-p0-2-acceptance-20260928"
-          notes="P0-2 experimental Android build 2026092824. NOT yet phone-verified. Build-only mirror; no Runtime/server secrets. Do not replace android-native-latest."
+          notes="P0-2 experimental Android build 2026092825. NOT yet phone-verified. Build-only mirror; no Runtime/server secrets. Do not replace android-native-latest."
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" /tmp/JLZ-Presence-P0-2-test.apk /tmp/JLZ-Presence-P0-2-test-SHA256.txt --clobber --repo "$GITHUB_REPOSITORY"
             gh release edit "$tag" --title "JLZ Presence · P0-2 test" --notes "$notes" --repo "$GITHUB_REPOSITORY"

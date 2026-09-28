@@ -13,7 +13,7 @@ import org.json.JSONObject
  * unanswered messages just because the phone was offline.
  */
 class BetweenOutbox(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "jlz_between_outbox_v1.db", null, 1) {
+    SQLiteOpenHelper(context.applicationContext, "jlz_between_outbox_v1.db", null, 2) {
 
     data class Entry(
         val id: String,
@@ -30,7 +30,8 @@ class BetweenOutbox(context: Context) :
                 kind TEXT NOT NULL,
                 payload_json TEXT NOT NULL,
                 created_at_ms INTEGER NOT NULL,
-                delivered INTEGER NOT NULL DEFAULT 0
+                delivered INTEGER NOT NULL DEFAULT 0,
+                retry_after_ms INTEGER NOT NULL DEFAULT 0
             )
             """.trimIndent()
         )
@@ -39,7 +40,14 @@ class BetweenOutbox(context: Context) :
         )
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) {
+            // ALTER, never DROP: existing unsent life records must survive upgrade.
+            db.execSQL(
+                "ALTER TABLE pending_between ADD COLUMN retry_after_ms INTEGER NOT NULL DEFAULT 0"
+            )
+        }
+    }
 
     @Synchronized
     fun enqueue(id: String, kind: String, payload: JSONObject, createdAtMs: Long) {
@@ -63,8 +71,10 @@ class BetweenOutbox(context: Context) :
     fun pending(limit: Int = 40): List<Entry> {
         val rows = mutableListOf<Entry>()
         readableDatabase.query(
-            "pending_between", null, "delivered = 0",
-            null, null, null, "created_at_ms ASC, rowid ASC",
+            "pending_between", null, "delivered = 0 AND retry_after_ms <= ?",
+            arrayOf(System.currentTimeMillis().toString()), null, null,
+            // A held status snapshot must not block a newer note to JLZ.
+            "CASE WHEN kind = 'moment' THEN 0 ELSE 1 END, created_at_ms ASC, rowid ASC",
             limit.coerceIn(1, 80).toString()
         ).use { cursor ->
             while (cursor.moveToNext()) {
@@ -100,6 +110,19 @@ class BetweenOutbox(context: Context) :
         }
     }
 
+    private fun deferUnconfirmedStatus(id: String) {
+        // Keep the ORIGINAL payload and ID for replay after the Runtime upgrade.
+        // Older servers may accept the status but drop optional dimensions.
+        writableDatabase.update(
+            "pending_between",
+            ContentValues().apply {
+                put("retry_after_ms", System.currentTimeMillis() + 5 * 60 * 1000L)
+            },
+            "id = ? AND kind = 'status' AND delivered = 0",
+            arrayOf(id)
+        )
+    }
+
     @Synchronized
     fun sync(api: RuntimeApiClient, limit: Int = 40): List<String> {
         val confirmed = mutableListOf<String>()
@@ -122,7 +145,11 @@ class BetweenOutbox(context: Context) :
                 // the new emotion/energy/need dimensions. Do not call this
                 // delivered until the durable server echoes every supplied
                 // field from its actually persisted snapshot.
-                val saved = response.optJSONObject("snapshot") ?: break
+                val saved = response.optJSONObject("snapshot")
+                if (saved == null) {
+                    deferUnconfirmedStatus(item.id)
+                    continue
+                }
                 val fields = listOf(
                     "state", "detail", "energy", "need", "response_level",
                     "emotions", "mental_energy", "physical_energy", "attention",
@@ -141,7 +168,12 @@ class BetweenOutbox(context: Context) :
                         }
                     }
                 }
-                if (!allFieldsPersisted) break
+                if (!allFieldsPersisted) {
+                    // Never acknowledge a partially persisted status; but do
+                    // continue to deliver independently authored life notes.
+                    deferUnconfirmedStatus(item.id)
+                    continue
+                }
             }
 
             writableDatabase.update(
