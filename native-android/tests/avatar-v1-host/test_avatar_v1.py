@@ -39,6 +39,9 @@ class AvatarV1Contract(unittest.TestCase):
             self.assertIn(contract, capture)
         accessibility = (JAVA / "screen/PresenceAccessibilityService.kt").read_text()
         self.assertIn("automaticCapture.onAccessibilitySignal", accessibility)
+        behavior = (JAVA / "overlay/QAvatarBehaviorEngine.kt").read_text()
+        self.assertIn("18 * 60_000L, 32 * 60_000L", behavior)
+        self.assertIn("12 * 60_000L, 20 * 60_000L", behavior)
 
 
 if __name__ == "__main__":

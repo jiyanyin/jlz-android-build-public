@@ -68,7 +68,15 @@ class QAvatarBehaviorEngine(context: Context) {
         if (nowMs < nextAutonomousAtMs) return null
         val hour = LocalDateTime.now().hour
         val adaptedLate = prefs.getInt("last_active_hour", 23) in 0..4
-        nextAutonomousAtMs = nowMs + Random.nextLong(4 * 60_000L, 9 * 60_000L)
+        // Night companionship stays available, but speaks markedly less often.
+        // A repeatedly late-active user gets a little more company than a user
+        // whose avatar should already be asleep.
+        val nextDelayMs = when {
+            hour in 0..5 && !adaptedLate -> Random.nextLong(18 * 60_000L, 32 * 60_000L)
+            hour >= 23 || hour <= 5 -> Random.nextLong(12 * 60_000L, 20 * 60_000L)
+            else -> Random.nextLong(4 * 60_000L, 9 * 60_000L)
+        }
+        nextAutonomousAtMs = nowMs + nextDelayMs
         return when {
             status.needsHug -> AvatarBehaviorDecision(QAvatarState.CLINGY,
                 setOf("status_need_hug", "clingy"), "status_hug")
