@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -65,7 +65,25 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: JLZ-Presence-Async-Receipts-2026092903
+          name: JLZ-Presence-QAvatar-Controls-2026092904
           path: native-android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
+
+      - name: Publish signed Q-avatar fix APK
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          apk="native-android/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$apk"
+          cp "$apk" /tmp/JLZ-Presence-QAvatar-Controls-2026092904.apk
+          sha256sum /tmp/JLZ-Presence-QAvatar-Controls-2026092904.apk > /tmp/JLZ-Presence-QAvatar-Controls-2026092904-SHA256.txt
+          tag="android-qavatar-controls-20260929"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" /tmp/JLZ-Presence-QAvatar-Controls-2026092904.apk /tmp/JLZ-Presence-QAvatar-Controls-2026092904-SHA256.txt --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$tag" /tmp/JLZ-Presence-QAvatar-Controls-2026092904.apk /tmp/JLZ-Presence-QAvatar-Controls-2026092904-SHA256.txt --target "$GITHUB_SHA" --title "JLZ Presence Q-avatar controls · 2026092904" --notes "Signed Android 0.4.3: restore floating avatar show/hide/size and silence suspended overlays." --repo "$GITHUB_REPOSITORY"
+          fi
