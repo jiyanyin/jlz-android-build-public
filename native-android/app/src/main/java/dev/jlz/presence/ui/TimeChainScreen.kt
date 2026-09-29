@@ -1,5 +1,7 @@
 package dev.jlz.presence.ui
 
+import dev.jlz.presence.ui.components.WorldText as Text
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -13,7 +15,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import dev.jlz.presence.between.BetweenOutbox
 import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.navigation.PresenceRoute
@@ -376,7 +378,7 @@ fun TimeChainScreen(initialTab: String = "日记") {
     val clock = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize().systemBarsPadding().padding(16.dp),
+        modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
@@ -386,7 +388,9 @@ fun TimeChainScreen(initialTab: String = "日记") {
                         style = MaterialTheme.typography.labelMedium)
                     Text(
                         if (filter == "回响") "回响 · 我做过的事" else "你我之间 · 今日记录",
-                        color = TextPrimary, style = MaterialTheme.typography.headlineSmall
+                        color = TextPrimary, style = MaterialTheme.typography.headlineSmall,
+                        softWrap = true, maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 IceButton("返回", onClick = { PresenceRouteBus.open(PresenceRoute.Home) })
@@ -468,7 +472,9 @@ fun TimeChainScreen(initialTab: String = "日记") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(
                         clock.format(Date(item.atMs)),
-                        color = TextSecondary, style = MaterialTheme.typography.labelMedium
+                        modifier = Modifier.weight(1f),
+                        color = TextSecondary, style = MaterialTheme.typography.labelMedium,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         when (item.lane) {
@@ -479,11 +485,13 @@ fun TimeChainScreen(initialTab: String = "日记") {
                             "echo" -> "回响"
                             else -> "手机记录"
                         },
-                        color = TextSecondary, style = MaterialTheme.typography.labelMedium
+                        color = TextSecondary, style = MaterialTheme.typography.labelMedium,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis
                     )
                 }
                 Text(item.title, color = TextPrimary,
-                    style = MaterialTheme.typography.titleSmall)
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (item.detail.isNotBlank()) Text(item.detail, color = TextPrimary,
                     style = MaterialTheme.typography.bodyMedium)
                 if (item.linkedId.isNotBlank()) Text(

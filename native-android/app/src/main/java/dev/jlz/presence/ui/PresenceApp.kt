@@ -1,5 +1,7 @@
 package dev.jlz.presence.ui
 
+import dev.jlz.presence.ui.components.WorldText as Text
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
@@ -27,6 +29,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import dev.jlz.presence.R
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.launcher.LauncherRepository
 import dev.jlz.presence.navigation.PresenceRoute
@@ -58,10 +63,13 @@ fun PresenceApp() {
         route is PresenceRoute.Between || route is PresenceRoute.More ||
         route is PresenceRoute.Drawer || route is PresenceRoute.Today
     Scaffold(
+        modifier = Modifier.fillMaxSize(),
         containerColor = BgDeep,
+        // Compose equivalent of a root SafeAreaView; the inset is consumed once.
+        contentWindowInsets = WindowInsets.safeDrawing,
         bottomBar = { if (showsTabs) ParchmentBottomBar(route) }
     ) { padding ->
-        Box(Modifier.padding(padding)) {
+        Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             when (route) {
                 is PresenceRoute.Welcome -> WelcomeScreen()
                 is PresenceRoute.Home -> HomeScreen()
@@ -101,14 +109,22 @@ fun WelcomeScreen() {
     Column(
         modifier = Modifier.fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 26.dp, vertical = 20.dp),
+            .padding(horizontal = 16.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(15.dp)
     ) {
         Text("✧    BETWEEN WORLDS    ✧", color = ParchmentGold,
             style = MaterialTheme.typography.labelMedium)
+        Text(
+            "Welcome home, Yinyin",
+            color = ParchmentGold, fontFamily = WorldFonts.greatVibes,
+            fontSize = 27.sp, textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
+            softWrap = true, maxLines = 2, overflow = TextOverflow.Ellipsis
+        )
         Text("世界之间", color = TextPrimary,
-            style = MaterialTheme.typography.headlineLarge)
+            style = MaterialTheme.typography.headlineLarge,
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text("纪临洲  ×  纪言音", color = TextSecondary,
             style = MaterialTheme.typography.labelMedium)
 
@@ -205,7 +221,7 @@ fun HomeScreen() {
     }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-            .padding(horizontal = 22.dp, vertical = 20.dp),
+            .padding(horizontal = 16.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Row(
@@ -235,9 +251,19 @@ fun HomeScreen() {
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(Modifier.weight(1f)) {
+                    Column(Modifier.weight(0.63f)) {
                         Text(greeting, color = TextPrimary,
-                            style = MaterialTheme.typography.headlineLarge)
+                            style = MaterialTheme.typography.headlineLarge,
+                            softWrap = true, maxLines = 2,
+                            overflow = TextOverflow.Ellipsis)
+                        Text(
+                            "Always thinking of you...",
+                            color = ParchmentGold,
+                            fontFamily = WorldFonts.greatVibes,
+                            fontSize = 18.sp,
+                            softWrap = true, maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
                         Spacer(Modifier.height(12.dp))
                         Text("穿过日常的喧哗，\n我们在这里重逢。",
                             color = TextSecondary,
@@ -247,7 +273,8 @@ fun HomeScreen() {
                     Image(
                         painter = painterResource(id = R.drawable.jlz_home_portrait),
                         contentDescription = "纪临洲向音音伸出手",
-                        modifier = Modifier.size(width = 132.dp, height = 120.dp)
+                        modifier = Modifier.weight(0.37f)
+                            .aspectRatio(1.1f)
                             .clip(RoundedCornerShape(19.dp))
                             .background(ParchmentCarbon)
                             .border(0.5.dp, ParchmentGold.copy(alpha = 0.42f),
@@ -292,69 +319,41 @@ fun HomeScreen() {
         // Reuse existing screens and native shortcuts; no new persistence or background work.
         // "随手记" opens the response-requested, local-first Between outbox.
         // "本机速记" under More remains a separate local-only scratch record.
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                IceGlassCard(modifier = Modifier.weight(1f)) {
-                    Text("✎", color = ParchmentGold,
-                        style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(4.dp))
-                    IceButton("随手记", onClick = {
-                        PresenceRouteBus.open(PresenceRoute.Between("moments"))
-                    }, modifier = Modifier.fillMaxWidth())
-                }
-                IceGlassCard(modifier = Modifier.weight(1f)) {
-                    Text("✧", color = ParchmentGold,
-                        style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(4.dp))
-                    IceButton("状态灯", onClick = {
-                        PresenceRouteBus.open(PresenceRoute.Between("status"))
-                    }, modifier = Modifier.fillMaxWidth())
-                }
-                IceGlassCard(modifier = Modifier.weight(1f)) {
-                    Text("✉", color = ParchmentGold,
-                        style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(4.dp))
-                    IceButton("聊天", onClick = {
-                        PresenceRouteBus.open(PresenceRoute.Chat())
-                    }, modifier = Modifier.fillMaxWidth())
-                }
-            }
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                IceGlassCard(modifier = Modifier.weight(1f)) {
-                    Text("♧", color = ParchmentGold,
-                        style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(4.dp))
-                    IceButton("伴读", onClick = {
-                        android.widget.Toast.makeText(
-                            context, StudyShortcuts.openBanduread(context),
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                    }, modifier = Modifier.fillMaxWidth())
-                }
-                IceGlassCard(modifier = Modifier.weight(1f)) {
-                    Text("✦", color = ParchmentGold,
-                        style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(4.dp))
-                    IceButton("粉笔", onClick = {
-                        android.widget.Toast.makeText(
-                            context, StudyShortcuts.openFenbi(context),
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
-                    }, modifier = Modifier.fillMaxWidth())
-                }
-                IceGlassCard(modifier = Modifier.weight(1f)) {
-                    Text("☷", color = ParchmentGold,
-                        style = MaterialTheme.typography.titleLarge)
-                    Spacer(Modifier.height(4.dp))
-                    IceButton("今日生活", onClick = {
-                        PresenceRouteBus.open(PresenceRoute.Today)
-                    }, modifier = Modifier.fillMaxWidth())
+        // Compose's width-aware grid: 2 cards on phones, 3 on wide screens.
+        // Each card grows by weight; fixed pixel widths no longer clip labels.
+        val shortcuts: List<Triple<String, String, () -> Unit>> = listOf(
+            Triple("✎", "随手记") { PresenceRouteBus.open(PresenceRoute.Between("moments")) },
+            Triple("✧", "状态灯") { PresenceRouteBus.open(PresenceRoute.Between("status")) },
+            Triple("✉", "聊天") { PresenceRouteBus.open(PresenceRoute.Chat()) },
+            Triple("♧", "伴读") {
+                android.widget.Toast.makeText(context,
+                    StudyShortcuts.openBanduread(context), android.widget.Toast.LENGTH_SHORT).show()
+            },
+            Triple("✦", "粉笔") {
+                android.widget.Toast.makeText(context,
+                    StudyShortcuts.openFenbi(context), android.widget.Toast.LENGTH_SHORT).show()
+            },
+            Triple("☷", "今日生活") { PresenceRouteBus.open(PresenceRoute.Today) }
+        )
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val columns = if (maxWidth < 520.dp) 2 else 3
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                shortcuts.chunked(columns).forEach { group ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        group.forEach { (symbol, label, action) ->
+                            IceGlassCard(modifier = Modifier.weight(1f)) {
+                                Text(symbol, color = ParchmentGold,
+                                    style = MaterialTheme.typography.titleLarge)
+                                Spacer(Modifier.height(4.dp))
+                                IceButton(label, onClick = action,
+                                    modifier = Modifier.fillMaxWidth())
+                            }
+                        }
+                        repeat(columns - group.size) { Spacer(Modifier.weight(1f)) }
+                    }
                 }
             }
         }
@@ -541,7 +540,7 @@ fun AppDrawerScreen() {
     var refresh by remember { mutableStateOf(0) }
     val apps = remember(refresh) { launcherRepo.loadLaunchableApps() }
     var selected by remember { mutableStateOf<LauncherAppInfo?>(null) }
-    Column(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp)) {
+    Column(Modifier.fillMaxSize().padding(20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("全部应用", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
             Text("返回", color = BlueGlow, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Home) }.padding(8.dp))
@@ -692,7 +691,7 @@ fun TimelineScreen() {
     }
 
     Column(
-        Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 16.dp, vertical = 20.dp)
+        Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 20.dp)
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -898,15 +897,18 @@ fun TimelineScreen() {
                                     Spacer(Modifier.width(7.dp))
                                 }
 
-                                Box(Modifier.widthIn(max = if (side == 0) 340.dp else 286.dp)) {
+                                Box(Modifier.weight(1f, fill = false)) {
                                     IceGlassCard {
                                         Row(
                                             Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(item.title, color = TextPrimary, style = MaterialTheme.typography.bodyLarge)
-                                            Text(time, color = TextTertiary, style = MaterialTheme.typography.labelSmall)
+                                            Text(item.title, modifier = Modifier.weight(1f), color = TextPrimary,
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                            Text(time, color = TextTertiary, style = MaterialTheme.typography.labelSmall,
+                                                maxLines = 2, overflow = TextOverflow.Ellipsis)
                                         }
                                         if (item.detail.isNotBlank()) {
                                             Spacer(Modifier.height(3.dp))
@@ -960,7 +962,7 @@ fun StudyScreen() {
         val s = (ms / 1000L).coerceAtLeast(0L)
         return "%02d:%02d".format(s / 60L, s % 60L)
     }
-    Column(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.fillMaxSize().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text("学习", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
         Spacer(Modifier.height(32.dp))
         when {
@@ -995,7 +997,7 @@ fun StudyScreen() {
 fun TripScreen() {
     val context = LocalContext.current
     val active by TripController.active.collectAsState()
-    Column(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp)) {
+    Column(Modifier.fillMaxSize().padding(20.dp)) {
         Text("带着老公", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
         Spacer(Modifier.height(24.dp))
         IceGlassCard {
@@ -1019,7 +1021,7 @@ fun PermissionDoctorScreen() {
     val context = LocalContext.current
     val doctor = remember { PermissionDoctor(context) }
     val items = remember { doctor.checkAll() }
-    Column(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp)) {
+    Column(Modifier.fillMaxSize().padding(20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("\u6743\u9650\u533b\u751f", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
             Text("\u8fd4\u56de", color = BlueGlow, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Home) }.padding(8.dp))
@@ -1060,7 +1062,7 @@ fun PermissionDoctorScreen() {
 fun QuickCaptureScreen() {
     var text by remember { mutableStateOf("") }
     val context = LocalContext.current
-    Column(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp)) {
+    Column(Modifier.fillMaxSize().padding(20.dp)) {
         Text("\u968f\u624b\u7559\u7ed9\u8001\u516c", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
         Spacer(Modifier.height(16.dp))
         OutlinedTextField(value = text, onValueChange = { text = it }, placeholder = { Text("\u60f3\u8bf4\u4ec0\u4e48...", color = TextTertiary) }, modifier = Modifier.fillMaxWidth())
@@ -1071,7 +1073,7 @@ fun QuickCaptureScreen() {
 
 @Composable
 fun DiagnosticsScreen() {
-    Column(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp)) {
+    Column(Modifier.fillMaxSize().padding(20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("\u5f00\u53d1\u4e0e\u8bca\u65ad", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
             Text("\u8fd4\u56de", color = BlueGlow, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Home) }.padding(8.dp))

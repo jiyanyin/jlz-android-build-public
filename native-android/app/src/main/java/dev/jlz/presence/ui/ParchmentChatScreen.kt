@@ -1,5 +1,7 @@
 package dev.jlz.presence.ui
 
+import dev.jlz.presence.ui.components.WorldText as Text
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -9,14 +11,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.jlz.presence.chat.PresenceChatRepository
@@ -91,13 +92,16 @@ internal fun ParchmentChatScreen(
 
     Column(
         modifier = Modifier.fillMaxSize().imePadding()
-            .padding(horizontal = 22.dp, vertical = 18.dp)
+            // One screen-level horizontal margin; bubbles/cards do not stack 16.dp margins.
+            .padding(horizontal = 16.dp, vertical = 16.dp)
     ) {
         Text("IN OUR OWN WORDS", color = ParchmentGold,
             style = MaterialTheme.typography.labelMedium)
         Spacer(Modifier.height(6.dp))
         Text("聊天  Letters", color = TextPrimary,
-            style = MaterialTheme.typography.headlineMedium)
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
         Spacer(Modifier.height(14.dp))
         IceGlassCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -106,19 +110,21 @@ internal fun ParchmentChatScreen(
                         .background(ParchmentCarbon, RoundedCornerShape(24.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("J", fontFamily = FontFamily.Serif,
+                    Text("J", fontFamily = WorldFonts.playfairDisplay,
                         color = ParchmentPaper, style = MaterialTheme.typography.titleLarge)
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text("纪临洲 / JLZ", color = TextPrimary,
-                        style = MaterialTheme.typography.titleMedium)
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text("这里显示真实收件箱；不预设在线状态",
-                        color = TextSecondary, style = MaterialTheme.typography.labelSmall)
+                        color = TextSecondary, style = MaterialTheme.typography.labelSmall,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 IceButton(if (loading) "…" else "刷新", onClick = {
                     if (!loading) scope.launch { refresh() }
-                }, modifier = Modifier.width(80.dp), enabled = !loading)
+                }, modifier = Modifier.wrapContentWidth(), enabled = !loading)
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -152,7 +158,10 @@ internal fun ParchmentChatScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = if (mine) Alignment.End else Alignment.Start
                 ) {
-                    Row(verticalAlignment = Alignment.Bottom) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.Bottom
+                    ) {
                         if (!mine) {
                             Box(
                                 Modifier.size(25.dp)
@@ -161,26 +170,41 @@ internal fun ParchmentChatScreen(
                             ) {
                                 Text(if (companion) "J" else "·", color = ParchmentPaper,
                                     style = MaterialTheme.typography.labelSmall,
-                                    fontFamily = FontFamily.Serif)
+                                    fontFamily = WorldFonts.playfairDisplay)
                             }
                             Spacer(Modifier.width(8.dp))
                         }
-                        Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = if (mine) Alignment.End else Alignment.Start
+                        ) {
                             if (!mine && !companion) {
                                 Text("系统来源：" + message.role, color = TextSecondary,
                                     style = MaterialTheme.typography.labelSmall)
                             }
-                            Box(
-                                modifier = Modifier.widthIn(max = 270.dp)
-                                    .background(
-                                        if (mine) ParchmentMineBubble else ParchmentCompanionBubble,
-                                        shape
-                                    )
-                                    .border(0.5.dp, ParchmentGold.copy(alpha = 0.18f), shape)
-                                    .padding(horizontal = 15.dp, vertical = 12.dp)
+                            BoxWithConstraints(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = if (mine) Alignment.CenterEnd
+                                    else Alignment.CenterStart
                             ) {
-                                Text(message.text, color = TextPrimary,
-                                    style = MaterialTheme.typography.bodyLarge)
+                                Box(
+                                    modifier = Modifier.widthIn(max = maxWidth * 0.88f)
+                                        .background(
+                                            if (mine) ParchmentMineBubble
+                                            else ParchmentCompanionBubble,
+                                            shape
+                                        )
+                                        .border(0.5.dp,
+                                            ParchmentGold.copy(alpha = 0.18f), shape)
+                                        .padding(horizontal = 15.dp, vertical = 12.dp)
+                                ) {
+                                    // A real conversation must never be cut at two lines.
+                                    Text(
+                                        message.text, color = TextPrimary,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        softWrap = true
+                                    )
+                                }
                             }
                             val clock = message.createdAt?.let { raw ->
                                 runCatching {
@@ -224,7 +248,10 @@ internal fun ParchmentChatScreen(
                 modifier = Modifier.weight(1f)
                     .background(ParchmentMineBubble.copy(alpha = 0.5f), shape)
                     .padding(horizontal = 16.dp, vertical = 12.dp),
-                textStyle = TextStyle(color = TextPrimary, fontSize = 14.sp),
+                textStyle = TextStyle(
+                    color = TextPrimary, fontSize = 14.sp,
+                    fontFamily = WorldFonts.inter, lineHeight = 21.sp
+                ),
                 cursorBrush = SolidColor(ParchmentInk),
                 maxLines = 4,
                 decorationBox = { innerTextField ->
@@ -232,7 +259,9 @@ internal fun ParchmentChatScreen(
                         if (draft.isEmpty()) {
                             Text("say something to me...",
                                 color = TextSecondary,
-                                style = MaterialTheme.typography.bodyMedium)
+                                fontFamily = WorldFonts.greatVibes, fontSize = 18.sp,
+                                softWrap = true, maxLines = 2,
+                                overflow = TextOverflow.Ellipsis)
                         }
                         innerTextField()
                     }
@@ -241,11 +270,12 @@ internal fun ParchmentChatScreen(
             IceButton(
                 "➤", onClick = { send() },
                 enabled = draft.isNotBlank() && !sending,
-                primary = true, modifier = Modifier.width(60.dp)
+                primary = true, modifier = Modifier.wrapContentWidth()
             )
         }
         Spacer(Modifier.height(7.dp))
         Text("消息来自真实本机与 Runtime 记录；服务器保存不等于实际已读。",
-            color = TextSecondary, style = MaterialTheme.typography.labelSmall)
+            color = TextSecondary, style = MaterialTheme.typography.labelSmall,
+            maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
