@@ -27,7 +27,10 @@ data class NotificationResult(
     val code: String,
     val notificationId: Int? = null,
     val eventId: String? = null,
-    val intentId: String? = null
+    val intentId: String? = null,
+    val postedAtMs: Long? = null,
+    val activeConfirmedAtMs: Long? = null,
+    val verificationStatus: String = "notification_unverified"
 )
 
 class NotificationAdapter(private val context: Context) {
@@ -55,6 +58,18 @@ class NotificationAdapter(private val context: Context) {
             )
         }
 
+        if (!manager.areNotificationsEnabled()) {
+            return NotificationResult(ok = false, code = "app_notifications_disabled",
+                eventId = eventId, intentId = intentId,
+                verificationStatus = "notifications_disabled")
+        }
+        if (Build.VERSION.SDK_INT >= 26 &&
+            manager.getNotificationChannel(CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE) {
+            return NotificationResult(ok = false, code = "message_channel_disabled",
+                eventId = eventId, intentId = intentId,
+                verificationStatus = "notification_channel_disabled")
+        }
+
         val notificationId = nextNotificationId()
         val avatar = createAvatarBitmap()
 
@@ -73,6 +88,14 @@ class NotificationAdapter(private val context: Context) {
                 .putExtra(
                     NotificationReplyReceiver.EXTRA_INTENT_ID,
                     intentId
+                )
+                .putExtra(
+                    NotificationOpenReceipt.EXTRA_FROM_NOTIFICATION,
+                    true
+                )
+                .putExtra(
+                    NotificationReplyReceiver.EXTRA_NOTIFICATION_ID,
+                    notificationId
                 )
                 .addFlags(
                     Intent.FLAG_ACTIVITY_SINGLE_TOP or
@@ -168,13 +191,30 @@ class NotificationAdapter(private val context: Context) {
             .build()
 
         manager.notify(notificationId, notification)
-
+        val postedAtMs = System.currentTimeMillis()
+        // getActiveNotifications confirms system-shade presence, NOT a heads-up
+        // banner, that the screen was unlocked, or that the user saw it.
+        val active = if (Build.VERSION.SDK_INT >= 23) {
+            runCatching {
+                manager.activeNotifications.any { it.id == notificationId &&
+                    it.packageName == context.packageName }
+            }.getOrNull()
+        } else null
+        val activeAtMs = if (active == true) System.currentTimeMillis() else null
+        val stage = when (active) {
+            true -> "notification_active_in_system"
+            false -> "notification_posted_active_unconfirmed"
+            null -> "notification_posted_active_unknown"
+        }
         return NotificationResult(
             ok = true,
-            code = "shown",
+            code = stage,
             notificationId = notificationId,
             eventId = eventId,
-            intentId = intentId
+            intentId = intentId,
+            postedAtMs = postedAtMs,
+            activeConfirmedAtMs = activeAtMs,
+            verificationStatus = stage
         )
     }
 
