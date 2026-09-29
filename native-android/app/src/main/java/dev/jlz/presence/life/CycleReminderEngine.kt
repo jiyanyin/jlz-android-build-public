@@ -18,12 +18,14 @@ class CycleReminderEngine(private val context: Context) {
 
         val today = LocalDate.now().toEpochDay()
         val dueSoonDay =
-            prediction.expectedStartEpochDay - 2L
+            prediction.expectedStartEpochDay - 3L
 
-        if (today == dueSoonDay) {
+        // At most one nudge per day near the estimated date; tolerant of a
+        // missed heartbeat and never declares the period actually started.
+        if (today in dueSoonDay..(prediction.expectedStartEpochDay + 1L)) {
             val key =
                 "PERIOD_DUE_SOON:" +
-                    prediction.expectedStartEpochDay
+                    prediction.expectedStartEpochDay + ":" + today
 
             if (journal.markEventOnce(key)) {
                 val detail =
