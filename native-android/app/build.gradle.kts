@@ -12,8 +12,8 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026092905
-        versionName = "0.4.4-parchment-ui-preview"
+        versionCode = 2026092906
+        versionName = "0.4.5-parchment-portraits-preview"
     }
 
     buildTypes {
