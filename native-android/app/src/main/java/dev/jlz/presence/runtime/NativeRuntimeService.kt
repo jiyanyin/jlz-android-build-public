@@ -194,6 +194,8 @@ class NativeRuntimeService : Service() {
         val cycleReminder = CycleReminderEngine(applicationContext)
 
         while (scope.isActive) {
+            // Keep on-device health reminders working when Runtime is offline.
+            runCatching { cycleReminder.evaluateToday() }
             val settings = settingsRepository.load()
             if (settings.baseUrl.isBlank() || settings.token.isBlank()) {
                 NativeClientDiagnostics.update {
@@ -208,7 +210,6 @@ class NativeRuntimeService : Service() {
 
             try {
                 val api = RuntimeApiClient(settings)
-                runCatching { cycleReminder.evaluateToday() }
 
                 val placeWeatherSnapshot =
                     runCatching { placeWeather.snapshot() }.getOrNull()
