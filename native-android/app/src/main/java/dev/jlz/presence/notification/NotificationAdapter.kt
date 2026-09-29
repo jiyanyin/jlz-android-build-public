@@ -37,6 +37,64 @@ class NotificationAdapter(private val context: Context) {
     private val manager =
         context.getSystemService(NotificationManager::class.java)
 
+    /** A local estimate, never a chat reply or a confirmed medical record. */
+    fun showCycleReminder(message: String): NotificationResult {
+        if (Build.VERSION.SDK_INT >= 26) {
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    CYCLE_CHANNEL_ID,
+                    "私人日子提醒",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "预测日期临近时的本机生活提醒"
+                    lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+                    enableVibration(true)
+                }
+            )
+        }
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(
+                context, Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) return NotificationResult(false, "notification_permission_missing")
+        if (!manager.areNotificationsEnabled()) {
+            return NotificationResult(false, "notifications_disabled")
+        }
+        if (Build.VERSION.SDK_INT >= 26 &&
+            manager.getNotificationChannel(CYCLE_CHANNEL_ID)?.importance ==
+                NotificationManager.IMPORTANCE_NONE
+        ) return NotificationResult(false, "cycle_channel_disabled")
+
+        val notificationId = nextNotificationId()
+        val openToday = PendingIntent.getActivity(
+            context,
+            notificationId,
+            Intent(context, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_DESTINATION, MainActivity.DESTINATION_TODAY)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        manager.notify(
+            notificationId,
+            NotificationCompat.Builder(context, CYCLE_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("我提醒你一个私人日子")
+                .setContentText(message)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setContentIntent(openToday)
+                .setAutoCancel(true)
+                .build()
+        )
+        return NotificationResult(
+            ok = true,
+            code = "notification_posted",
+            notificationId = notificationId,
+            postedAtMs = System.currentTimeMillis()
+        )
+    }
+
     fun showMessage(
         title: String = "我在找你",
         message: String,
@@ -358,6 +416,7 @@ class NotificationAdapter(private val context: Context) {
 
     companion object {
         const val CHANNEL_ID = "jlz_presence_messages"
+        const val CYCLE_CHANNEL_ID = "jlz_presence_cycle_reminders"
         private val idLock = Any()
     }
 }
