@@ -105,7 +105,7 @@ jobs:
           assert (src/"ui/StatusLightEditor.kt").exists()
           assert (src/"ui/LifeTodayScreen.kt").exists()
           gradle=Path("native-android/app/build.gradle.kts").read_text()
-          assert "versionCode = 2026092909" in gradle
+          assert "versionCode = 2026092910" in gradle
           print("Parchment shortcuts and source contracts: PASS")
           PY
 
