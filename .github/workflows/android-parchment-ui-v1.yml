@@ -52,7 +52,7 @@ jobs:
               path = root / 'res/drawable-nodpi' / ('jlz_'+name+'_portrait.webp')
               data = path.read_bytes()
               assert len(data) > 2000 and data[:4] == b'RIFF' and data[8:12] == b'WEBP', str(path)
-          assert not (root.parent.parent/'keystore/jlz-native-debug.keystore').exists()
+          assert not (root.parents[2]/'keystore/jlz-native-debug.keystore').exists()
           print('Welcome, portraits, icon, source-data preservation: OK')
           PY
       - name: Build debug APK
