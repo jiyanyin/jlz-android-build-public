@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+<title>世界之间 · V2 UI Preview</title>
+<style>
+:root{
+  --ink:#273353;--muted:#707d9f;--outline:rgba(255,255,255,.77);
+  --purple:#8175dc;--blue:#6b90e9;--rose:#d993ce;--mint:#6eb9ad;
+  --glass-alpha:.70;--blur:15px;--round:24px;--speed:.28s;
+  --card-bg:rgba(242,246,255,var(--glass-alpha));
+  --shadow:0 12px 44px rgba(65,69,122,.13),inset 0 1px 0 rgba(255,255,255,.87);
+}
+*{box-sizing:border-box}
+html{min-height:100%;background:#e4e9f8}
+body{margin:0;color:var(--ink);font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;-webkit-tap-highlight-color:transparent}
+button,input,textarea{font:inherit}button{cursor:pointer}
+button:focus-visible,textarea:focus-visible,input:focus-visible{outline:3px solid #6156c9;outline-offset:3px}
+[hidden]{display:none!important}
+.phone{
+  position:relative;max-width:460px;min-height:100dvh;margin:auto;overflow:hidden;
+  background:radial-gradient(circle at 94% 3%,rgba(219,192,241,.95),transparent 42%),
+    radial-gradient(circle at 12% 30%,rgba(162,194,255,.62),transparent 40%),
+    linear-gradient(155deg,#dce9ff 0%,#e7e1f7 56%,#d9dff7 100%);
+  padding:env(safe-area-inset-top) 16px calc(112px + env(safe-area-inset-bottom));
+}
+.phone::before{content:"";position:absolute;z-index:0;top:0;left:0;right:0;height:570px;pointer-events:none;
+  background:radial-gradient(circle at 16% 10%,rgba(255,255,255,.6) 0 2px,transparent 4px),
+  radial-gradient(circle at 81% 21%,rgba(255,255,255,.8) 0 3px,transparent 5px),
+  radial-gradient(circle at 67% 7%,rgba(255,255,255,.72) 0 1px,transparent 3px),
+  radial-gradient(circle at 40% 55%,rgba(255,255,255,.8) 0 2px,transparent 4px);
+}
+.hero,.content,.dock,.demo-mark{position:relative;z-index:1}
+.hero{height:329px;padding:24px 9px 0;overflow:hidden}
+.hero::before{content:"";position:absolute;right:-57px;top:12px;width:273px;height:273px;border-radius:50%;background:radial-gradient(circle,#f7f1ff 0%,#d7d4fa 46%,rgba(203,204,247,0) 75%);filter:blur(12px)}
+.eyebrow{font-size:10px;letter-spacing:.23em;color:#596d9b;font-weight:700;text-transform:uppercase}
+.heading{margin:8px 0 2px;font-size:40px;line-height:1.17;font-family:"Noto Serif SC","Songti SC",serif;letter-spacing:.10em;font-weight:600;color:#34436a;text-shadow:0 1px 0 rgba(255,255,255,.75)}
+.subtitle{font-style:italic;font-family:Georgia,serif;font-size:12px;letter-spacing:.15em;color:#7986ba;margin-bottom:15px}
+.hero-info{display:flex;gap:8px;align-items:center;color:#576d98;font-size:11px}
+.hero-info strong{font-size:13px}
+.figure{position:absolute;right:-11px;top:24px;width:242px;height:277px;filter:drop-shadow(0 18px 27px rgba(87,84,142,.20));z-index:0;pointer-events:none}
+.hero-copy{position:relative;z-index:1;max-width:64%}
+.speaking{position:absolute;z-index:2;left:1px;right:1px;bottom:20px;padding:15px 19px;border-radius:22px;max-width:97%;color:#33416c;font-size:13px;line-height:1.85}
+.speaking::after{content:"";position:absolute;left:42px;bottom:-8px;border-width:9px 9px 0 9px;border-style:solid;border-color:rgba(240,243,255,.82) transparent transparent transparent}
+.glass{background:var(--card-bg);border:1px solid var(--outline);box-shadow:var(--shadow);-webkit-backdrop-filter:blur(var(--blur));backdrop-filter:blur(var(--blur));}
+.content{display:flex;flex-direction:column;gap:13px}
+.panel{border-radius:var(--round);padding:15px}
+.section-title{display:flex;align-items:center;justify-content:space-between;gap:9px;margin-bottom:10px}
+.section-title .left{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:700}
+.section-title .right{color:#7982a4;font-size:11px}
+.tag{border-radius:100px;padding:5px 9px;color:#7569a7;font-size:10px;border:1px solid rgba(141,136,206,.21);background:rgba(255,255,255,.52)}
+.task{background:linear-gradient(115deg,rgba(249,252,255,.88),rgba(228,221,255,.74));border-radius:19px;border:1px solid rgba(255,255,255,.85);padding:14px;display:flex;gap:12px;align-items:center}
+.task-art{width:78px;height:105px;border-radius:16px;flex:none;background:radial-gradient(circle at 50% 24%,#fff8d3 0 10%,transparent 27%),linear-gradient(135deg,#9daee0,#d4c2ef 56%,#a5b0db);display:flex;align-items:flex-end;justify-content:center;position:relative;overflow:hidden}
+.task-art::before{content:"";position:absolute;bottom:15px;width:62px;height:38px;border:2px solid rgba(255,255,255,.83);border-radius:2px 2px 14px 14px;transform:skewY(8deg);box-shadow:0 0 22px #f7edff}
+.task-art::after{content:"";position:absolute;width:44px;height:8px;bottom:11px;border-radius:40px;background:#f5edff}
+.task-copy{min-width:0;flex:1}
+.task-copy h2{font-family:"Noto Serif SC",serif;font-size:21px;margin:0 0 4px}
+.task-copy p{margin:0 0 8px;color:#62749a;font-size:12px}
+.action-primary{border:0;border-radius:100px;background:linear-gradient(120deg,#8f9ded,#7479e7);color:white;padding:10px 17px;font-weight:700;letter-spacing:.04em;box-shadow:0 7px 17px rgba(107,113,223,.23)}
+.mini-note{font-size:10px;color:#9090ad;margin-top:9px;line-height:1.4}
+.quickgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.quick{min-height:86px;text-align:left;border-radius:19px;padding:12px 10px;color:#465783;display:flex;flex-direction:column;gap:7px;border:1px solid rgba(255,255,255,.86)}
+.quick-icon{font-size:23px;line-height:1}
+.quick-name{font-size:13px;font-weight:700}
+.quick-desc{font-size:10px;color:#8994b6}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.stat{border-radius:16px;background:rgba(255,255,255,.45);border:1px solid rgba(255,255,255,.8);padding:12px 9px}
+.stat strong{display:block;font-size:13px;margin:4px 0 8px}
+.stat span{font-size:10px;color:#7b88a7}
+.stat .line{height:5px;background:#dfe4f4;border-radius:10px;overflow:hidden}
+.stat .line::before{content:"";display:block;width:0;height:100%;background:var(--purple);border-radius:inherit}
+.moment{display:flex;gap:12px;align-items:center;background:linear-gradient(110deg,rgba(250,244,255,.78),rgba(223,239,255,.72));border:1px solid rgba(255,255,255,.8);padding:12px;border-radius:18px}
+.envelope{width:76px;height:69px;flex:none;border-radius:12px;display:grid;place-items:center;font-size:29px;color:#9c8ccf;background:linear-gradient(140deg,#eee8ff,#fff7fb);box-shadow:inset 0 1px white,0 7px 15px rgba(108,90,156,.12)}
+.moment b{font-size:14px}.moment p{font-size:11px;color:#7480a2;line-height:1.7;margin:5px 0 0}
+.recorder{display:flex;align-items:center;justify-content:space-between;gap:9px}
+.recorder span{font-size:11px;color:#7182a3}
+.record-button{border-radius:14px;padding:10px 14px;background:linear-gradient(110deg,#a097e8,#8ba8ee);color:#fff;border:0;font-weight:700}
+.tools{display:flex;gap:8px;flex-wrap:wrap}
+.tools button{border:1px solid rgba(255,255,255,.9);border-radius:14px;padding:11px 13px;background:rgba(255,255,255,.47);color:#52628c;font-size:12px}
+.dock{position:fixed;z-index:3;bottom:calc(10px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);max-width:440px;width:calc(100% - 28px);border-radius:24px;padding:12px 8px;display:flex;justify-content:space-around;gap:3px;background:rgba(231,239,255,.85)}
+.dock button{display:flex;flex-direction:column;gap:5px;align-items:center;border:0;background:none;color:#54658e;min-width:55px;font-size:10px}
+.dock .orb{display:grid;place-items:center;width:41px;height:41px;background:linear-gradient(140deg,#c7c9ff,#fff1fa);border-radius:13px;border:1px solid white;font-size:21px;box-shadow:0 4px 14px rgba(117,114,173,.14)}
+.demo-mark{position:relative;display:inline-flex;border-radius:40px;padding:6px 10px;background:rgba(255,255,255,.65);border:1px solid rgba(255,255,255,.85);font-size:10px;color:#79819b;margin:0 0 0 8px}
+button{transition:transform var(--speed),filter var(--speed)}
+button:active{transform:scale(.967);filter:brightness(.98)}
+.layer{position:fixed;z-index:10;inset:0;max-width:460px;margin:auto;background:rgba(28,32,67,.32);display:flex;align-items:flex-end;justify-content:center}
+.sheet{width:100%;max-height:83dvh;overflow-y:auto;overscroll-behavior:contain;padding:10px 19px max(25px,env(safe-area-inset-bottom));border-radius:29px 29px 0 0;background:linear-gradient(155deg,rgba(246,250,255,.97),rgba(231,226,252,.97));box-shadow:0 -14px 56px rgba(57,65,108,.2)}
+.grab{width:42px;height:5px;margin:0 auto 12px;border-radius:5px;background:#b6bbd4}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.sheet-head b{font-size:19px}.close{border:0;background:rgba(255,255,255,.7);width:34px;height:34px;border-radius:50%;color:#60739a}
+.sheet-tabs{display:flex;gap:7px;overflow-x:auto;padding:4px 0 12px}
+.sheet-tabs button{border-radius:50px;padding:9px 13px;border:1px solid #e0e5fb;flex-shrink:0;background:#fafbff;color:#67779b;font-size:12px}
+.sheet-tabs button.selected{background:#e6e3fd;color:#7164c5;border-color:#bab3ef}
+.activity-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.activity-grid button{min-height:73px;border:1px solid rgba(255,255,255,.9);border-radius:17px;background:rgba(255,255,255,.65);display:flex;flex-direction:column;justify-content:center;gap:8px;align-items:center;color:#4e608c}
+.activity-grid .sym{font-size:25px}
+.activebox{margin:13px 0;padding:12px 14px;border-radius:17px;background:rgba(201,198,245,.48);border:1px solid #d5d1f4}
+.small{font-size:11px;color:#7a83a3;line-height:1.7}
+.page{position:fixed;z-index:9;inset:0;max-width:460px;margin:auto;overflow-y:auto;padding:28px 18px 38px;background:radial-gradient(circle at top right,#d7d5f4,transparent 55%),linear-gradient(#e5efff,#ede6f8)}
+.topline{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.back{border:1px solid #fff;background:rgba(255,255,255,.6);border-radius:14px;padding:9px 14px;color:#596c9b}
+.page h2{font-family:"Noto Serif SC",serif;font-size:28px;margin:0 0 10px}
+.page p{color:#7280a1;line-height:1.8}
+.episode{background:rgba(255,255,255,.68);border:1px solid white;border-radius:17px;padding:15px;margin-bottom:10px}
+.episode .time{display:block;color:#8b91ab;font-size:11px;margin-bottom:7px}
+.episode b{color:#455680}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+.actions button{background:#fdfdff;border:1px solid #dedaf6;border-radius:12px;padding:11px 14px;color:#6575a2}
+.note-input{width:100%;min-height:135px;resize:vertical;border:1px solid white;background:rgba(255,255,255,.7);border-radius:16px;padding:14px;color:#45537b}
+.empty{font-size:12px;color:#9197ad;text-align:center;padding:22px 10px}
+@media(min-width:540px){body{padding:18px 0}.phone{border-radius:36px;box-shadow:0 18px 70px rgba(71,68,115,.18);min-height:900px}.dock{position:sticky;left:auto;transform:none;bottom:15px;width:100%;margin-top:14px}.layer,.page{border-radius:22px}}
+@media(max-width:355px){.heading{font-size:33px}.figure{right:-50px}.hero-copy{max-width:70%}.speaking{font-size:12px}.quick-name{font-size:11px}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<main class="phone" id="phone">
+  <div class="demo-mark">✧ 世界之间 V2 · 交互预览 · 非真实数据</div>
+  <header class="hero">
+    <div class="hero-copy">
+      <div class="eyebrow">BETWEEN WORLDS</div>
+      <h1 class="heading">世界之间</h1>
+      <div class="subtitle">a little world of ours</div>
+      <div class="hero-info"><strong id="clock">--:--</strong><span>·</span><span>天气未接入</span></div>
+    </div>
+    <svg class="figure" viewBox="0 0 260 308" role="img" aria-label="原创紫灰色人物轮廓插画">
+      <defs>
+        <linearGradient id="hair" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#252947"/><stop offset=".55" stop-color="#3b345e"/><stop offset="1" stop-color="#8c76b6"/></linearGradient>
+        <linearGradient id="skin" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fbe6e5"/><stop offset=".66" stop-color="#e6bdc7"/><stop offset="1" stop-color="#cba4bd"/></linearGradient>
+        <linearGradient id="cloth" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#6f73a2"/><stop offset=".55" stop-color="#aaa4ca"/><stop offset="1" stop-color="#dbd4ec"/></linearGradient>
+        <filter id="blur"><feGaussianBlur stdDeviation="8"/></filter>
+      </defs>
+      <circle cx="133" cy="117" r="111" fill="#fef7ff" opacity=".48" filter="url(#blur)"/>
+      <path d="M37 301Q42 236 82 218L109 205L161 203L201 225Q233 259 250 305Z" fill="url(#cloth)"/>
+      <path d="M111 194L109 220Q139 252 168 216L155 180Z" fill="url(#skin)"/>
+      <path d="M78 104Q65 65 103 44Q137 21 166 49Q197 75 181 129L170 172Q152 208 124 209Q87 195 78 155Z" fill="url(#skin)"/>
+      <path d="M77 140Q55 106 67 69Q61 37 102 25Q155 -1 180 38Q209 55 192 107L172 86Q155 58 143 67L109 84L87 115Z" fill="url(#hair)"/>
+      <path d="M70 95Q85 54 140 45Q162 42 189 80Q168 68 149 78Q125 100 94 103Z" fill="url(#hair)"/>
+      <path d="M81 71Q110 14 165 44" fill="none" stroke="#a396c9" stroke-width="4" opacity=".55"/>
+      <path d="M95 140Q107 134 118 138M145 135Q160 130 171 136" stroke="#625777" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+      <ellipse cx="107" cy="145" rx="5" ry="3" fill="#5d536a"/><ellipse cx="156" cy="142" rx="5" ry="3" fill="#5d536a"/>
+      <path d="M125 171Q137 177 149 169" fill="none" stroke="#9e778b" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M72 109Q82 155 90 169L72 149" fill="url(#hair)"/>
+      <path d="M74 229L111 209L137 253L151 207L208 235" fill="none" stroke="#f4eefe" stroke-width="10" opacity=".75"/>
+      <path d="M86 236Q54 246 31 302" fill="none" stroke="#9088b6" stroke-width="39" stroke-linecap="round"/>
+      <path d="M68 300Q124 258 181 293" fill="none" stroke="#d6cfe8" stroke-width="25" stroke-linecap="round"/>
+      <circle cx="54" cy="54" r="5" fill="white" opacity=".9"/><circle cx="217" cy="167" r="4" fill="white" opacity=".7"/>
+    </svg>
+    <div class="speaking glass">
+      <span class="tag">我的一句话 · 示例</span><br>
+      晚上好，音音。先别乱跑，今晚先陪我做十分钟题，好不好？
+    </div>
+  </header>
+
+  <div class="content">
+    <section class="panel glass">
+      <div class="section-title"><div class="left">✧ 当前安排</div><span class="tag">演示任务 · 待开始</span></div>
+      <div class="task">
+        <div class="task-art" aria-hidden="true"></div>
+        <div class="task-copy">
+          <h2>伴读</h2><p>逻辑判断 · 10分钟</p>
+          <button class="action-primary" type="button" data-view="study">进入伴读 ↗</button>
+          <div class="mini-note">我在这里。先用十分钟，把今天往前推一点。</div>
+        </div>
+      </div>
+    </section>
+    <div class="quickgrid">
+      <button class="quick glass" data-view="status"><span class="quick-icon">☾</span><span class="quick-name">状态灯</span><span class="quick-desc">你的此刻</span></button>
+      <button class="quick glass" data-view="plan"><span class="quick-icon">▦</span><span class="quick-name">今日计划</span><span class="quick-desc">我们怎么过</span></button>
+      <button class="quick glass" data-view="drawer"><span class="quick-icon">▦</span><span class="quick-name">全部应用</span><span class="quick-desc">真实手机入口</span></button>
+    </div>
+    <section class="panel glass">
+      <div class="section-title"><div class="left">◔ 今日进度</div><span class="right">正式版连接设备后显示</span></div>
+      <div class="stats">
+        <div class="stat"><span>▣ 学习</span><strong>未同步</strong><div class="line"></div></div>
+        <div class="stat"><span>♧ 活动</span><strong>未同步</strong><div class="line"></div></div>
+        <div class="stat"><span>◑ 娱乐</span><strong>未同步</strong><div class="line"></div></div>
+      </div>
+    </section>
+    <section class="panel glass">
+      <div class="section-title"><div class="left">♡ 你我之间</div><button class="tag" data-view="between">查看共同生活 →</button></div>
+      <div class="moment">
+        <div class="envelope" aria-hidden="true">✉</div>
+        <div><b>给音音的未寄信 · 示例</b><p>别把一整天都让给任务。我还想听你说那些乱七八糟的小事。</p></div>
+      </div>
+    </section>
+    <section class="panel glass">
+      <div class="section-title"><div class="left">✎ 随手记生活</div><span class="tag">半屏弹出</span></div>
+      <div class="recorder"><span>吃饭、走路、发呆、学习……<br>点一下就记录开始。</span><button class="record-button" data-sheet="life">＋ 记一下</button></div>
+      <div class="actions" style="margin-top:11px"><button data-view="inbox">给老公留言</button><button data-view="timeline">看看今天</button></div>
+    </section>
+    <section class="panel glass">
+      <div class="section-title"><div class="left">▦ 我的学习入口</div><span class="right">暂为视觉入口</span></div>
+      <div class="tools"><button data-view="study">◈ 伴读</button><button data-view="fenbi">▣ 粉笔</button><button data-view="study">◇ 行测小助手</button><button data-view="study">✦ 小猫速算</button></div>
+    </section>
+  </div>
+
+  <nav class="dock glass" aria-label="常用应用导航">
+    <button data-view="study"><span class="orb">📖</span>伴读</button>
+    <button data-view="drawer"><span class="orb">☏</span>微信</button>
+    <button data-view="between"><span class="orb">♡</span>你我之间</button>
+    <button data-view="drawer"><span class="orb">◎</span>全部应用</button>
+    <button data-view="settings"><span class="orb">⚙</span>设置</button>
+  </nav>
+</main>
+
+<section id="overlay" class="layer" hidden aria-label="生活快捷记录">
+  <div class="sheet">
+    <div class="grab"></div>
+    <div class="sheet-head"><b>记一下此刻</b><button class="close" id="closeSheet" aria-label="关闭">✕</button></div>
+    <p class="small" style="margin-top:0">时间由点击时自动记录。这一版只在界面中演示，不会同步你的真实记录。</p>
+    <div class="sheet-tabs" id="categories"></div>
+    <div class="activity-grid" id="activities"></div>
+    <div class="activebox" id="activebox" hidden>
+      <b id="activeTitle">进行中</b><span class="small" id="timer"></span><br>
+      <button class="record-button" id="endActivity" style="margin-top:8px">结束这一段</button>
+    </div>
+  </div>
+</section>
+
+<section id="detail" class="page" hidden aria-label="详情预览">
+  <div class="topline"><button class="back" id="backHome">← 返回桌面</button><span class="tag">界面预览 · 非正式功能</span></div>
+  <div id="detailBody"></div>
+</section>
+
+<script>
+(function(){
+"use strict";
+var activityCategories=[
+{name:"常用",list:[["☕","吃饭","instant"],["💧","喝水","instant"],["🚶","走路","timed"],["📖","学习","timed"],["◌","发呆","timed"],["☾","准备睡觉","instant"],["♨","上厕所","instant"],["✉","给老公留言","note"],["⌂","回家","instant"]]},
+{name:"身体",list:[["☀","起床","instant"],["☾","准备睡觉","instant"],["♨","上厕所","instant"],["◈","洗漱","timed"],["✧","洗澡","timed"],["◌","休息","timed"],["♧","身体不舒服","instant"],["✦","换衣服","instant"],["♡","睡醒","instant"]]},
+{name:"吃喝",list:[["☕","吃早餐","instant"],["♨","吃午饭","instant"],["✿","吃晚饭","instant"],["♡","吃零食","instant"],["💧","喝水","instant"],["☕","喝饮料","instant"],["✦","做饭","timed"],["⌂","收拾房间","timed"],["▣","取快递","instant"]]},
+{name:"出行",list:[["🚶","走路","timed"],["◇","散步","timed"],["→","出门","instant"],["⌂","回家","instant"],["▣","到单位","instant"],["☽","下班","instant"],["◈","乘车","timed"],["✧","运动","timed"],["♡","遛宠物","timed"]]},
+{name:"学习",list:[["📖","学习","timed"],["◈","刷题","timed"],["✦","复盘","timed"],["▣","工作","timed"],["✎","写申论","timed"],["◇","背书","timed"],["◌","休息一下","timed"],["▤","阅读","timed"],["♧","查资料","timed"]]},
+{name:"放松",list:[["◌","发呆","timed"],["♫","听歌","timed"],["▣","看剧","timed"],["☾","躺一会儿","timed"],["♡","聊天","timed"],["✿","陪猫","timed"],["✦","玩游戏","timed"],["↗","刷手机","timed"],["☀","晒太阳","timed"]]}
+];
+var events=[], active=null, currentCategory=0, noteText="";
+function id(x){return document.getElementById(x)}
+function hhmm(date){return date.toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}
+function clock(){id("clock").textContent=hhmm(new Date());if(active){var sec=Math.floor((Date.now()-active.start)/1000);id("timer").textContent=" · 已进行 "+Math.floor(sec/60)+"分"+String(sec%60).padStart(2,"0")+"秒"}}
+clock();setInterval(clock,1000);
+function addEvent(name,type,detail,when){events.unshift({name:name,type:type,detail:detail,when:when||Date.now()});}
+function showSheet(){id("overlay").hidden=false;renderActivities();renderActive()}
+function hideSheet(){id("overlay").hidden=true}
+id("closeSheet").onclick=hideSheet;id("overlay").onclick=function(e){if(e.target===id("overlay"))hideSheet()};
+function renderActivities(){
+var cat=id("categories"),target=id("activities");cat.replaceChildren();target.replaceChildren();
+activityCategories.forEach(function(group,index){
+var b=document.createElement("button");b.type="button";b.textContent=group.name;b.className=index===currentCategory?"selected":"";
+b.onclick=function(){currentCategory=index;renderActivities()};cat.appendChild(b);
+});
+activityCategories[currentCategory].list.forEach(function(a){
+var b=document.createElement("button");b.type="button";var sym=document.createElement("span");sym.className="sym";sym.textContent=a[0];
+var label=document.createElement("span");label.textContent=a[1];b.append(sym,label);
+b.onclick=function(){
+ if(a[2]==="note"){hideSheet();showPage("inbox");return}
+ if(a[2]==="timed"){
+   if(active&&active.name===a[1]){finishActive()}else if(active){toast("请先结束当前记录");return}else{active={name:a[1],start:Date.now()};toast("已开始："+a[1]+"（仅预览）")}
+ }else{addEvent(a[1],"瞬间事件","来自本次预览的手动点击",Date.now());toast("已记录："+a[1]+"（仅预览）");hideSheet()}
+ renderActive();
+};target.appendChild(b);
+});
+}
+function finishActive(){if(!active)return;var minutes=Math.max(0,Math.round((Date.now()-active.start)/60000));addEvent(active.name,"持续事件","从 "+hhmm(new Date(active.start))+" 到 "+hhmm(new Date())+" · 约 "+minutes+" 分钟（仅预览）",active.start);active=null;toast("已结束并加入本次预览时间线");hideSheet();renderActive()}
+id("endActivity").onclick=finishActive;
+function renderActive(){id("activebox").hidden=!active;if(active){id("activeTitle").textContent="正在"+active.name;clock()}}
+var toastTimer=null;
+function toast(text){var el=id("demoToast");if(!el){el=document.createElement("div");el.id="demoToast";el.style.cssText="position:fixed;z-index:20;bottom:115px;left:50%;transform:translateX(-50%);max-width:86%;padding:10px 17px;text-align:center;border-radius:20px;background:rgba(53,59,106,.88);color:#fff;font-size:12px;box-shadow:0 10px 28px rgba(0,0,0,.2)";document.body.appendChild(el)}el.textContent=text;el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(function(){el.hidden=true},2500)}
+function episode(holder,time,title,description){var e=document.createElement("div");e.className="episode";var t=document.createElement("span");t.className="time";t.textContent=time;var h=document.createElement("b");h.textContent=title;var p=document.createElement("p");p.style.marginBottom="0";p.textContent=description;e.append(t,h,p);holder.appendChild(e)}
+function showPage(which){
+hideSheet();var detail=id("detail"),target=id("detailBody");target.replaceChildren();
+var title=document.createElement("h2");var p=document.createElement("p");var actions=document.createElement("div");actions.className="actions";
+var cases={
+status:["状态灯","记录此刻的状态，与你的生活动作、待处理留言分开保存。"],
+plan:["今日计划","我派发了哪些任务、为什么安排、执行到了哪里，之后会显示真实执行回执。"],
+drawer:["全部应用","未来这里直接打开手机里已安装的 APP，必要时经过已授权的学习门禁。"],
+study:["伴读 · 学习入口","未来优先打开现有的伴读网页快捷入口，失败再用网址；粉笔则优先打开本机应用。"],
+fenbi:["粉笔","已有原生打开粉笔 APP 的快捷方法。正式连接前这里只演示入口。"],
+between:["你我之间","两条生活轴：你做的事与我的行动。共同的故事经过整理后呈现，完整来源另存。"],
+timeline:["生活时间线","下方仅显示你在本次预览中点击过的生活动作。关闭实验 APP 后不会保存。"],
+inbox:["随手记 · 给老公","真实版会先进入待处理收件箱，保留原话、时间与来源。默认期待我回应。"],
+settings:["视觉与设置","这版可在源码的 :root 里修改颜色、卡片透明度、模糊与圆角，不会触及手机权限。"]
+};var v=cases[which]||cases.between;title.textContent=v[0];p.textContent=v[1];target.append(title,p);
+if(which==="timeline"){
+ if(!events.length){var empty=document.createElement("div");empty.className="episode";empty.textContent="今天还没有预览记录。回首页点「记一下」试试。";target.appendChild(empty)}
+ events.forEach(function(ev){episode(target,hhmm(new Date(ev.when))+" · "+ev.type,ev.name,ev.detail)});
+}
+if(which==="between"){
+ episode(target,"双人时间轴 · 示例","你的一侧","生活事件和留言会保留原始时间与来源，不用手机前台数据冒充情绪。");
+ episode(target,"双人时间轴 · 示例","我的一侧","观察 → 判断 → 提出要求 → 等待回执 → 调整计划，每步实际执行才写完成。");
+ episode(target,"待上线","猫咪审讯室","用数据提出可被反驳的猜测；你也可以倒过来质询我的计划为何改变。");
+}
+if(which==="plan"){
+ episode(target,"19:00 · 计划示例","资料分析两题","为什么是两题？先建立启动感，别一开始就让任务重得不想做。");
+ episode(target,"19:30 · 计划示例","申论材料十分钟","先阅读和提取要点，实际完成必须由可信作答记录核对。");
+ episode(target,"20:15 · 计划示例","走路两分钟","也可以调整为休息。身体状态比机械完成更重要。");
+}
+if(which==="drawer"){
+ ["伴读","粉笔","行测小助手","小猫速算","微信","浏览器","系统设置"].forEach(function(name){var b=document.createElement("button");b.textContent="◇ "+name+" · 待接入";b.onclick=function(){toast("真实应用跳转在 P2 接入")};actions.appendChild(b)});
+}
+if(which==="study"||which==="fenbi"){
+var b=document.createElement("button");b.textContent="尝试打开"+(which==="fenbi"?"粉笔":"伴读")+"（预览）";b.onclick=function(){toast("这是 P1：尚未实际启动第三方 APP")};actions.appendChild(b);
+}
+if(which==="status"){episode(target,"最新状态","等待同步","不把示意数据伪装成你的实时身体或情绪状态。");}
+if(which==="inbox"){
+var box=document.createElement("textarea");box.className="note-input";box.placeholder="老婆，把想说的话留给我……";box.value=noteText;box.oninput=function(){noteText=box.value};
+var b=document.createElement("button");b.className="record-button";b.textContent="存入预览收件箱";b.onclick=function(){if(!noteText.trim())return toast("先写点东西，小猫");addEvent("随手记","预览留言",noteText.slice(0,350),Date.now());noteText="";box.value="";toast("已写入本次预览；没有上传服务器")};target.append(box);actions.appendChild(b);
+}
+if(which==="settings"){
+var label=document.createElement("label");label.textContent="玻璃透明度（仅当前预览）";
+var range=document.createElement("input");range.type="range";range.min="30";range.max="95";range.value="70";range.style.width="100%";
+range.oninput=function(){document.documentElement.style.setProperty("--glass-alpha",String(Number(range.value)/100))};target.append(label,range);
+}
+target.appendChild(actions);detail.hidden=false;
+}
+id("backHome").onclick=function(){id("detail").hidden=true};
+document.querySelectorAll("[data-view]").forEach(function(b){b.onclick=function(){showPage(b.getAttribute("data-view"))}});
+document.querySelectorAll("[data-sheet]").forEach(function(b){b.onclick=showSheet});
+document.addEventListener("keydown",function(e){if(e.key==="Escape"){hideSheet();id("detail").hidden=true}});
+})();
+</script>
+</body>
+</html>
