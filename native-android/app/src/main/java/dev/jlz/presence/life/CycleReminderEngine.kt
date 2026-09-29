@@ -46,7 +46,7 @@ class CycleReminderEngine(private val context: Context) {
                     .showMessage(
                         title = "我提前提醒你一下",
                         message =
-                            "生理期预计还有两天左右。只是预计，我先替你记着。"
+                            "生理期预计就在这几天。只是预计，不代表已经开始。"
                     )
             }
         }
