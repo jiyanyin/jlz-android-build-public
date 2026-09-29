@@ -11,8 +11,8 @@ android {
         applicationId = "dev.jlz.worldbetween.uilab"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-ui-preview"
+        versionCode = 2026092901
+        versionName = "0.2.0-v2-ui-preview"
     }
     buildTypes {
         release {
