@@ -168,7 +168,12 @@ class FloatingPresenceService : Service() {
         }
         if (Settings.canDrawOverlays(this)) {
             if (panel == null) attachBubble()
-            avatar?.setMood(idleMood())
+            // Manual Home "show" revives even an indefinitely suspended avatar.
+            // Background behavior signals must never silently unsuspend it.
+            if (intent?.getBooleanExtra(EXTRA_RESUME_SUSPENSION, false) == true && isSuspended()) {
+                resumeAvatar("我回来了。")
+            }
+            if (!isSuspended()) avatar?.setMood(idleMood())
             renderStatus()
             if (intent?.getBooleanExtra(EXTRA_ATTENTION_NUDGE, false) == true) {
                 showTransient(staticMessage, 8_000L)
@@ -464,8 +469,8 @@ class FloatingPresenceService : Service() {
                     ) {
                         when {
                             noteOpen -> closeNote()
-                            System.currentTimeMillis() - downAtMs >= 520L -> toggleMenu()
                             isSuspended() -> resumeAvatar("手动恢复")
+                            System.currentTimeMillis() - downAtMs >= 520L -> toggleMenu()
                             edgeCollapsed -> setEdgeCollapsed(false)
                             else -> handlePoke()
                         }
@@ -514,7 +519,7 @@ class FloatingPresenceService : Service() {
     }
 
     private fun applyDecision(decision: AvatarBehaviorDecision) {
-        if (decision.proactive && (isSuspended() || System.currentTimeMillis() < quietUntilMs)) return
+        if (isSuspended() || (decision.proactive && System.currentTimeMillis() < quietUntilMs)) return
         avatar?.setState(decision.state, decision.eventKey, holdMs = 6_000L, force = !decision.proactive)
         showPhrase(decision.tags, decision.eventKey, decision.state, decision.proactive, decision.choices)
         if (decision.moveEdge) moveToOtherEdge()
@@ -536,6 +541,7 @@ class FloatingPresenceService : Service() {
 
     private fun showChoices(labels: List<String>) {
         val row = choiceRow ?: return
+        if (isSuspended() || edgeCollapsed) { row.visibility = View.GONE; return }
         row.removeAllViews()
         if (labels.isEmpty()) { row.visibility = View.GONE; return }
         labels.take(3).forEach { label ->
@@ -587,6 +593,14 @@ class FloatingPresenceService : Service() {
     }
 
     private fun suspendAvatar(durationMs: Long, indefinitely: Boolean) {
+        // A suspended character leaves only its small, dimmed avatar,
+        // never an orphaned speech bubble, choices, menu or input form.
+        if (noteOpen) closeNote()
+        closeMenu()
+        transientUntilMs = 0L
+        status?.text = ""
+        status?.visibility = View.GONE
+        choiceRow?.visibility = View.GONE
         suspendedIndefinitely = indefinitely
         suspendedUntilMs = if (indefinitely) Long.MAX_VALUE else System.currentTimeMillis() + durationMs
         avatarPrefs.edit().putLong("suspended_until", suspendedUntilMs)
@@ -595,8 +609,7 @@ class FloatingPresenceService : Service() {
         avatar?.setEdgeCollapsed(true)
         avatar?.alpha = 0.58f
         avatar?.setState(QAvatarState.SUSPENDED, "manual_suspend", force = true)
-        showTransient(if (indefinitely) "挂起了 · 点我恢复" else "我先安静一会儿 · 点我可提前叫醒", 5_000L)
-        closeMenu()
+        requestLayout()
     }
 
     private fun isSuspended(): Boolean = suspendedIndefinitely || System.currentTimeMillis() < suspendedUntilMs
@@ -666,7 +679,7 @@ class FloatingPresenceService : Service() {
     }
 
     private fun toggleMenu() {
-        if (working) return
+        if (working || isSuspended()) return
         expanded = !expanded
         menu?.visibility = if (expanded) View.VISIBLE else View.GONE
         renderStatus()
@@ -728,6 +741,12 @@ class FloatingPresenceService : Service() {
 
     private fun renderStatus() {
         val hint = status ?: return
+        if (isSuspended() || edgeCollapsed) {
+            hint.text = ""
+            hint.visibility = View.GONE
+            choiceRow?.visibility = View.GONE
+            return
+        }
         if (System.currentTimeMillis() < transientUntilMs) return
         hint.text = when {
             isSuspended() -> "挂起中 · 点我恢复"
@@ -747,6 +766,12 @@ class FloatingPresenceService : Service() {
         durationMs: Long = 2_800L,
         keepChoices: Boolean = false
     ) {
+        if (isSuspended() || edgeCollapsed) {
+            status?.text = ""
+            status?.visibility = View.GONE
+            choiceRow?.visibility = View.GONE
+            return
+        }
         if (!keepChoices) choiceRow?.visibility = View.GONE
         status?.text = message
         status?.visibility = View.VISIBLE
@@ -948,8 +973,10 @@ class FloatingPresenceService : Service() {
             val live = liveService
             if (live != null) {
                 live.scope.launch(Dispatchers.Main.immediate) {
-                    live.avatar?.react("watch", live.idleMood())
-                    live.showTransient(message.take(80), 8_000L)
+                    if (!live.isSuspended()) {
+                        live.avatar?.react("watch", live.idleMood())
+                        live.showTransient(message.take(80), 8_000L)
+                    }
                 }
                 return true
             }
@@ -1030,6 +1057,7 @@ class FloatingPresenceService : Service() {
         private const val EXTRA_MESSAGE = "message"
         private const val EXTRA_MODE = "mode"
         private const val EXTRA_ATTENTION_NUDGE = "attention_nudge"
+        private const val EXTRA_RESUME_SUSPENSION = "restore_avatar_on_manual_show"
         private const val EXTRA_BEHAVIOR_SIGNAL = "avatar_behavior_signal"
         private const val EXTRA_SOURCE_PACKAGE = "avatar_source_package"
         private const val EXTRA_ELAPSED_MS = "avatar_elapsed_ms"
@@ -1037,7 +1065,8 @@ class FloatingPresenceService : Service() {
         fun start(
             context: Context,
             message: String = "",
-            mode: FloatingPresenceMode = FloatingPresenceMode.LIFE
+            mode: FloatingPresenceMode = FloatingPresenceMode.LIFE,
+            restoreSuspended: Boolean = false
         ): Boolean {
             if (!Settings.canDrawOverlays(context)) return false
             val resolvedMessage = message.ifBlank {
@@ -1050,6 +1079,7 @@ class FloatingPresenceService : Service() {
             val intent = Intent(context, FloatingPresenceService::class.java)
                 .putExtra(EXTRA_MESSAGE, resolvedMessage)
                 .putExtra(EXTRA_MODE, mode.name)
+                .putExtra(EXTRA_RESUME_SUSPENSION, restoreSuspended)
             CoroutineScope(Dispatchers.IO).launch {
                 PresenceDevicePreferencesRepository(context.applicationContext)
                     .setOverlayState(true, mode.name, resolvedMessage)
