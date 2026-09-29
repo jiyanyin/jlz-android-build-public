@@ -1,0 +1,44 @@
+/* World Between / SullyOS visual-only overlay.
+   Original SullyOS is fetched at pinned revision by CI, not vendored here.
+   Cherry Blossom Pink #FFEBF7 and Dusty Blue #AFD1EF, softened one step. */
+:root {
+  --jlz-pink: #fff2fa;
+  --jlz-blue: #cfe6f8;
+  --jlz-cream: #fffdfd;
+  --jlz-lavender: #f1eefa;
+  --jlz-ink: #526e86;
+  --primary-hue: 208;
+  --primary-sat: 56%;
+  --primary-lightness: 77%;
+}
+html, body, #root {
+  background: linear-gradient(180deg, #fff2fa 0%, #fff9fd 35%, #eaf5fd 69%, #cfe6f8 100%) !important;
+}
+body { color: var(--jlz-ink); }
+/* Preserve the actual SullyOS layout, but replace only its backdrop. */
+#root .absolute.inset-0.bg-cover.bg-center {
+  background-image: linear-gradient(180deg, #fff2fa 0%, #fffafd 37%, #eaf5fd 69%, #cfe6f8 100%) !important;
+  filter: none !important;
+}
+.launcher-desktop { color: var(--jlz-ink) !important; }
+.launcher-desktop button,
+.launcher-desktop .launcher-page,
+.launcher-desktop .launcher-page span {
+  color: var(--jlz-ink) !important;
+  text-shadow: none !important;
+}
+.launcher-desktop button > div[class*="rounded"],
+.launcher-desktop .launcher-page [class*="bg-white/25"],
+.launcher-desktop .launcher-page [class*="bg-white/30"],
+.launcher-desktop .launcher-page [class*="bg-white/40"],
+.launcher-desktop [class*="backdrop-blur"] {
+  background: rgba(255, 255, 255, 0.49) !important;
+  border-color: rgba(255, 255, 255, 0.74) !important;
+  box-shadow: 0 9px 30px rgba(127, 164, 200, 0.12), inset 0 1px 0 rgba(255,255,255,.75) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(1.05);
+  backdrop-filter: blur(14px) saturate(1.05);
+}
+.launcher-desktop button:active { transform: scale(.95); }
+@media (prefers-reduced-motion: reduce) {
+  .launcher-desktop * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
