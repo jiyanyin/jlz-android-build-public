@@ -145,7 +145,7 @@ class PendingScreenshotQueue(private val context: Context) {
                 originPackage = sourcePackage,
                 studySessionId = studySessionId,
                 mode = when {
-                    origin.startsWith("automatic_app_") -> "APP"
+                    origin.startsWith("automatic_app_") || origin.startsWith("smart_capture_") -> "APP"
                     origin == "manual_q" -> "MANUAL"
                     origin == "official_gpt_request" -> "RUNTIME"
                     else -> "CAPTURE"
@@ -158,6 +158,43 @@ class PendingScreenshotQueue(private val context: Context) {
             stage.delete()
             if (!photo.isFile) metadata.delete()
         }
+    }
+
+    // A network timeout can occur after Runtime has persisted the image.
+    // Reconcile using the ORIGINAL UUID; never create a new screenshot.
+    private fun remoteCapture(api: RuntimeApiClient, eventId: String): JSONObject? {
+        val index = api.captureIndex(limit = 100)
+        for (i in 0 until index.length()) {
+            val entry = index.optJSONObject(i) ?: continue
+            if (entry.optString("event_id") == eventId &&
+                entry.optBoolean("available", false) &&
+                entry.optString("filename").isNotBlank()) {
+                return entry
+            }
+        }
+        return null
+    }
+
+    private fun acceptRemoteUpload(
+        photo: File, eventId: String, metadata: JSONObject, filename: String
+    ): SendResult {
+        val lifecycle = metadata.optJSONObject("lifecycle") ?: JSONObject()
+        val confirmedAt = System.currentTimeMillis()
+        lifecycle.put("uploaded_at_ms", confirmedAt)
+            .put("server_received_at_ms", confirmedAt)
+        metadata.put("state", "server_received")
+            .put("remote_filename", filename)
+            .put("next_retry_at_ms", 0L)
+            .put("last_error_stage", JSONObject.NULL)
+            .put("lifecycle", lifecycle)
+        writeMeta(eventId, metadata)
+        val uploaded = File(root, eventId + ".uploaded")
+        check(photo.renameTo(uploaded)) {
+            "capture_local_uploaded_transition_failed"
+        }
+        journal.updateDelivery(eventId, "upload_confirmed", filename,
+            detail = "server_received; GPT_fetch_and_review_not_yet_confirmed")
+        return SendResult(true, eventId, filename)
     }
 
     /** Reuses the event UUID and original study tag on every retry. */
@@ -213,24 +250,22 @@ class PendingScreenshotQueue(private val context: Context) {
                         filename.isNotBlank()) {
                         "capture_upload_ack_unconfirmed"
                     }
-                    val confirmedAt = System.currentTimeMillis()
-                    lifecycle.put("uploaded_at_ms", confirmedAt)
-                        .put("server_received_at_ms", confirmedAt)
-                    metadata.put("state", "server_received")
-                        .put("remote_filename", filename)
-                        .put("next_retry_at_ms", 0L)
-                        .put("last_error_stage", JSONObject.NULL)
-                        .put("lifecycle", lifecycle)
-                    writeMeta(eventId, metadata)
-                    journal.updateDelivery(
-                        eventId, "upload_confirmed", filename,
-                        detail = "server_received; GPT_fetch_and_review_not_yet_confirmed"
-                    )
-                    check(photo.renameTo(File(root, "$eventId.uploaded"))) {
-                        "capture_local_uploaded_transition_failed"
-                    }
-                    SendResult(true, eventId, filename)
+                    acceptRemoteUpload(photo, eventId, metadata, filename)
                 } catch (failure: Exception) {
+                    // A late HTTP acknowledgement is not an upload failure.
+                    // Verify the same ID before increasing retry_count, but
+                    // never infer success from queueing or local file state.
+                    val remote = runCatching { remoteCapture(api, eventId) }.getOrNull()
+                    if (remote != null) {
+                        val metadata = readMeta(eventId)
+                        if (metadata != null) {
+                            val settled = runCatching {
+                                acceptRemoteUpload(photo, eventId, metadata,
+                                    remote.optString("filename"))
+                            }.getOrNull()
+                            if (settled != null) return@map settled
+                        }
+                    }
                     val message = (failure.message ?: failure.javaClass.simpleName).take(230)
                     val metadata = readMeta(eventId) ?: JSONObject().put("event_id", eventId)
                     val retry = metadata.optInt("retry_count", 0) + 1
@@ -267,10 +302,11 @@ class PendingScreenshotQueue(private val context: Context) {
     private fun originRank(origin: String): Int = when {
         origin == "official_gpt_request" -> 0
         origin == "manual_q" -> 1
+        origin.startsWith("smart_capture_") -> 2
         origin.startsWith("automatic_app_switch") -> 2
         origin.startsWith("automatic_app_stay") -> 3
         origin.contains("work", ignoreCase = true) -> 4
-        origin.startsWith("automatic_") -> 5
+        origin.startsWith("automatic_") || origin.startsWith("smart_capture_") -> 5
         else -> 6
     }
 
@@ -281,7 +317,7 @@ class PendingScreenshotQueue(private val context: Context) {
         origin == "official_gpt_request" && uploaded -> 24L * 60L * 60L * 1000L
         origin == "official_gpt_request" -> Long.MAX_VALUE
         origin.contains("work", ignoreCase = true) -> 2L * 60L * 60L * 1000L
-        origin.startsWith("automatic_") -> 6L * 60L * 60L * 1000L
+        origin.startsWith("automatic_") || origin.startsWith("smart_capture_") -> 6L * 60L * 60L * 1000L
         uploaded -> 12L * 60L * 60L * 1000L
         else -> 12L * 60L * 60L * 1000L
     }
@@ -327,7 +363,8 @@ class PendingScreenshotQueue(private val context: Context) {
             else {
                 val origin = readMeta(file.nameWithoutExtension)?.optString("origin").orEmpty()
                 origin != "official_gpt_request" &&
-                    (origin.startsWith("automatic_") || origin.contains("work", ignoreCase = true))
+                    (origin.startsWith("automatic_") || origin.startsWith("smart_capture_") ||
+                        origin.contains("work", ignoreCase = true))
             }
         }.sortedWith(compareBy<File> {
             if (it.extension == "uploaded") 0 else 1
@@ -375,6 +412,20 @@ class PendingScreenshotQueue(private val context: Context) {
             }
         }
         var changed = 0
+        // At each heartbeat, rescue .image files whose HTTP response timed
+        // out even though Runtime stored the matching event. No re-capture.
+        root.listFiles().orEmpty().filter { it.extension == "image" }.forEach { image ->
+            val eventId = image.nameWithoutExtension
+            val entry = remote[eventId]
+            if (entry != null && entry.optBoolean("available", false)) {
+                val metadata = readMeta(eventId)
+                val filename = entry.optString("filename")
+                if (metadata != null && filename.isNotBlank() &&
+                    runCatching {
+                        acceptRemoteUpload(image, eventId, metadata, filename)
+                    }.isSuccess) changed++
+            }
+        }
         root.listFiles().orEmpty().filter { it.extension == "uploaded" }.forEach { image ->
             val id = image.nameWithoutExtension
             val entry = remote[id]
