@@ -65,7 +65,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: JLZ-Presence-Native-Receipts-2026092902
+          name: JLZ-Presence-Async-Receipts-2026092903
           path: native-android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
