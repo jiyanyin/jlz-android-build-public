@@ -1,5 +1,7 @@
 package dev.jlz.presence.ui
 
+import android.content.Intent
+import dev.jlz.presence.ui.sully.SullyPreviewActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -101,6 +103,17 @@ fun HomeScreen() {
             }
         }
         Spacer(Modifier.height(16.dp))
+        // Optional visual test only. The existing native home, services and
+        // storage remain untouched until actual device acceptance.
+        IceGlassCard {
+            Text("糯米机 · 粉蓝玻璃试验", color = TextPrimary,
+                style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            IceButton("打开糯米机桌面（试验）", onClick = {
+                context.startActivity(Intent(context, SullyPreviewActivity::class.java))
+            }, modifier = Modifier.fillMaxWidth())
+        }
+        Spacer(Modifier.height(12.dp))
         // P0-4: echo is a primary HOME destination, never a hidden second
         // filter behind the technical TimeChain button.
         IceGlassCard {
