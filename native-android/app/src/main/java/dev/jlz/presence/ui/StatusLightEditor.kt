@@ -11,6 +11,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Color
+import dev.jlz.presence.ui.theme.ParchmentMineBubble
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -314,7 +318,14 @@ fun StatusLightEditor(busy: Boolean, onSave: (JSONObject) -> Unit) {
         OutlinedTextField(
             value = note, onValueChange = { note = it.take(240) },
             modifier = Modifier.fillMaxWidth(), minLines = 2,
-            label = { Text("一句原话（选填）") }
+            label = { Text("一句原话（选填）") },
+            shape = RoundedCornerShape(24.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color.Transparent,
+                unfocusedBorderColor = Color.Transparent,
+                focusedContainerColor = ParchmentMineBubble.copy(alpha = 0.48f),
+                unfocusedContainerColor = ParchmentMineBubble.copy(alpha = 0.48f)
+            )
         )
         val canSave = axes.isNotEmpty() || emotions.isNotEmpty() ||
             expressions.isNotEmpty() || closenessNeeds.isNotEmpty() ||
