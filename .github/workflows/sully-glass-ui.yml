@@ -1,0 +1,100 @@
+name: Sully Glass UI Preview (isolated / never release)
+
+on:
+  push:
+    branches: [feature/sully-glass-ui-20260929]
+    paths:
+      - 'sully-overlay/**'
+      - 'native-android/app/**'
+      - '.github/workflows/sully-glass-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sully-glass-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '9'
+          run_install: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Fetch pinned SullyOS source and preserve license
+        shell: bash
+        run: |
+          set -euo pipefail
+          REV=eecf15fff33adeb7c7e0181226e9225e5d5fc043
+          UPSTREAM="$RUNNER_TEMP/sully-src"
+          mkdir -p "$UPSTREAM/jlz-overlay" native-android/app/src/main/assets/sully
+          curl -fLSs --retry 3 --max-time 240 \
+            "https://api.github.com/repos/qegj567-cloud/SullyOS/tarball/$REV" \
+            | tar -xz -C "$UPSTREAM" --strip-components=1
+          test -s "$UPSTREAM/index.html"
+          test -s "$UPSTREAM/LICENSE"
+          grep -q 'PolyForm Noncommercial License 1.0.0' "$UPSTREAM/LICENSE"
+          cp "$UPSTREAM/LICENSE" native-android/app/src/main/assets/sully/LICENSE
+          cp sully-overlay/nativeAppBridge.ts "$UPSTREAM/jlz-overlay/nativeAppBridge.ts"
+          cp sully-overlay/tailwind.config.cjs "$UPSTREAM/tailwind.jlz.cjs"
+          cp sully-overlay/jlz-glass.css "$UPSTREAM/public/jlz-glass.css"
+          node sully-overlay/patch-upstream.mjs "$UPSTREAM"
+          echo "SullyOS source pinned to $REV, license preserved."
+
+      - name: Compile upstream UI with local Tailwind (no CDN requirement)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/sully-src"
+          pnpm install --frozen-lockfile
+          printf '%s\n' '@tailwind base;' '@tailwind components;' '@tailwind utilities;' > jlz-overlay/tailwind.input.css
+          pnpm exec tailwindcss -c tailwind.jlz.cjs \
+            -i jlz-overlay/tailwind.input.css -o public/jlz-tailwind.css --minify
+          test -s public/jlz-tailwind.css
+          node scripts/build-chat-preview-css.mjs
+          VITE_HIDE_BUILD_BADGE=1 GITHUB_PAGES=1 pnpm exec vite build
+          test -s dist/index.html
+          test -s dist/jlz-tailwind.css
+          test -s dist/jlz-glass.css
+          cp -a dist/. "$GITHUB_WORKSPACE/native-android/app/src/main/assets/sully/"
+          echo "Compiled UI directory size:"
+          du -sh "$GITHUB_WORKSPACE/native-android/app/src/main/assets/sully"
+
+      - name: Compile isolated test package (does not replace installed app)
+        working-directory: native-android
+        shell: bash
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK and preview package ID
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=native-android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -F "name='dev.jlz.presence.sullylab'"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$APK"
+
+      - name: Upload UI preview APK only (never update latest release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: World-Between-Sully-Glass-Preview
+          path: native-android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
