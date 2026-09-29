@@ -23,3 +23,11 @@ P0-3 simplified unlock attribution: screen unlock/present defaults to user, no s
 2026-09-29 native delivery receipt build 2026092902: synced Android Kotlin sources from private branch `fix/android-receipts-20260929` (based on installed QAvatar 2026092901). Adds exact-event screenshot late reconciliation and explicitly staged phone notification receipts, including durable tap/reply interactions. Retains existing launcher/UI, Android user data, and signing-safe mirror configuration. No private runtime server, credentials, screenshots or conversation data copied.
 
 2026-09-29 follow-up build 2026092903: copied only Android `NativeRuntimeService.kt` and host contract test from private `fix/android-receipts-20260929` to return the immutable capture event UUID immediately, upload the same queued image asynchronously, and let chat fetch it later. No screenshots, credentials, user data or backend code included.
+
+## Parchment UI preview · 2026-09-29
+
+- This preview branches from the publicly built `ci/qavatar-smart-capture-v1-20260929` source (build 2026092904), retaining the already mirrored action packs and native feature code.
+- Only UI/navigation/colors/system bars and version 2026092905 are overlaid from the private design branch (`feat/parchment-ui-v1-20260929`).
+- The private keystore never enters public Git history. The preview workflow re-signs at build time using existing GitHub Actions secrets.
+- Outputs use a separate preview release tag, not the production `android-native-latest` tag.
+- The preview is not certified as device-tested and should not replace a daily-driver installation until an upgrade smoke test is done.

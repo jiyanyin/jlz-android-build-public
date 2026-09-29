@@ -1,5 +1,7 @@
 package dev.jlz.presence.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +15,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -22,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.jlz.presence.between.BetweenOutbox
@@ -34,6 +38,8 @@ import dev.jlz.presence.runtime.InboxMessage
 import dev.jlz.presence.runtime.RuntimeSettingsRepository
 import dev.jlz.presence.ui.components.IceButton
 import dev.jlz.presence.ui.components.IceGlassCard
+import dev.jlz.presence.ui.theme.ParchmentGold
+import dev.jlz.presence.ui.theme.ParchmentMineBubble
 import dev.jlz.presence.ui.theme.TextPrimary
 import dev.jlz.presence.ui.theme.TextSecondary
 import kotlinx.coroutines.Dispatchers
@@ -105,7 +111,16 @@ fun BetweenScreen(initialTab: String = "status") {
     ) {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("世界之间", style = MaterialTheme.typography.headlineSmall, color = TextPrimary)
+                Column(Modifier.weight(1f)) {
+                    Text("NOTES OF OUR LITTLE WORLD", color = ParchmentGold,
+                        style = MaterialTheme.typography.labelMedium)
+                    Text(
+                        if (tab == "status") "状态灯 · Little Light" else "你我之间 · Letters",
+                        style = MaterialTheme.typography.headlineSmall, color = TextPrimary
+                    )
+                    Text("在这里保留你写下的每一个真实时刻。",
+                        color = TextSecondary, style = MaterialTheme.typography.bodySmall)
+                }
                 IceButton("返回", { PresenceRouteBus.open(PresenceRoute.Home) })
             }
         }
@@ -267,7 +282,14 @@ fun BetweenScreen(initialTab: String = "status") {
                     value = moment, onValueChange = { moment = it.take(1200) },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("写给我的生活记录") },
-                    minLines = 3
+                    minLines = 3,
+                    shape = RoundedCornerShape(24.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color.Transparent,
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedContainerColor = ParchmentMineBubble.copy(alpha = 0.48f),
+                        unfocusedContainerColor = ParchmentMineBubble.copy(alpha = 0.48f)
+                    )
                 )
             }
             item {

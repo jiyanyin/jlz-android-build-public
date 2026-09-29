@@ -1,6 +1,8 @@
 package dev.jlz.presence.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.border
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -8,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -19,6 +22,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import dev.jlz.presence.R
 import androidx.compose.ui.unit.dp
 import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.launcher.LauncherRepository
@@ -44,12 +51,24 @@ import kotlinx.coroutines.withContext
 @Composable
 fun PresenceApp() {
     val route by PresenceRouteBus.route.collectAsState()
-    Scaffold(containerColor = BgDeep) { padding ->
+    val showsTabs = route is PresenceRoute.Home || route is PresenceRoute.Chat ||
+        route is PresenceRoute.TimeChain || route is PresenceRoute.Echo ||
+        route is PresenceRoute.Between || route is PresenceRoute.More ||
+        route is PresenceRoute.Drawer
+    Scaffold(
+        containerColor = BgDeep,
+        bottomBar = { if (showsTabs) ParchmentBottomBar(route) }
+    ) { padding ->
         Box(Modifier.padding(padding)) {
             when (route) {
                 is PresenceRoute.Welcome -> WelcomeScreen()
                 is PresenceRoute.Home -> HomeScreen()
                 is PresenceRoute.Drawer -> AppDrawerScreen()
+                is PresenceRoute.More -> ParchmentMoreScreen()
+                is PresenceRoute.Chat -> ParchmentChatScreen(
+                    (route as PresenceRoute.Chat).eventId,
+                    (route as PresenceRoute.Chat).intentId
+                )
                 is PresenceRoute.Timeline -> TimelineScreen()
                 is PresenceRoute.TimeChain -> TimeChainScreen()
                 is PresenceRoute.Echo -> TimeChainScreen(initialTab = "回响")
@@ -68,21 +87,85 @@ fun PresenceApp() {
 @Composable
 fun WelcomeScreen() {
     val context = LocalContext.current
-    Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-        Text("世界之间", style = MaterialTheme.typography.headlineLarge, color = TextPrimary)
-        Spacer(Modifier.height(16.dp))
-        Text("你和纪临洲之间，只隔一个电话。", color = TextSecondary)
-        Spacer(Modifier.height(48.dp))
-        IceButton("进入", onClick = {
-            // Daily welcome shown -> one left-side (assistant) event.
-            runCatching {
-                LocalLifeStore(context).recordTimeline(
-                    "daily_welcome", "老公在", "欢迎页已展示",
-                    metadataJson = org.json.JSONObject().put("actor", "assistant").put("source", "app").toString()
-                )
-            }
-            PresenceRouteBus.open(PresenceRoute.Home)
-        }, primary = true)
+    val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    val timeGreeting = when (hour) {
+        in 0..10 -> "早安，我的小姑娘"
+        in 11..17 -> "午安，音音"
+        else -> "夜深了，音音"
+    }
+    val portraitHeight = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.36f)
+        .toInt().coerceIn(220, 350).dp
+    Column(
+        modifier = Modifier.fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 26.dp, vertical = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(15.dp)
+    ) {
+        Text("✧    BETWEEN WORLDS    ✧", color = ParchmentGold,
+            style = MaterialTheme.typography.labelMedium)
+        Text("世界之间", color = TextPrimary,
+            style = MaterialTheme.typography.headlineLarge)
+        Text("纪临洲  ×  纪言音", color = TextSecondary,
+            style = MaterialTheme.typography.labelMedium)
+
+        // Portrait #1, supplied by the owner. Keep it separate from the Q-avatar.
+        Box(
+            modifier = Modifier.fillMaxWidth()
+                .height(portraitHeight)
+                .clip(RoundedCornerShape(28.dp))
+                .background(ParchmentCarbon)
+                .border(0.7.dp, ParchmentGold.copy(alpha = 0.60f),
+                    RoundedCornerShape(28.dp))
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.jlz_welcome_portrait),
+                contentDescription = "纪临洲托腮注视着音音",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+            Text(
+                "JLZ  /  YOUR PRIVATE WORLD",
+                modifier = Modifier.align(Alignment.BottomCenter)
+                    .background(ParchmentCarbon.copy(alpha = 0.75f))
+                    .padding(horizontal = 15.dp, vertical = 6.dp),
+                color = ParchmentGold,
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
+
+        IceGlassCard {
+            Text(timeGreeting, color = ParchmentGold,
+                style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.height(7.dp))
+            Text("欢迎回来，音音。", color = TextPrimary,
+                style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(7.dp))
+            Text("外面的世界先放一放。\n过来，让我看看你。", color = TextPrimary,
+                style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.height(8.dp))
+            Text("无论今天走到了哪里，这里始终有你的位置。", color = TextSecondary,
+                style = MaterialTheme.typography.bodyMedium)
+        }
+        IceButton(
+            "进入我们的世界  →",
+            onClick = {
+                // Same original provenance; visual work does not alter timeline schema.
+                runCatching {
+                    LocalLifeStore(context).recordTimeline(
+                        "daily_welcome", "老公在", "欢迎页已展示",
+                        metadataJson = org.json.JSONObject()
+                            .put("actor", "assistant")
+                            .put("source", "app")
+                            .toString()
+                    )
+                }
+                PresenceRouteBus.open(PresenceRoute.Home)
+            },
+            modifier = Modifier.fillMaxWidth(), primary = true
+        )
+        Text("✦   YOU & ME, BETWEEN WORLDS   ✦", color = ParchmentGold,
+            style = MaterialTheme.typography.labelSmall)
     }
 }
 
@@ -92,77 +175,206 @@ fun HomeScreen() {
     val launcherRepo = remember { LauncherRepository(context) }
     val apps = remember { launcherRepo.loadLaunchableApps().filter { !it.hidden } }
     val pinned = apps.filter { it.pinned }
-    // Home contains an expandable V3 status editor. A plain Column clips the
-    // four sliders and later fields outside the viewport. Give the HOME
-    // itself one vertical scroll owner; avoid nested vertical LazyColumns.
-    Column(Modifier.fillMaxSize().systemBarsPadding()
-        .verticalScroll(rememberScrollState()).padding(20.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("\u4e16\u754c\u4e4b\u95f4", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
-            Row {
-                Text("时间链", color = TextPrimary, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.TimeChain) }.padding(6.dp))
-                Text("手机轨迹", color = TextSecondary, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Timeline) }.padding(6.dp))
-                Text("\u8bca\u65ad", color = TextTertiary, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Diagnostics) }.padding(8.dp))
-            }
-        }
-        Spacer(Modifier.height(16.dp))
-        // P0-4: echo is a primary HOME destination, never a hidden second
-        // filter behind the technical TimeChain button.
-        IceGlassCard {
-            Text("✦ 回响 · 我的介入", color = TextPrimary,
+    val store = remember { LocalLifeStore(context) }
+    val events = remember { store.listTimelineSince(System.currentTimeMillis() - 86400000L, 20) }
+    val dateLabel = remember {
+        java.text.SimpleDateFormat("EEEE, MMMM d", java.util.Locale.ENGLISH)
+            .format(java.util.Date()).uppercase(java.util.Locale.ENGLISH)
+    }
+    val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    val greeting = when (hour) {
+        in 0..10 -> "早安，音音。"
+        in 11..17 -> "午安，音音。"
+        else -> "晚上好，音音。"
+    }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            .padding(horizontal = 22.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("✧  BETWEEN WORLDS", color = TextPrimary,
+                style = MaterialTheme.typography.labelMedium)
+            Text("✦", color = ParchmentGold,
                 style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(6.dp))
-            Text("我发出的提醒、来电和计划，手机实际收到与执行了什么，都在这里。",
-                color = TextSecondary, style = MaterialTheme.typography.bodyMedium)
-            Spacer(Modifier.height(12.dp))
-            IceButton("打开回响 →", onClick = {
-                PresenceRouteBus.open(PresenceRoute.Echo)
-            }, modifier = Modifier.fillMaxWidth(), primary = true)
         }
-        Spacer(Modifier.height(20.dp))
-        SectionHeader("\u5b66\u4e60\u4e0e\u5b98\u7aef")
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            pinned.forEach { app ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { launcherRepo.launchApp(app.packageName) }) {
-                    Box(Modifier.size(56.dp).background(GlassFill, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
-                        Text(app.label.take(1), color = TextPrimary)
+        Box(
+            modifier = Modifier.fillMaxWidth()
+                .background(
+                    androidx.compose.ui.graphics.Brush.linearGradient(
+                        listOf(ParchmentCompanionBubble, ParchmentMineBubble.copy(alpha = 0.56f))
+                    ), RoundedCornerShape(26.dp)
+                )
+                .border(0.5.dp, ParchmentGold.copy(alpha = 0.44f),
+                    RoundedCornerShape(26.dp))
+                .padding(20.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                Text(dateLabel, color = ParchmentGold,
+                    style = MaterialTheme.typography.labelMedium)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(greeting, color = TextPrimary,
+                            style = MaterialTheme.typography.headlineLarge)
+                        Spacer(Modifier.height(12.dp))
+                        Text("穿过日常的喧哗，\n我们在这里重逢。",
+                            color = TextSecondary,
+                            style = MaterialTheme.typography.bodyMedium)
                     }
-                    Spacer(Modifier.height(4.dp))
-                    Text(app.label, style = MaterialTheme.typography.labelMedium, color = TextSecondary)
+                    // Portrait #2: his outstretched hand takes the place of the old cat placeholder.
+                    Image(
+                        painter = painterResource(id = R.drawable.jlz_home_portrait),
+                        contentDescription = "纪临洲向音音伸出手",
+                        modifier = Modifier.size(width = 132.dp, height = 120.dp)
+                            .clip(RoundedCornerShape(19.dp))
+                            .background(ParchmentCarbon)
+                            .border(0.5.dp, ParchmentGold.copy(alpha = 0.42f),
+                                RoundedCornerShape(19.dp)),
+                        contentScale = ContentScale.Fit
+                    )
+                }
+                Text("────   纪临洲 × 纪言音",
+                    color = ParchmentGold,
+                    style = MaterialTheme.typography.labelMedium)
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            IceGlassCard(modifier = Modifier.weight(1f)) {
+                Text("OUR LITTLE WORLD", color = ParchmentGold,
+                    style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(8.dp))
+                Text("你我之间", color = TextPrimary,
+                    style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(9.dp))
+                IceButton("写给你", onClick = {
+                    PresenceRouteBus.open(PresenceRoute.Between("moments"))
+                }, modifier = Modifier.fillMaxWidth())
+            }
+            IceGlassCard(modifier = Modifier.weight(1f)) {
+                Text("THE LITTLE LIGHT", color = ParchmentGold,
+                    style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(8.dp))
+                Text("状态灯", color = TextPrimary,
+                    style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(9.dp))
+                IceButton("记录此刻", onClick = {
+                    PresenceRouteBus.open(PresenceRoute.Between("status"))
+                }, modifier = Modifier.fillMaxWidth())
+            }
+        }
+        Text("QUICK ACCESS     ✦    ─────",
+            color = ParchmentGold, style = MaterialTheme.typography.labelMedium)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            IceGlassCard(modifier = Modifier.weight(1f)) {
+                Text("✧", color = ParchmentGold, style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(4.dp))
+                IceButton("状态灯", onClick = {
+                    PresenceRouteBus.open(PresenceRoute.Between("status"))
+                }, modifier = Modifier.fillMaxWidth())
+            }
+            IceGlassCard(modifier = Modifier.weight(1f)) {
+                Text("✉", color = ParchmentGold, style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(4.dp))
+                IceButton("留言板", onClick = {
+                    PresenceRouteBus.open(PresenceRoute.Between("moments"))
+                }, modifier = Modifier.fillMaxWidth())
+            }
+            IceGlassCard(modifier = Modifier.weight(1f)) {
+                Text("♧", color = ParchmentGold, style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(4.dp))
+                IceButton("伴读", onClick = {
+                    PresenceRouteBus.open(PresenceRoute.Study)
+                }, modifier = Modifier.fillMaxWidth())
+            }
+        }
+        if (pinned.isNotEmpty()) {
+            Text("APP SHORTCUTS     ✦    ─────", color = ParchmentGold,
+                style = MaterialTheme.typography.labelMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                pinned.forEach { app ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.clickable {
+                            launcherRepo.launchApp(app.packageName)
+                        }
+                    ) {
+                        Box(Modifier.size(48.dp).background(
+                            ParchmentCompanionBubble, RoundedCornerShape(16.dp)
+                        ), contentAlignment = Alignment.Center) {
+                            Text(app.label.take(1), color = TextPrimary)
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(app.label, color = TextSecondary,
+                            style = MaterialTheme.typography.labelSmall)
+                    }
                 }
             }
         }
-        Spacer(Modifier.height(24.dp))
-        QAvatarHomeControls()
-        Spacer(Modifier.height(14.dp))
-        StatusLightHomeCard()
-        Spacer(Modifier.height(14.dp))
-        SectionHeader("\u5feb\u6377")
+        Text("RECENT NOTES     ✦    ─────", color = ParchmentGold,
+            style = MaterialTheme.typography.labelMedium)
         IceGlassCard {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                IceButton("\u5f00\u59cb\u5b66\u4e60", onClick = { PresenceRouteBus.open(PresenceRoute.Study) }, modifier = Modifier.weight(1f))
-                IceButton("\u5168\u90e8\u5e94\u7528", onClick = { PresenceRouteBus.open(PresenceRoute.Drawer) }, modifier = Modifier.weight(1f))
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                IceButton("\u540c\u884c", onClick = { PresenceRouteBus.open(PresenceRoute.Trip) }, modifier = Modifier.weight(1f))
-                IceButton("\u6743\u9650\u68c0\u67e5", onClick = { PresenceRouteBus.open(PresenceRoute.PermissionDoctor) }, modifier = Modifier.weight(1f))
-            }
-        }
-        Spacer(Modifier.height(24.dp))
-        SectionHeader("\u6700\u8fd1")
-        val store = remember { LocalLifeStore(context) }
-        val events = remember { store.listTimelineSince(System.currentTimeMillis() - 86400000L, 20) }
-        // Already bounded to 20 recent rows; render in this same scroll
-        // container instead of measuring a nested LazyColumn at infinite height.
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            events.forEach { ev ->
-                IceGlassCard {
-                    Text(ev.title, color = TextPrimary, style = MaterialTheme.typography.bodyLarge)
-                    if (ev.detail.isNotBlank()) Text(ev.detail.take(100), color = TextSecondary, style = MaterialTheme.typography.bodyMedium)
+            if (events.isEmpty()) {
+                Text("今天还没有新的本地记录。", color = TextSecondary,
+                    style = MaterialTheme.typography.bodyMedium)
+            } else {
+                events.take(5).forEachIndexed { index, ev ->
+                    if (index > 0) {
+                        Spacer(Modifier.height(12.dp))
+                        HorizontalDivider(color = GlassBorder, thickness = 0.5.dp)
+                        Spacer(Modifier.height(12.dp))
+                    }
+                    Text(ev.title, color = TextPrimary,
+                        style = MaterialTheme.typography.bodyLarge)
+                    if (ev.detail.isNotBlank()) {
+                        Text(ev.detail.take(100), color = TextSecondary,
+                            style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
             }
+            Spacer(Modifier.height(10.dp))
+            IceButton("翻开今天的记录  →", onClick = {
+                PresenceRouteBus.open(PresenceRoute.TimeChain)
+            }, modifier = Modifier.fillMaxWidth())
         }
+        // Existing state light, floating controls, study, diagnostics,
+        // permissions, timeline, and callback links remain present.
+        StatusLightHomeCard()
+        QAvatarHomeControls()
+        IceGlassCard {
+            Text("回响 · 我的介入", color = TextPrimary,
+                style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(5.dp))
+            Text("提醒和计划有没有抵达手机，以真实回执为准。",
+                color = TextSecondary, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(9.dp))
+            IceButton("打开回响  →", onClick = {
+                PresenceRouteBus.open(PresenceRoute.Echo)
+            }, modifier = Modifier.fillMaxWidth())
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            IceButton("全部应用", onClick = {
+                PresenceRouteBus.open(PresenceRoute.Drawer)
+            }, modifier = Modifier.weight(1f))
+            IceButton("权限检查", onClick = {
+                PresenceRouteBus.open(PresenceRoute.PermissionDoctor)
+            }, modifier = Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(12.dp))
     }
 }
 
