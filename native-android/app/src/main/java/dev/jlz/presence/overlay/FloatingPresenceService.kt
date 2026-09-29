@@ -980,7 +980,7 @@ class FloatingPresenceService : Service() {
                 }
                 return true
             }
-            if (!Settings.canDrawOverlays(context)) return false
+            if (!Settings.canDrawOverlays(context) || !avatarAllowedToAutoStart(context)) return false
             val intent = Intent(context, FloatingPresenceService::class.java)
                 .putExtra(EXTRA_MESSAGE, message.take(80))
                 .putExtra(EXTRA_MODE, FloatingPresenceMode.LIFE.name)
@@ -1008,7 +1008,7 @@ class FloatingPresenceService : Service() {
                 }
                 return true
             }
-            if (!Settings.canDrawOverlays(context)) return false
+            if (!Settings.canDrawOverlays(context) || !avatarAllowedToAutoStart(context)) return false
             val intent = Intent(context, FloatingPresenceService::class.java)
                 .putExtra(EXTRA_MODE, FloatingPresenceMode.LIFE.name)
                 .putExtra(EXTRA_BEHAVIOR_SIGNAL, signal.name)
@@ -1052,6 +1052,11 @@ class FloatingPresenceService : Service() {
             }
         }
 
+        private const val PREF_AVATAR_AUTO_START = "manual_avatar_visible"
+        private fun avatarAllowedToAutoStart(context: Context): Boolean =
+            context.applicationContext.getSharedPreferences("jlz_avatar_overlay_v1", Context.MODE_PRIVATE)
+                .getBoolean(PREF_AVATAR_AUTO_START, true)
+
         private const val CHANNEL_ID = "jlz_presence_overlay"
         private const val NOTIFICATION_ID = 4201
         private const val EXTRA_MESSAGE = "message"
@@ -1069,6 +1074,8 @@ class FloatingPresenceService : Service() {
             restoreSuspended: Boolean = false
         ): Boolean {
             if (!Settings.canDrawOverlays(context)) return false
+            context.applicationContext.getSharedPreferences("jlz_avatar_overlay_v1", Context.MODE_PRIVATE)
+                .edit().putBoolean(PREF_AVATAR_AUTO_START, true).commit()
             val resolvedMessage = message.ifBlank {
                 when (mode) {
                     FloatingPresenceMode.LIFE -> "给你看"
@@ -1093,6 +1100,10 @@ class FloatingPresenceService : Service() {
         }
 
         fun stop(context: Context) {
+            // Synchronous preference gate prevents accessibility/capture events
+            // from immediately resurrecting a character the owner just hid.
+            context.applicationContext.getSharedPreferences("jlz_avatar_overlay_v1", Context.MODE_PRIVATE)
+                .edit().putBoolean(PREF_AVATAR_AUTO_START, false).commit()
             CoroutineScope(Dispatchers.IO).launch {
                 PresenceDevicePreferencesRepository(context.applicationContext)
                     .setRestoreOverlay(false)
