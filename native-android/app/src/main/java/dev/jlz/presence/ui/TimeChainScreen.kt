@@ -32,6 +32,7 @@ import dev.jlz.presence.runtime.RuntimeApiClient
 import dev.jlz.presence.runtime.RuntimeSettingsRepository
 import dev.jlz.presence.ui.components.IceButton
 import dev.jlz.presence.ui.components.IceGlassCard
+import dev.jlz.presence.ui.theme.ParchmentGold
 import dev.jlz.presence.ui.theme.TextPrimary
 import dev.jlz.presence.ui.theme.TextSecondary
 import dev.jlz.presence.usage.UnifiedPhoneTimeline
@@ -375,8 +376,14 @@ fun TimeChainScreen(initialTab: String = "日记") {
     ) {
         item {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(if (filter == "回响") "回响 · 我做过的事" else "你我之间 · 今日记录", color = TextPrimary,
-                    style = MaterialTheme.typography.headlineSmall)
+                Column(Modifier.weight(1f)) {
+                    Text("OUR DAYS TOGETHER", color = ParchmentGold,
+                        style = MaterialTheme.typography.labelMedium)
+                    Text(
+                        if (filter == "回响") "回响 · 我做过的事" else "你我之间 · 今日记录",
+                        color = TextPrimary, style = MaterialTheme.typography.headlineSmall
+                    )
+                }
                 IceButton("返回", onClick = { PresenceRouteBus.open(PresenceRoute.Home) })
             }
         }
@@ -437,7 +444,20 @@ fun TimeChainScreen(initialTab: String = "日记") {
             }
         }
         items(shown, key = { it.key }) { item ->
-            IceGlassCard {
+            // Only verified companion / user lanes receive a narrative side.
+            // Technical phone records remain centered, with their provenance intact.
+            val fromCompanion = item.lane == "reply" || item.lane == "echo" ||
+                item.provenance.startsWith("纪临洲")
+            val fromPhone = item.lane == "phone"
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = when {
+                    fromPhone -> Arrangement.Center
+                    fromCompanion -> Arrangement.Start
+                    else -> Arrangement.End
+                }
+            ) {
+                IceGlassCard(modifier = Modifier.fillMaxWidth(if (fromPhone) 1f else 0.89f)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(
                         clock.format(Date(item.atMs)),
@@ -465,6 +485,7 @@ fun TimeChainScreen(initialTab: String = "日记") {
                 )
                 Text(item.provenance, color = TextSecondary,
                     style = MaterialTheme.typography.labelSmall)
+                }
             }
         }
     }
