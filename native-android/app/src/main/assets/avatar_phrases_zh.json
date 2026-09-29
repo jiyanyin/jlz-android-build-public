@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "phrases": [
+    {
+      "id": "welcome_generic",
+      "text": "今天也一起把眼前的事情做好。",
+      "tags": [
+        "time_day",
+        "gentle",
+        "autonomous"
+      ],
+      "cooldown_sec": 3600
+    },
+    {
+      "id": "morning_generic",
+      "text": "早上好，记得喝水。",
+      "tags": [
+        "time_morning",
+        "woke_up"
+      ],
+      "cooldown_sec": 3600
+    },
+    {
+      "id": "study_generic",
+      "text": "先做一道题，再决定下一步。",
+      "tags": [
+        "study_mode",
+        "study_milestone",
+        "returned_to_study"
+      ],
+      "cooldown_sec": 1200
+    },
+    {
+      "id": "night_generic",
+      "text": "休息的时候就好好休息。",
+      "tags": [
+        "time_night",
+        "sleepy",
+        "night_companion"
+      ],
+      "cooldown_sec": 3600
+    },
+    {
+      "id": "poke_generic",
+      "text": "看到你了。",
+      "tags": [
+        "being_poked",
+        "teasing"
+      ],
+      "cooldown_sec": 90
+    },
+    {
+      "id": "nudge_generic",
+      "text": "看看时间，别忘了安排休息。",
+      "tags": [
+        "caught_slacking",
+        "scroll_burst",
+        "app_entertainment"
+      ],
+      "cooldown_sec": 2400
+    },
+    {
+      "id": "care_generic",
+      "text": "累了就休息一下。",
+      "tags": [
+        "gentle",
+        "status_low_energy",
+        "body_unwell"
+      ],
+      "cooldown_sec": 3600
+    }
+  ]
+}
