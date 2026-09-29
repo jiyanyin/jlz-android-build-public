@@ -1,4 +1,4 @@
-name: Android Parchment Welcome and Portraits Preview
+name: Android Parchment Transparent Portraits
 
 on:
   push:
@@ -28,6 +28,33 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
+      - name: Restore actual alpha for owner portraits
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet \
+            "numpy>=1.26,<2" "opencv-python-headless>=4.10,<4.11" "Pillow>=10"
+          python3 native-android/tools/prepare_portraits.py
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          root = Path("native-android/app/src/main/res/drawable-nodpi")
+          for name in ("welcome", "home", "launcher"):
+              path = root / f"jlz_{name}_portrait.webp"
+              img = Image.open(path)
+              assert img.mode == "RGBA" and img.getchannel("A").getextrema()[0] == 0, str(path)
+              assert img.getchannel("A").getextrema()[1] == 255, str(path)
+          print("All three portraits contain true transparent pixels.")
+          PY
+          # Keep the canonical public mirror deployable even without the CI
+          # preprocessing step on future builds. No image is a keystore/token.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add native-android/app/src/main/res/drawable-nodpi/jlz_*_portrait.webp
+          if ! git diff --cached --quiet; then
+            git commit -m "fix(assets): replace black-backed portraits with transparent WebP"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
       - name: Verify avatar contracts
         run: python native-android/tests/avatar-v1-host/test_avatar_v1.py
       - name: Verify native notification receipts and capture retry
@@ -88,7 +115,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: JLZ-Presence-Portrait-Welcome-2026092906
+          name: JLZ-Presence-Transparent-Portraits-2026092907
           path: native-android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
@@ -102,14 +129,14 @@ jobs:
           set -euo pipefail
           apk="native-android/app/build/outputs/apk/debug/app-debug.apk"
           test -f "$apk"
-          cp "$apk" /tmp/JLZ-Presence-Portrait-Welcome-2026092906.apk
-          sha256sum /tmp/JLZ-Presence-Portrait-Welcome-2026092906.apk > /tmp/JLZ-Presence-Portrait-Welcome-2026092906-SHA256.txt
-          tag="android-parchment-portraits-20260929"
+          cp "$apk" /tmp/JLZ-Presence-Transparent-Portraits-2026092907.apk
+          sha256sum /tmp/JLZ-Presence-Transparent-Portraits-2026092907.apk > /tmp/JLZ-Presence-Transparent-Portraits-2026092907-SHA256.txt
+          tag="android-parchment-transparent-20260929"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$tag" /tmp/JLZ-Presence-Portrait-Welcome-2026092906.apk /tmp/JLZ-Presence-Portrait-Welcome-2026092906-SHA256.txt --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit "$tag" --prerelease --title "JLZ Presence · Portrait Welcome preview 2026092906" --repo "$GITHUB_REPOSITORY"
+            gh release upload "$tag" /tmp/JLZ-Presence-Transparent-Portraits-2026092907.apk /tmp/JLZ-Presence-Transparent-Portraits-2026092907-SHA256.txt --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$tag" --prerelease --title "JLZ Presence · Transparent Portraits preview 2026092907" --repo "$GITHUB_REPOSITORY"
             gh release delete-asset "$tag" JLZ-Presence-QAvatar-Controls-2026092904.apk --yes --repo "$GITHUB_REPOSITORY" || true
             gh release delete-asset "$tag" JLZ-Presence-QAvatar-Controls-2026092904-SHA256.txt --yes --repo "$GITHUB_REPOSITORY" || true
           else
-            gh release create "$tag" /tmp/JLZ-Presence-Portrait-Welcome-2026092906.apk /tmp/JLZ-Presence-Portrait-Welcome-2026092906-SHA256.txt --prerelease --target "$GITHUB_SHA" --title "JLZ Presence · Portrait Welcome preview 2026092906" --notes "Signed Android 0.4.5 PREVIEW: owner-provided portraits on cold-start welcome, home greeting and launcher icon. No Runtime schema changes. Test upgrade before daily use." --repo "$GITHUB_REPOSITORY"
+            gh release create "$tag" /tmp/JLZ-Presence-Transparent-Portraits-2026092907.apk /tmp/JLZ-Presence-Transparent-Portraits-2026092907-SHA256.txt --prerelease --target "$GITHUB_SHA" --title "JLZ Presence · Transparent Portraits preview 2026092907" --notes "Signed Android 0.4.6 PREVIEW: portraits have true alpha and black portrait panels removed. No Runtime/data schema changes. Test upgrade before daily use." --repo "$GITHUB_REPOSITORY"
           fi
