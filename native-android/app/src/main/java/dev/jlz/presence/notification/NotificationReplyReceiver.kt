@@ -74,6 +74,16 @@ class NotificationReplyReceiver : BroadcastReceiver() {
             }
             return
         }
+        // An inline reply proves an explicit interaction, not a banner view.
+        // Use a stable event ID and the existing notification transport outbox.
+        runCatching {
+            NotificationOpenReceipt.recordReply(
+                appContext, eventId, intentId, notificationId
+            )
+        }.onFailure {
+            ReplyDeliveryTrace.write(appContext, "interaction_receipt_pending",
+                notificationId, it.javaClass.simpleName)
+        }
         runCatching {
             notificationAdapter.updateReplyState(
                 notificationId, originalTitle, originalMessage, reply,
