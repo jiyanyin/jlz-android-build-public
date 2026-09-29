@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.unit.dp
 import dev.jlz.presence.ui.theme.*
 
+/** Same click and enabled contracts, but styled as parchment-glass controls. */
 @Composable
 fun IceButton(
     text: String,
@@ -25,30 +26,38 @@ fun IceButton(
     enabled: Boolean = true,
     primary: Boolean = false
 ) {
+    val clickHaptic = IceHaptics.rememberHaptic()
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed) 0.965f else 1f,
         animationSpec = tween(120), label = "btnScale"
     )
+    val shape = RoundedCornerShape(24.dp)
     val bg = when {
-        !enabled -> GlassFill.copy(alpha = 0.3f)
+        !enabled -> GlassFill.copy(alpha = 0.35f)
         pressed -> GlassFillPressed
-        primary -> VioletGlow.copy(alpha = 0.35f)
+        primary -> ParchmentMineBubble
         else -> GlassFill
     }
     Box(
         modifier = modifier
             .scale(scale)
             .height(48.dp)
-            .background(bg, RoundedCornerShape(16.dp))
-            .border(1.dp, GlassBorder, RoundedCornerShape(16.dp))
-            .clickable(interactionSource = interactionSource, indication = null, enabled = enabled) { onClick() }
+            .background(bg, shape)
+            .border(0.5.dp, GlassBorder, shape)
+            .clickable(interactionSource = interactionSource, indication = null, enabled = enabled) {
+                clickHaptic(IceHaptics.TYPE_TICK)
+                onClick()
+            }
             .padding(horizontal = 20.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = text, color = if (enabled) TextPrimary else TextTertiary,
-            style = androidx.compose.material3.MaterialTheme.typography.labelLarge)
+        Text(
+            text = text,
+            color = if (enabled) TextPrimary else TextTertiary,
+            style = androidx.compose.material3.MaterialTheme.typography.labelLarge
+        )
     }
 }
 
@@ -57,19 +66,23 @@ fun IceGlassCard(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val shape = RoundedCornerShape(24.dp)
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(GlassFill, RoundedCornerShape(20.dp))
-            .border(1.dp, GlassBorder, RoundedCornerShape(20.dp))
-            .padding(16.dp),
+            .background(ParchmentGlass, shape)
+            .border(0.5.dp, GlassBorder, shape)
+            .padding(18.dp),
         content = content
     )
 }
 
 @Composable
 fun SectionHeader(title: String, modifier: Modifier = Modifier) {
-    Text(text = title, color = TextSecondary,
+    Text(
+        text = title,
+        color = TextSecondary,
         style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
-        modifier = modifier.padding(vertical = 8.dp))
+        modifier = modifier.padding(vertical = 8.dp)
+    )
 }
