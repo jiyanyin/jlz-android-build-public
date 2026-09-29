@@ -1,3 +1,6 @@
+import java.net.URI
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -81,14 +84,14 @@ val prepareWorldFonts by tasks.registering {
         worldFontSpecs.forEach { (name, upstream, expectedGitBlobSha) ->
             val file = fontDir.resolve(name)
             if (file.exists()) return@forEach
-            val url = java.net.URI(
+            val url = URI(
                 "https://raw.githubusercontent.com/google/fonts/$worldFontSourceRevision/ofl/$upstream"
             ).toURL()
             val bytes = url.openConnection().apply {
                 connectTimeout = 30_000
                 readTimeout = 120_000
             }.getInputStream().use { it.readBytes() }
-            val digest = java.security.MessageDigest.getInstance("SHA-1").apply {
+            val digest = MessageDigest.getInstance("SHA-1").apply {
                 update("blob ${bytes.size}\u0000".toByteArray(Charsets.UTF_8))
                 update(bytes)
             }.digest().joinToString("") { "%02x".format(it) }
