@@ -33,8 +33,9 @@ internal fun ParchmentBottomBar(route: PresenceRoute) {
     val isHome = route is PresenceRoute.Home
     val isChat = route is PresenceRoute.Chat
     val isTimeline = route is PresenceRoute.TimeChain || route is PresenceRoute.Echo
-    val isStatus = route is PresenceRoute.Between
-    val isMore = route is PresenceRoute.More || route is PresenceRoute.Drawer
+    val isStatus = route is PresenceRoute.Between && route.tab == "status"
+    val isMore = route is PresenceRoute.More || route is PresenceRoute.Drawer ||
+        route is PresenceRoute.Today
     val colors = NavigationBarItemDefaults.colors(
         selectedIconColor = ParchmentInk,
         selectedTextColor = ParchmentInk,

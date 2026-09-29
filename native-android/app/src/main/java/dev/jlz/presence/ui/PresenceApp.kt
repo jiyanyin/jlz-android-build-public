@@ -40,6 +40,7 @@ import dev.jlz.presence.ui.components.IceGlassCard
 import dev.jlz.presence.ui.components.SectionHeader
 import dev.jlz.presence.ui.theme.*
 import dev.jlz.presence.study.StudyPatrol
+import dev.jlz.presence.study.StudyShortcuts
 import dev.jlz.presence.trip.TripController
 import dev.jlz.presence.usage.UnifiedPhoneTimeline
 import dev.jlz.presence.usage.UnifiedTimelineItem
@@ -54,7 +55,7 @@ fun PresenceApp() {
     val showsTabs = route is PresenceRoute.Home || route is PresenceRoute.Chat ||
         route is PresenceRoute.TimeChain || route is PresenceRoute.Echo ||
         route is PresenceRoute.Between || route is PresenceRoute.More ||
-        route is PresenceRoute.Drawer
+        route is PresenceRoute.Drawer || route is PresenceRoute.Today
     Scaffold(
         containerColor = BgDeep,
         bottomBar = { if (showsTabs) ParchmentBottomBar(route) }
@@ -74,6 +75,7 @@ fun PresenceApp() {
                 is PresenceRoute.Echo -> TimeChainScreen(initialTab = "回响")
                 is PresenceRoute.Between -> BetweenScreen((route as PresenceRoute.Between).tab)
                 is PresenceRoute.Study -> StudyScreen()
+                is PresenceRoute.Today -> LifeTodayScreen()
                 is PresenceRoute.Trip -> TripScreen()
                 is PresenceRoute.PermissionDoctor -> PermissionDoctorScreen()
                 is PresenceRoute.QuickCapture -> QuickCaptureScreen()
@@ -273,30 +275,73 @@ fun HomeScreen() {
         }
         Text("QUICK ACCESS     ✦    ─────",
             color = ParchmentGold, style = MaterialTheme.typography.labelMedium)
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            IceGlassCard(modifier = Modifier.weight(1f)) {
-                Text("✧", color = ParchmentGold, style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(4.dp))
-                IceButton("状态灯", onClick = {
-                    PresenceRouteBus.open(PresenceRoute.Between("status"))
-                }, modifier = Modifier.fillMaxWidth())
+        // Reuse existing screens and native shortcuts; no new persistence or background work.
+        // "随手记" opens the response-requested, local-first Between outbox.
+        // "本机速记" under More remains a separate local-only scratch record.
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                IceGlassCard(modifier = Modifier.weight(1f)) {
+                    Text("✎", color = ParchmentGold,
+                        style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(4.dp))
+                    IceButton("随手记", onClick = {
+                        PresenceRouteBus.open(PresenceRoute.Between("moments"))
+                    }, modifier = Modifier.fillMaxWidth())
+                }
+                IceGlassCard(modifier = Modifier.weight(1f)) {
+                    Text("✧", color = ParchmentGold,
+                        style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(4.dp))
+                    IceButton("状态灯", onClick = {
+                        PresenceRouteBus.open(PresenceRoute.Between("status"))
+                    }, modifier = Modifier.fillMaxWidth())
+                }
+                IceGlassCard(modifier = Modifier.weight(1f)) {
+                    Text("✉", color = ParchmentGold,
+                        style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(4.dp))
+                    IceButton("聊天", onClick = {
+                        PresenceRouteBus.open(PresenceRoute.Chat())
+                    }, modifier = Modifier.fillMaxWidth())
+                }
             }
-            IceGlassCard(modifier = Modifier.weight(1f)) {
-                Text("✉", color = ParchmentGold, style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(4.dp))
-                IceButton("留言板", onClick = {
-                    PresenceRouteBus.open(PresenceRoute.Between("moments"))
-                }, modifier = Modifier.fillMaxWidth())
-            }
-            IceGlassCard(modifier = Modifier.weight(1f)) {
-                Text("♧", color = ParchmentGold, style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(4.dp))
-                IceButton("伴读", onClick = {
-                    PresenceRouteBus.open(PresenceRoute.Study)
-                }, modifier = Modifier.fillMaxWidth())
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                IceGlassCard(modifier = Modifier.weight(1f)) {
+                    Text("♧", color = ParchmentGold,
+                        style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(4.dp))
+                    IceButton("伴读", onClick = {
+                        android.widget.Toast.makeText(
+                            context, StudyShortcuts.openBanduread(context),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }, modifier = Modifier.fillMaxWidth())
+                }
+                IceGlassCard(modifier = Modifier.weight(1f)) {
+                    Text("✦", color = ParchmentGold,
+                        style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(4.dp))
+                    IceButton("粉笔", onClick = {
+                        android.widget.Toast.makeText(
+                            context, StudyShortcuts.openFenbi(context),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }, modifier = Modifier.fillMaxWidth())
+                }
+                IceGlassCard(modifier = Modifier.weight(1f)) {
+                    Text("☷", color = ParchmentGold,
+                        style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(4.dp))
+                    IceButton("今日生活", onClick = {
+                        PresenceRouteBus.open(PresenceRoute.Today)
+                    }, modifier = Modifier.fillMaxWidth())
+                }
             }
         }
         if (pinned.isNotEmpty()) {
