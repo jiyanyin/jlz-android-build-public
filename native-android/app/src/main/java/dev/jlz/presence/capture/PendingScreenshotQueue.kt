@@ -389,7 +389,11 @@ class PendingScreenshotQueue(private val context: Context) {
                 meta?.put("state", "reviewed")?.put("lifecycle", lifecycle)
                 writeMeta(id, meta ?: JSONObject().put("event_id", id).put("lifecycle", lifecycle))
                 if (releasePixel(image, "gpt_reviewed_ack")) changed++
-            } else if (entry == null || !entry.optBoolean("available", false)) {
+            } else if (entry != null && !entry.optBoolean("available", false)) {
+                // The server returns only the newest 100 capture records here.
+                // Missing from that page does NOT mean that older image pixels
+                // disappeared: do not reupload already-acknowledged screenshots.
+                // A matching record with available=false is positive evidence.
                 if (image.renameTo(File(root, "$id.image"))) {
                     journal.updateDelivery(id, "upload_pending",
                         detail = "remote_image_unavailable_requeue_original_uuid")
