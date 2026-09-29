@@ -79,11 +79,14 @@ jobs:
           set -euo pipefail
           apk="native-android/app/build/outputs/apk/debug/app-debug.apk"
           test -f "$apk"
-          cp "$apk" /tmp/JLZ-Presence-QAvatar-Controls-2026092904.apk
-          sha256sum /tmp/JLZ-Presence-QAvatar-Controls-2026092904.apk > /tmp/JLZ-Presence-QAvatar-Controls-2026092904-SHA256.txt
+          cp "$apk" /tmp/JLZ-Presence-Parchment-Preview-2026092905.apk
+          sha256sum /tmp/JLZ-Presence-Parchment-Preview-2026092905.apk > /tmp/JLZ-Presence-Parchment-Preview-2026092905-SHA256.txt
           tag="android-parchment-preview-20260929"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$tag" /tmp/JLZ-Presence-QAvatar-Controls-2026092904.apk /tmp/JLZ-Presence-QAvatar-Controls-2026092904-SHA256.txt --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "$tag" /tmp/JLZ-Presence-Parchment-Preview-2026092905.apk /tmp/JLZ-Presence-Parchment-Preview-2026092905-SHA256.txt --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$tag" --prerelease --title "JLZ Presence · Parchment UI preview 2026092905" --repo "$GITHUB_REPOSITORY"
+            gh release delete-asset "$tag" JLZ-Presence-QAvatar-Controls-2026092904.apk --yes --repo "$GITHUB_REPOSITORY" || true
+            gh release delete-asset "$tag" JLZ-Presence-QAvatar-Controls-2026092904-SHA256.txt --yes --repo "$GITHUB_REPOSITORY" || true
           else
-            gh release create "$tag" /tmp/JLZ-Presence-QAvatar-Controls-2026092904.apk /tmp/JLZ-Presence-QAvatar-Controls-2026092904-SHA256.txt --target "$GITHUB_SHA" --title "JLZ Presence · Parchment UI preview 2026092905" --notes "Signed Android 0.4.4 PREVIEW: parchment interface built on QAvatar V1. Please test before using as production." --repo "$GITHUB_REPOSITORY"
+            gh release create "$tag" /tmp/JLZ-Presence-Parchment-Preview-2026092905.apk /tmp/JLZ-Presence-Parchment-Preview-2026092905-SHA256.txt --prerelease --target "$GITHUB_SHA" --title "JLZ Presence · Parchment UI preview 2026092905" --notes "Signed Android 0.4.4 PREVIEW: parchment interface built on QAvatar V1. Please test before using as production." --repo "$GITHUB_REPOSITORY"
           fi
