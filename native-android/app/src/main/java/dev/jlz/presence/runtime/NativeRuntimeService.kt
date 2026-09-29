@@ -17,10 +17,12 @@ import dev.jlz.presence.agency.PresencePlanRepository
 import dev.jlz.presence.capture.CaptureEventStore
 import dev.jlz.presence.capture.PendingScreenshotQueue
 import dev.jlz.presence.data.LocalLifeStore
+import dev.jlz.presence.between.BetweenOutbox
 import dev.jlz.presence.usage.ForegroundUsageTracker
 import dev.jlz.presence.usage.ForegroundUsageStore
 import dev.jlz.presence.usage.SystemUsageSnapshot
 import dev.jlz.presence.usage.DeviceActivityJournal
+import dev.jlz.presence.usage.HourlyBehaviorDigest
 import dev.jlz.presence.screen.ScreenObservationBus
 import java.time.LocalDate
 import java.time.ZoneId
@@ -71,6 +73,7 @@ class NativeRuntimeService : Service() {
     private lateinit var personaRepository: PersonaStateRepository
     private lateinit var presencePlanRepository: PresencePlanRepository
     private lateinit var lifeStore: LocalLifeStore
+    private lateinit var betweenOutbox: BetweenOutbox
     private lateinit var captureEvents: CaptureEventStore
     private lateinit var screenshotQueue: PendingScreenshotQueue
     private lateinit var settingsRepository: RuntimeSettingsRepository
@@ -110,6 +113,7 @@ class NativeRuntimeService : Service() {
         personaRepository = PersonaStateRepository(applicationContext)
         presencePlanRepository = PresencePlanRepository(applicationContext)
         lifeStore = LocalLifeStore(applicationContext)
+        betweenOutbox = BetweenOutbox(applicationContext)
         captureEvents = CaptureEventStore(applicationContext)
         screenshotQueue = PendingScreenshotQueue(applicationContext)
         screenshotQueue.clearLegacyTestImagesOnce()
@@ -255,6 +259,9 @@ class NativeRuntimeService : Service() {
                 // a manual chat refresh. A deterministic inbox ID prevents
                 // duplicate messages after a response-timeout retry.
                 syncCapturedNotes(api)
+                // P0-2 local-first status and moments; keep the original event IDs
+                // on retries. An ordinary moment is NOT an inbox message.
+                runCatching { betweenOutbox.sync(api, limit = 40) }
                 // A reply typed into an Android notification is locally durable
                 // even if the original network attempt failed or was interrupted.
                 runCatching { PendingReplyStore(applicationContext).sync(api, limit = 40) }
@@ -304,6 +311,29 @@ class NativeRuntimeService : Service() {
                             }
                         })
                 }
+                // Send compact daily totals (top 12 only). Keep the full
+                // underlying UsageEvents journal on device for investigations.
+                // This does not alter other usage_state fields or gates.
+                if (usageJson.optBoolean("usage_permission_ready", false)) {
+                    val originalTotals = usageJson.optJSONArray("totals") ?: JSONArray()
+                    if (originalTotals.length() > 12) {
+                        val limited = JSONArray()
+                        var otherMs = 0L
+                        for (i in 0 until originalTotals.length()) {
+                            val entry = originalTotals.optJSONObject(i) ?: continue
+                            if (i < 12) limited.put(entry)
+                            else otherMs += entry.optLong("duration_ms").coerceAtLeast(0L)
+                        }
+                        usageJson.put("totals", limited)
+                        usageJson.put("other_app_duration_ms", otherMs)
+                        usageJson.put("omitted_app_count", originalTotals.length() - limited.length())
+                    }
+                }
+                usageJson.put("behavior_digest_schema", "jlz_behavior_hour_v1")
+                    .put("last_confirmed_hour_end_ms",
+                        HourlyBehaviorDigest.lastConfirmedHourEnd(
+                            applicationContext, settings.deviceId
+                        ))
                 // V2: Health Connect telemetry removed by product decision.
                 api.postDeviceState(
                     DeviceStateSnapshot(
@@ -320,6 +350,16 @@ class NativeRuntimeService : Service() {
                         calendar = NativeCalendarBridge(applicationContext).snapshot()
                     )
                 )
+
+                // At most ONE completed-hour aggregate after a successful
+                // regular heartbeat. The existing Runtime activity endpoint
+                // preserves original-hour timestamps and deduplicates by ID.
+                // If network/ACK fails, the same hour is retried next tick.
+                runCatching {
+                    HourlyBehaviorDigest.sendDue(
+                        applicationContext, api, settings.deviceId
+                    )
+                }
 
                 NativeClientDiagnostics.update {
                     it.copy(
@@ -440,7 +480,11 @@ class NativeRuntimeService : Service() {
                     beforeState = beforeState,
                     deviceId = command.deviceId
                 )
-                val execution = execute(command, api)
+                // An invalid plan or unexpected action exception must return a
+                // FAILED receipt; leaving the command DISPATCHED forever loses
+                // the only causal link between request and phone action.
+                val execution = runCatching { execute(command, api) }
+                    .getOrElse { false to ("execution_exception:" + it.javaClass.simpleName) }
                 val executedAtMs = System.currentTimeMillis()
                 val afterState = deviceSystem.systemState()
                 val parsedResult = runCatching { JSONObject(execution.second) }.getOrNull()
@@ -540,7 +584,21 @@ class NativeRuntimeService : Service() {
                 val eventId = command.payload.optString("event_id").ifBlank { command.id }
                 val intentId = command.payload.optString("intent_id").ifBlank { command.id }
                 val result = NotificationAdapter(this).showMessage(title, message, eventId, intentId)
-                result.ok to result.code
+                // This receipt differentiates system-active from genuinely
+                // user-opened. A notification being active is NOT proof it was
+                // shown as a heads-up banner or read by the user.
+                val receipt = JSONObject()
+                    .put("ok", result.ok)
+                    .put("code", result.code)
+                    .put("event_id", eventId)
+                    .put("intent_id", intentId)
+                    .put("notification_id", result.notificationId ?: JSONObject.NULL)
+                    .put("posted_at_ms", result.postedAtMs ?: JSONObject.NULL)
+                    .put("system_active_at_ms", result.activeConfirmedAtMs ?: JSONObject.NULL)
+                    .put("verification_status", result.verificationStatus)
+                    .put("heads_up_display_verified", false)
+                    .put("user_opened_verified", false)
+                result.ok to receipt.toString()
             }
 
             "presence_callback", "trigger_guidian" -> {
@@ -602,28 +660,35 @@ class NativeRuntimeService : Service() {
                                     .put("delivery", "local_outbox")
                                     .toString()
                             )
-                            var sent: PendingScreenshotQueue.SendResult? = null
-                            var attempts = 0
-                            while (attempts < 3 && sent?.sent != true) {
-                                attempts++
-                                sent = screenshotQueue.sendPending(
-                                    api,
-                                    limit = 10,
-                                    priorityEventId = eventId
-                                ).firstOrNull { it.eventId == eventId }
-                                if (sent?.sent != true && attempts < 3) delay(400L * attempts)
+                            // Give the command channel its immutable event
+                            // ID immediately; HTTP upload belongs to the
+                            // existing durable outbox and runs off the command
+                            // dispatch loop. A slow POST no longer prevents the
+                            // MCP tool from learning which screenshot to fetch.
+                            scope.launch(Dispatchers.IO) {
+                                runCatching {
+                                    screenshotQueue.sendPending(
+                                        api,
+                                        limit = 10,
+                                        priorityEventId = eventId
+                                    )
+                                }.onFailure { error ->
+                                    NativeClientDiagnostics.update {
+                                        it.copy(lastError =
+                                            "capture_upload_pending:" + error.javaClass.simpleName)
+                                    }
+                                }
                             }
-                            // The queued screenshot may be behind prior
-                            // offline photos; report pending, not viewed.
-                            val failedStage = sent?.reason
-                                ?.substringBefore(':')
-                                ?.takeIf { it in setOf("quota_full", "server_failed", "upload_failed") }
-                                ?: "upload_failed"
-                            true to JSONObject().put("ok", true).put("event_id", eventId)
-                                .put("failure_stage", if (sent?.sent == true) JSONObject.NULL else failedStage)
-                                .put("upload_attempts", attempts).put("upload_detail", sent?.reason.orEmpty())
-                                .put("stages", JSONObject().put("queued", true).put("phone_captured", true)
-                                    .put("uploaded", sent?.sent == true).put("server_received", sent?.sent == true)
+                            true to JSONObject()
+                                .put("ok", true)
+                                .put("event_id", eventId)
+                                .put("verification_status", "capture_queued_not_uploaded")
+                                .put("upload_mode", "asynchronous_durable_outbox")
+                                .put("stages", JSONObject()
+                                    .put("queued", true)
+                                    .put("phone_captured", true)
+                                    .put("uploaded", false)
+                                    .put("server_received", false)
                                     .put("gpt_image_available", false))
                                 .toString()
                         }
@@ -964,7 +1029,7 @@ class NativeRuntimeService : Service() {
         foregroundPackage: String?
     ) {
         val now = System.currentTimeMillis()
-        val (plan, due) = presencePlanRepository.dueSteps(
+        val (plan, due) = presencePlanRepository.claimDueSteps(
             nowMs = now,
             semanticPlace = semanticPlace,
             foregroundPackage = foregroundPackage
@@ -974,6 +1039,7 @@ class NativeRuntimeService : Service() {
         due.forEach { step ->
             if (step.action == "set_presence_plan" || step.action == "clear_presence_plan") {
                 presencePlanRepository.markResult(
+                    planId = plan.planId,
                     stepId = step.stepId,
                     ok = false,
                     result = "nested_presence_plan_control_not_allowed"
@@ -1012,42 +1078,61 @@ class NativeRuntimeService : Service() {
             val result = runCatching { execute(synthetic, api) }
                 .getOrElse { false to (it.message ?: it.javaClass.simpleName) }
             val parsedSynthetic = runCatching { JSONObject(result.second) }.getOrNull()
+            val executedAt = System.currentTimeMillis()
+            val verification = parsedSynthetic?.optString("verification_status")
+                ?.takeIf { it.isNotBlank() }
+                ?: if (result.first) "phone_reported_success" else "failed"
+            val verifiedAt = System.currentTimeMillis()
             deviceActivityJournal.recordCommandResult(
                 commandId = synthetic.id,
-                executedAtMs = System.currentTimeMillis(),
-                verifiedAtMs = System.currentTimeMillis(),
+                executedAtMs = executedAt,
+                verifiedAtMs = verifiedAt,
                 executionStatus = if (result.first) "executed" else "failed",
-                verificationStatus = parsedSynthetic?.optString("verification_status")
-                    ?.takeIf { it.isNotBlank() }
-                    ?: if (result.first) "phone_reported_success" else "failed",
+                verificationStatus = verification,
                 afterState = deviceSystem.systemState()
             )
-
             presencePlanRepository.markResult(
+                planId = plan.planId,
                 stepId = step.stepId,
                 ok = result.first,
                 result = result.second
             )
 
+            // This is a PHONE execution receipt, not proof that a notification
+            // was seen, an app opened, or the user followed an instruction.
+            val receipt = JSONObject()
+                .put("plan_id", plan.planId)
+                .put("step_id", step.stepId)
+                .put("command_id", synthetic.id)
+                .put("intent_id", synthetic.intentId)
+                .put("origin", synthetic.origin)
+                .put("phone_received_at_ms", receivedAt)
+                .put("executed_at_ms", executedAt)
+                .put("verified_at_ms", verifiedAt)
+                .put("execution_status", if (result.first) "executed" else "failed")
+                .put("verification_status", verification)
+                .put("effect_observed", false)
+                .put("result", result.second.take(500))
             lifeStore.recordTimeline(
                 type = "presence_plan",
                 title = "计划执行 · " + step.action,
-                detail = result.second,
-                eventId = plan.planId,
-                intentId = step.stepId
+                detail = result.second.take(500),
+                eventId = synthetic.id,
+                intentId = step.stepId,
+                id = synthetic.id,
+                createdAtMs = executedAt,
+                metadataJson = receipt.toString()
             )
-
             runCatching {
                 api.postActivityEvent(
                     source = "presence_plan",
                     type = "agency",
                     title = "计划执行 · " + step.action,
-                    subtitle = result.second,
-                    metadata = JSONObject()
-                        .put("plan_id", plan.planId)
-                        .put("step_id", step.stepId)
-                        .put("ok", result.first),
-                    dedupeSeconds = 0
+                    subtitle = result.second.take(220),
+                    metadata = receipt,
+                    dedupeSeconds = 0,
+                    eventId = synthetic.id,
+                    status = if (result.first) "completed" else "failed"
                 )
             }
         }
