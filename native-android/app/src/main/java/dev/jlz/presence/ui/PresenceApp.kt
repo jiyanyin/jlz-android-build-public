@@ -113,21 +113,18 @@ fun WelcomeScreen() {
         Box(
             modifier = Modifier.fillMaxWidth()
                 .height(portraitHeight)
-                .clip(RoundedCornerShape(28.dp))
-                .background(ParchmentCarbon)
-                .border(0.7.dp, ParchmentGold.copy(alpha = 0.60f),
-                    RoundedCornerShape(28.dp))
         ) {
             Image(
                 painter = painterResource(id = R.drawable.jlz_welcome_portrait),
                 contentDescription = "纪临洲托腮注视着音音",
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Fit
             )
             Text(
                 "JLZ  /  YOUR PRIVATE WORLD",
                 modifier = Modifier.align(Alignment.BottomCenter)
-                    .background(ParchmentCarbon.copy(alpha = 0.75f))
+                    .background(ParchmentGlass.copy(alpha = 0.73f),
+                        RoundedCornerShape(12.dp))
                     .padding(horizontal = 15.dp, vertical = 6.dp),
                 color = ParchmentGold,
                 style = MaterialTheme.typography.labelSmall
@@ -231,11 +228,7 @@ fun HomeScreen() {
                     Image(
                         painter = painterResource(id = R.drawable.jlz_home_portrait),
                         contentDescription = "纪临洲向音音伸出手",
-                        modifier = Modifier.size(width = 132.dp, height = 120.dp)
-                            .clip(RoundedCornerShape(19.dp))
-                            .background(ParchmentCarbon)
-                            .border(0.5.dp, ParchmentGold.copy(alpha = 0.42f),
-                                RoundedCornerShape(19.dp)),
+                        modifier = Modifier.size(width = 132.dp, height = 120.dp),
                         contentScale = ContentScale.Fit
                     )
                 }
