@@ -18,6 +18,9 @@ android {
 
     buildTypes {
         debug {
+            // Install separately from the live World Between APK.
+            applicationIdSuffix = ".sullylab"
+            versionNameSuffix = "-sullylab"
         }
         release {
             isMinifyEnabled = false
@@ -48,6 +51,7 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.10.0")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.webkit:webkit:1.12.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-service:2.8.7")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
