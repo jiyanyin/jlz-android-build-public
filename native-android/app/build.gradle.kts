@@ -101,11 +101,9 @@ val prepareWorldFonts by tasks.registering {
     }
 }
 android.sourceSets.getByName("main").res.srcDir(worldFontResDir)
-// Gradle 9 validates all resource-source consumers. Merely ordering merge
-// tasks is insufficient: mapSourceSetPaths and generateResources use the
-// generated font directory too.
+// Gradle 9 validates all consumers of generated source directories.
+// Variant tasks (resources, deeplinks, Kotlin and packaging) must depend
+// explicitly on the font materialization; standalone clean/help do not.
 tasks.matching {
-    (it.name.startsWith("merge") && it.name.endsWith("Resources")) ||
-    (it.name.startsWith("generate") && it.name.endsWith("Resources")) ||
-    (it.name.startsWith("map") && it.name.endsWith("SourceSetPaths"))
+    it.name.contains("Debug") || it.name.contains("Release")
 }.configureEach { dependsOn(prepareWorldFonts) }
