@@ -1,5 +1,7 @@
 package dev.jlz.presence.ui
 
+import dev.jlz.presence.ui.components.WorldText as Text
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,7 +21,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import dev.jlz.presence.life.ActiveLifeAction
 import dev.jlz.presence.life.LifeActionCatalog
 import dev.jlz.presence.life.LifeActionChoice
@@ -192,7 +194,7 @@ fun LifeActionSheet(
                         choices.forEach { choice ->
                             Column(
                                 modifier = Modifier.weight(1f)
-                                    .height(87.dp)
+                                    .heightIn(min = 87.dp)
                                     .clip(RoundedCornerShape(19.dp))
                                     .background(ParchmentGlass)
                                     .border(0.5.dp, GlassBorder, RoundedCornerShape(19.dp))
@@ -208,7 +210,7 @@ fun LifeActionSheet(
                                 Spacer(Modifier.height(3.dp))
                                 Text(choice.name, color = TextPrimary,
                                     style = MaterialTheme.typography.labelMedium,
-                                    maxLines = 1)
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 Text(
                                     if (choice.timed && active != null) "先结束当前"
                                     else if (choice.timed) "开始计时" else "立即记录",

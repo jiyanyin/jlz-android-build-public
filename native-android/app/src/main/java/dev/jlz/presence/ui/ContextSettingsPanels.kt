@@ -1,5 +1,7 @@
 package dev.jlz.presence.ui
 
+import dev.jlz.presence.ui.components.WorldText as Text
+
 import android.Manifest
 import android.content.Intent
 import android.os.Build
@@ -23,7 +25,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
