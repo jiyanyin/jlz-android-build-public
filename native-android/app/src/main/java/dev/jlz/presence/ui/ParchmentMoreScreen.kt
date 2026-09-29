@@ -38,7 +38,9 @@ internal fun ParchmentMoreScreen() {
             Spacer(Modifier.height(8.dp))
             IceButton("带着老公 · 同行", onClick = { PresenceRouteBus.open(PresenceRoute.Trip) }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
-            IceButton("记录今天", onClick = { PresenceRouteBus.open(PresenceRoute.Between("moments")) }, modifier = Modifier.fillMaxWidth())
+            IceButton("随手记 · 写给老公", onClick = { PresenceRouteBus.open(PresenceRoute.Between("moments")) }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(8.dp))
+            IceButton("今日生活 · 真实记录", onClick = { PresenceRouteBus.open(PresenceRoute.Today) }, modifier = Modifier.fillMaxWidth())
         }
         IceGlassCard {
             Text("记录与回响", color = TextPrimary, style = MaterialTheme.typography.titleLarge)
@@ -47,7 +49,7 @@ internal fun ParchmentMoreScreen() {
             Spacer(Modifier.height(8.dp))
             IceButton("手机客观轨迹", onClick = { PresenceRouteBus.open(PresenceRoute.Timeline) }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))
-            IceButton("快捷记下此刻", onClick = { PresenceRouteBus.open(PresenceRoute.QuickCapture) }, modifier = Modifier.fillMaxWidth())
+            IceButton("本机速记（仅本地）", onClick = { PresenceRouteBus.open(PresenceRoute.QuickCapture) }, modifier = Modifier.fillMaxWidth())
         }
         IceGlassCard {
             Text("设备与设置", color = TextPrimary, style = MaterialTheme.typography.titleLarge)
