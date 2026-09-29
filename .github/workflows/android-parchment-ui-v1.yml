@@ -1,4 +1,4 @@
-name: Android Parchment Transparent Portraits
+name: Android Parchment Original Portraits Restored
 
 on:
   push:
@@ -28,33 +28,6 @@ jobs:
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Restore actual alpha for owner portraits
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m pip install --disable-pip-version-check --quiet \
-            "numpy>=1.26,<2" "opencv-python-headless>=4.10,<4.11" "Pillow>=10"
-          python3 native-android/tools/prepare_portraits.py
-          python3 - <<'PY'
-          from PIL import Image
-          from pathlib import Path
-          root = Path("native-android/app/src/main/res/drawable-nodpi")
-          for name in ("welcome", "home", "launcher"):
-              path = root / f"jlz_{name}_portrait.webp"
-              img = Image.open(path)
-              assert img.mode == "RGBA" and img.getchannel("A").getextrema()[0] == 0, str(path)
-              assert img.getchannel("A").getextrema()[1] == 255, str(path)
-          print("All three portraits contain true transparent pixels.")
-          PY
-          # Keep the canonical public mirror deployable even without the CI
-          # preprocessing step on future builds. No image is a keystore/token.
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add native-android/app/src/main/res/drawable-nodpi/jlz_*_portrait.webp
-          if ! git diff --cached --quiet; then
-            git commit -m "fix(assets): replace black-backed portraits with transparent WebP"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          fi
       - name: Verify avatar contracts
         run: python native-android/tests/avatar-v1-host/test_avatar_v1.py
       - name: Verify native notification receipts and capture retry
@@ -75,6 +48,19 @@ jobs:
           assert 'R.drawable.jlz_welcome_portrait' in app
           assert 'R.drawable.jlz_home_portrait' in app
           assert '@drawable/jlz_launcher_portrait' in icon
+          assert '.background(ParchmentCarbon)' in app, "original dark portrait card missing"
+          assert 'contentScale = ContentScale.Crop' in app, "original welcome crop missing"
+          import subprocess
+          blobs = {
+              "welcome": "0c81990d5af8c3c05215828af2de9cb64ffce1a1",
+              "home": "14543833bed2ee35e750b6f6ef46115455684903",
+              "launcher": "be85417998b8fdbfb0c8749f69d57ee15f84fdd0",
+          }
+          for name, expected in blobs.items():
+              asset = root / "res/drawable-nodpi" / f"jlz_{name}_portrait.webp"
+              sha = subprocess.check_output(["git", "hash-object", str(asset)], text=True).strip()
+              assert sha == expected, f"Wrong portrait asset {name}: {sha}"
+
           for name in ('welcome', 'home', 'launcher'):
               path = root / 'res/drawable-nodpi' / ('jlz_'+name+'_portrait.webp')
               data = path.read_bytes()
@@ -115,7 +101,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: JLZ-Presence-Transparent-Portraits-2026092907
+          name: JLZ-Presence-Original-Portraits-2026092908
           path: native-android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
@@ -129,14 +115,14 @@ jobs:
           set -euo pipefail
           apk="native-android/app/build/outputs/apk/debug/app-debug.apk"
           test -f "$apk"
-          cp "$apk" /tmp/JLZ-Presence-Transparent-Portraits-2026092907.apk
-          sha256sum /tmp/JLZ-Presence-Transparent-Portraits-2026092907.apk > /tmp/JLZ-Presence-Transparent-Portraits-2026092907-SHA256.txt
-          tag="android-parchment-transparent-20260929"
+          cp "$apk" /tmp/JLZ-Presence-Original-Portraits-2026092908.apk
+          sha256sum /tmp/JLZ-Presence-Original-Portraits-2026092908.apk > /tmp/JLZ-Presence-Original-Portraits-2026092908-SHA256.txt
+          tag="android-parchment-rollback-20260929"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$tag" /tmp/JLZ-Presence-Transparent-Portraits-2026092907.apk /tmp/JLZ-Presence-Transparent-Portraits-2026092907-SHA256.txt --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit "$tag" --prerelease --title "JLZ Presence · Transparent Portraits preview 2026092907" --repo "$GITHUB_REPOSITORY"
+            gh release upload "$tag" /tmp/JLZ-Presence-Original-Portraits-2026092908.apk /tmp/JLZ-Presence-Original-Portraits-2026092908-SHA256.txt --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$tag" --prerelease --title "JLZ Presence · Original Portraits restored 2026092908" --repo "$GITHUB_REPOSITORY"
             gh release delete-asset "$tag" JLZ-Presence-QAvatar-Controls-2026092904.apk --yes --repo "$GITHUB_REPOSITORY" || true
             gh release delete-asset "$tag" JLZ-Presence-QAvatar-Controls-2026092904-SHA256.txt --yes --repo "$GITHUB_REPOSITORY" || true
           else
-            gh release create "$tag" /tmp/JLZ-Presence-Transparent-Portraits-2026092907.apk /tmp/JLZ-Presence-Transparent-Portraits-2026092907-SHA256.txt --prerelease --target "$GITHUB_SHA" --title "JLZ Presence · Transparent Portraits preview 2026092907" --notes "Signed Android 0.4.6 PREVIEW: portraits have true alpha and black portrait panels removed. No Runtime/data schema changes. Test upgrade before daily use." --repo "$GITHUB_REPOSITORY"
+            gh release create "$tag" /tmp/JLZ-Presence-Original-Portraits-2026092908.apk /tmp/JLZ-Presence-Original-Portraits-2026092908-SHA256.txt --prerelease --target "$GITHUB_SHA" --title "JLZ Presence · Original Portraits restored 2026092908" --notes "Signed Android 0.4.7 PREVIEW: restore original uncut portraits and dark cards exactly as 2026092906, with only versionCode incremented to allow safe in-place upgrade. No data/schema changes." --repo "$GITHUB_REPOSITORY"
           fi

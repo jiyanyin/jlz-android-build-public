@@ -12,8 +12,8 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026092907
-        versionName = "0.4.6-parchment-transparent-portraits"
+        versionCode = 2026092908
+        versionName = "0.4.7-original-portraits-restored"
     }
 
     buildTypes {
