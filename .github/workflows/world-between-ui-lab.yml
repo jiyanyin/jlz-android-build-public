@@ -110,6 +110,25 @@ jobs:
         working-directory: native-android
         run: gradle :world-between-ui-lab:assembleDebug --no-daemon --stacktrace
 
+      - name: Sign UI lab APK with stable project debug key
+        shell: bash
+        env:
+          JLZ_DEBUG_KEYSTORE_BASE64: ${{ secrets.JLZ_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "${JLZ_DEBUG_KEYSTORE_BASE64:-}"
+          mkdir -p /tmp/jlz-ui-signing
+          printf '%s' "$JLZ_DEBUG_KEYSTORE_BASE64" | base64 --decode > /tmp/jlz-ui-signing/jlz-ui-debug.keystore
+          apk="native-android/world-between-ui-lab/build/outputs/apk/debug/world-between-ui-lab-debug.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" sign \
+            --ks /tmp/jlz-ui-signing/jlz-ui-debug.keystore \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
+          rm -f /tmp/jlz-ui-signing/jlz-ui-debug.keystore
+
       - name: Upload preview APK (not production)
         uses: actions/upload-artifact@v4
         with:
