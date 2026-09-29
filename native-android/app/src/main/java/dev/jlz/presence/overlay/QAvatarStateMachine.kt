@@ -1,27 +1,41 @@
 package dev.jlz.presence.overlay
 
-enum class QAvatarState(val poolName: String) {
-    IDLE("idle"), THINKING("thinking"), WORK("work"), ANNOYED("annoyed"),
-    HAPPY("happy"), CLINGY("clingy"), SLEEPY("sleepy"), CALL("call"),
-    STUDY("study"), POKE("poke"), RANDOM("random")
+/** One explicit state vocabulary shared by behavior, artwork and phrases. */
+enum class QAvatarState(val poolName: String, val priority: Int) {
+    IDLE("idle", 10), GENTLE("gentle", 20), CLINGY("clingy", 25),
+    TEASE("tease", 35), CATCH_MONITOR("catch_monitor", 70),
+    STUDY("study", 60), SLEEPY("sleepy", 40), SLEEPING("sleeping", 50),
+    WOKE_UP("woke_up", 80), NIGHT_COMPANION("night_companion", 45),
+    HIDDEN_EDGE("hidden_edge", 90), SUSPENDED("suspended", 100)
 }
 
+data class QAvatarTransition(
+    val from: QAvatarState,
+    val to: QAvatarState,
+    val reason: String,
+    val changedAtMs: Long
+)
+
+/** Priority state machine: an idle tick cannot interrupt a held reaction. */
 class QAvatarStateMachine {
     private var currentState: QAvatarState = QAvatarState.IDLE
-    private val recentPicks = mutableListOf<String>()
-    private val cooldownMs = 8000L
-    private var lastPickAt = 0L
+    private var holdUntilMs: Long = 0L
 
-    fun transitionTo(state: QAvatarState) { currentState = state }
-    fun current(): QAvatarState = currentState
-
-    fun pickAsset(pool: List<String>): String? {
-        if (pool.isEmpty()) return null
-        val now = System.currentTimeMillis()
-        val fresh = pool.filter { it !in recentPicks.takeLast(5) }
-        val source = fresh.ifEmpty { pool }
-        val pick = source.random()
-        if (now - lastPickAt >= cooldownMs) { recentPicks.add(pick); lastPickAt = now }
-        return pick
+    @Synchronized
+    fun transitionTo(
+        state: QAvatarState,
+        reason: String,
+        holdMs: Long = 0L,
+        force: Boolean = false,
+        nowMs: Long = System.currentTimeMillis()
+    ): QAvatarTransition? {
+        if (!force && nowMs < holdUntilMs && state.priority < currentState.priority) return null
+        val prior = currentState
+        currentState = state
+        holdUntilMs = nowMs + holdMs.coerceAtLeast(0L)
+        return QAvatarTransition(prior, state, reason, nowMs)
     }
+
+    @Synchronized fun current(): QAvatarState = currentState
+    @Synchronized fun isHeld(nowMs: Long = System.currentTimeMillis()): Boolean = nowMs < holdUntilMs
 }
