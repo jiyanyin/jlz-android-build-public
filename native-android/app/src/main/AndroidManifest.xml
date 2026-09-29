@@ -32,6 +32,7 @@
         <activity android:name=".focus.FocusGateActivity" android:exported="false" android:excludeFromRecents="true" />
         <activity android:name=".callback.PresenceCallbackActivity" android:exported="false"
             android:excludeFromRecents="true" android:showWhenLocked="true" android:turnScreenOn="true" />
+        <activity android:name=".ui.sully.SullyPreviewActivity" android:exported="false" android:label="糯米机 · 世界之间试验" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
