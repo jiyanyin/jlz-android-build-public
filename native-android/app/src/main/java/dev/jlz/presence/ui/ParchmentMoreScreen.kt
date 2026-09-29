@@ -6,6 +6,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import dev.jlz.presence.navigation.PresenceRoute
@@ -19,6 +23,13 @@ import dev.jlz.presence.ui.theme.TextSecondary
 /** Pure routing view: all destination implementations remain untouched. */
 @Composable
 internal fun ParchmentMoreScreen() {
+    var showLifeActionSheet by remember { mutableStateOf(false) }
+    if (showLifeActionSheet) {
+        LifeActionSheet(
+            onDismiss = { showLifeActionSheet = false },
+            onSaved = {}
+        )
+    }
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
             .padding(horizontal = 22.dp, vertical = 24.dp),
@@ -31,6 +42,10 @@ internal fun ParchmentMoreScreen() {
             style = MaterialTheme.typography.bodyMedium)
         IceGlassCard {
             Text("我的生活", color = TextPrimary, style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(10.dp))
+            IceButton("生活快捷记录 · 记一下", onClick = {
+                showLifeActionSheet = true
+            }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
             IceButton("全部应用与桌面", onClick = { PresenceRouteBus.open(PresenceRoute.Drawer) }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(8.dp))

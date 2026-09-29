@@ -159,15 +159,17 @@ private suspend fun buildChain(
     // records are real user-written facts even if the server is unavailable.
     store.listTimelineSince(start, 500)
         .filter { it.createdAtMs in start..end &&
-            it.type in setOf("between_status", "between_moment", "presence_plan") }
+            it.type in setOf("between_status", "between_moment", "presence_plan", "life_action") }
         .forEach { ev ->
             val isMoment = ev.type == "between_moment"
+            val isLifeAction = ev.type == "life_action"
             val isEcho = ev.type == "presence_plan"
             val meta = runCatching { JSONObject(ev.metadataJson) }
                 .getOrDefault(JSONObject())
             val actor = meta.optString("actor", "user")
             val lane = when {
                 isEcho -> "echo"
+                isLifeAction -> "life"
                 isMoment -> "moment"
                 else -> "status"
             }
@@ -185,11 +187,13 @@ private suspend fun buildChain(
                 title = if (isMoment) "你我之间" else ev.title,
                 detail = when {
                     isEcho -> echoDetail
+                    isLifeAction -> ev.detail
                     isMoment -> ev.detail
                     else -> statusDetail(meta).ifBlank { ev.detail }
                 },
                 provenance = when {
                     isEcho -> "Android 本机 · 尚未核对服务器回执"
+                    isLifeAction -> "音音手动点选 · 本机生活流水 · 未同步官端"
                     actor == "assistant" -> "纪临洲 · 本机记录"
                     else -> "音音主动填写 · 本机待核对同步"
                 },
@@ -358,10 +362,11 @@ fun TimeChainScreen(initialTab: String = "日记") {
     }
     LaunchedEffect(filter) { reload() }
 
-    val tabs = listOf("日记", "状态灯", "回响", "手机流水")
+    val tabs = listOf("日记", "生活流水", "状态灯", "回响", "手机流水")
     val shown = view.items.filter {
         when (filter) {
             "日记" -> it.lane == "moment" || it.lane == "reply"
+            "生活流水" -> it.lane == "life"
             "状态灯" -> it.lane == "status"
             "回响" -> it.lane == "echo"
             "手机流水" -> it.lane == "phone"
@@ -429,6 +434,8 @@ fun TimeChainScreen(initialTab: String = "日记") {
                         shown.count { it.lane == "moment" } +
                         " 条 · 我的回复 " +
                         shown.count { it.lane == "reply" } + " 条"
+                    "生活流水" -> "手动生活事件 " + shown.size +
+                        " 条（开始与结束分开保留，均有时间戳）"
                     "状态灯" -> "今天的状态更新 " + shown.size + " 条"
                     "回响" -> "今天的介入与回执 " + shown.size + " 条"
                     else -> "手机原始记录 " + shown.size +
@@ -466,6 +473,7 @@ fun TimeChainScreen(initialTab: String = "日记") {
                     Text(
                         when (item.lane) {
                             "status" -> "状态灯"
+                            "life" -> "生活流水"
                             "moment" -> "你我之间"
                             "reply" -> "纪临洲"
                             "echo" -> "回响"

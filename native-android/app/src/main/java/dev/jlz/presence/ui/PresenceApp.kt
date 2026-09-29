@@ -41,6 +41,7 @@ import dev.jlz.presence.ui.components.SectionHeader
 import dev.jlz.presence.ui.theme.*
 import dev.jlz.presence.study.StudyPatrol
 import dev.jlz.presence.study.StudyShortcuts
+import dev.jlz.presence.life.LifeActionRecorder
 import dev.jlz.presence.trip.TripController
 import dev.jlz.presence.usage.UnifiedPhoneTimeline
 import dev.jlz.presence.usage.UnifiedTimelineItem
@@ -178,7 +179,20 @@ fun HomeScreen() {
     val apps = remember { launcherRepo.loadLaunchableApps().filter { !it.hidden } }
     val pinned = apps.filter { it.pinned }
     val store = remember { LocalLifeStore(context) }
-    val events = remember { store.listTimelineSince(System.currentTimeMillis() - 86400000L, 20) }
+    var lifeActionRevision by remember { mutableIntStateOf(0) }
+    var showLifeActionSheet by remember { mutableStateOf(false) }
+    val runningLifeAction = remember(lifeActionRevision) {
+        LifeActionRecorder.active(context.applicationContext)
+    }
+    val events = remember(lifeActionRevision) {
+        store.listTimelineSince(System.currentTimeMillis() - 86400000L, 20)
+    }
+    if (showLifeActionSheet) {
+        LifeActionSheet(
+            onDismiss = { showLifeActionSheet = false },
+            onSaved = { lifeActionRevision += 1 }
+        )
+    }
     val dateLabel = remember {
         java.text.SimpleDateFormat("EEEE, MMMM d", java.util.Locale.ENGLISH)
             .format(java.util.Date()).uppercase(java.util.Locale.ENGLISH)
@@ -342,6 +356,33 @@ fun HomeScreen() {
                         PresenceRouteBus.open(PresenceRoute.Today)
                     }, modifier = Modifier.fillMaxWidth())
                 }
+            }
+        }
+        IceGlassCard {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("DAILY MOMENTS    ✦", color = ParchmentGold,
+                        style = MaterialTheme.typography.labelSmall)
+                    Spacer(Modifier.height(5.dp))
+                    Text("生活快捷记录", color = TextPrimary,
+                        style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (runningLifeAction != null)
+                            "正在" + runningLifeAction.name + " · 再点一下结束"
+                        else "吃饭、走路、发呆、学习……点一下就记下。",
+                        color = TextSecondary,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                IceButton(
+                    text = if (runningLifeAction == null) "＋ 记一下" else "结束计时",
+                    onClick = { showLifeActionSheet = true }
+                )
             }
         }
         if (pinned.isNotEmpty()) {

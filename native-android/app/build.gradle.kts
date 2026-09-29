@@ -12,8 +12,8 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026092909
-        versionName = "0.4.8-parchment-shortcuts-preview"
+        versionCode = 2026092910
+        versionName = "0.4.9-life-action-preview"
     }
 
     buildTypes {
