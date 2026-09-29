@@ -660,28 +660,35 @@ class NativeRuntimeService : Service() {
                                     .put("delivery", "local_outbox")
                                     .toString()
                             )
-                            var sent: PendingScreenshotQueue.SendResult? = null
-                            var attempts = 0
-                            while (attempts < 3 && sent?.sent != true) {
-                                attempts++
-                                sent = screenshotQueue.sendPending(
-                                    api,
-                                    limit = 10,
-                                    priorityEventId = eventId
-                                ).firstOrNull { it.eventId == eventId }
-                                if (sent?.sent != true && attempts < 3) delay(400L * attempts)
+                            // Give the command channel its immutable event
+                            // ID immediately; HTTP upload belongs to the
+                            // existing durable outbox and runs off the command
+                            // dispatch loop. A slow POST no longer prevents the
+                            // MCP tool from learning which screenshot to fetch.
+                            scope.launch(Dispatchers.IO) {
+                                runCatching {
+                                    screenshotQueue.sendPending(
+                                        api,
+                                        limit = 10,
+                                        priorityEventId = eventId
+                                    )
+                                }.onFailure { error ->
+                                    NativeClientDiagnostics.update {
+                                        it.copy(lastError =
+                                            "capture_upload_pending:" + error.javaClass.simpleName)
+                                    }
+                                }
                             }
-                            // The queued screenshot may be behind prior
-                            // offline photos; report pending, not viewed.
-                            val failedStage = sent?.reason
-                                ?.substringBefore(':')
-                                ?.takeIf { it in setOf("quota_full", "server_failed", "upload_failed") }
-                                ?: "upload_failed"
-                            true to JSONObject().put("ok", true).put("event_id", eventId)
-                                .put("failure_stage", if (sent?.sent == true) JSONObject.NULL else failedStage)
-                                .put("upload_attempts", attempts).put("upload_detail", sent?.reason.orEmpty())
-                                .put("stages", JSONObject().put("queued", true).put("phone_captured", true)
-                                    .put("uploaded", sent?.sent == true).put("server_received", sent?.sent == true)
+                            true to JSONObject()
+                                .put("ok", true)
+                                .put("event_id", eventId)
+                                .put("verification_status", "capture_queued_not_uploaded")
+                                .put("upload_mode", "asynchronous_durable_outbox")
+                                .put("stages", JSONObject()
+                                    .put("queued", true)
+                                    .put("phone_captured", true)
+                                    .put("uploaded", false)
+                                    .put("server_received", false)
                                     .put("gpt_image_available", false))
                                 .toString()
                         }

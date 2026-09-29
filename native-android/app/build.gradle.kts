@@ -12,8 +12,8 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026092902
-        versionName = "0.4.1-avatar-capture-receipts"
+        versionCode = 2026092903
+        versionName = "0.4.2-async-capture-receipts"
     }
 
     buildTypes {
