@@ -584,7 +584,21 @@ class NativeRuntimeService : Service() {
                 val eventId = command.payload.optString("event_id").ifBlank { command.id }
                 val intentId = command.payload.optString("intent_id").ifBlank { command.id }
                 val result = NotificationAdapter(this).showMessage(title, message, eventId, intentId)
-                result.ok to result.code
+                // This receipt differentiates system-active from genuinely
+                // user-opened. A notification being active is NOT proof it was
+                // shown as a heads-up banner or read by the user.
+                val receipt = JSONObject()
+                    .put("ok", result.ok)
+                    .put("code", result.code)
+                    .put("event_id", eventId)
+                    .put("intent_id", intentId)
+                    .put("notification_id", result.notificationId ?: JSONObject.NULL)
+                    .put("posted_at_ms", result.postedAtMs ?: JSONObject.NULL)
+                    .put("system_active_at_ms", result.activeConfirmedAtMs ?: JSONObject.NULL)
+                    .put("verification_status", result.verificationStatus)
+                    .put("heads_up_display_verified", false)
+                    .put("user_opened_verified", false)
+                result.ok to receipt.toString()
             }
 
             "presence_callback", "trigger_guidian" -> {
