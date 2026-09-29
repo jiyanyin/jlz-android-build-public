@@ -259,7 +259,7 @@ internal fun ParchmentChatScreen(
                         if (draft.isEmpty()) {
                             Text("say something to me...",
                                 color = TextSecondary,
-                                fontFamily = WorldFonts.greatVibes, fontSize = 22.sp,
+                                fontFamily = WorldFonts.greatVibes, fontSize = 18.sp,
                                 softWrap = true, maxLines = 2,
                                 overflow = TextOverflow.Ellipsis)
                         }

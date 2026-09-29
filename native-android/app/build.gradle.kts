@@ -15,8 +15,8 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026092923
-        versionName = "0.4.12-cycle-font-layout-preview"
+        versionCode = 2026092924
+        versionName = "0.4.13-font-size-preview"
     }
 
     buildTypes {

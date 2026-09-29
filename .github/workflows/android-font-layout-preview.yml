@@ -53,7 +53,7 @@ jobs:
           assert "Character.UnicodeScript.HAN" in text
           assert "WorldFonts.chineseSerif" in text
           assert "CycleReminderEngine" in cycle
-          assert "versionCode = 2026092923" in gradle
+          assert "versionCode = 2026092924" in gradle
           assert "prepareWorldFonts" in gradle
           print("Font/layout + cycle source contracts: PASS")
           PY
@@ -102,7 +102,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: JLZ-Presence-Font-Layout-Cycle-2026092923
+          name: JLZ-Presence-Font-Size-2026092924
           path: native-android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
@@ -116,13 +116,13 @@ jobs:
           set -euo pipefail
           apk="native-android/app/build/outputs/apk/debug/app-debug.apk"
           test -f "$apk"
-          cp "$apk" /tmp/JLZ-Presence-Font-Layout-Cycle-2026092923.apk
-          (cd /tmp && sha256sum JLZ-Presence-Font-Layout-Cycle-2026092923.apk > JLZ-Presence-Font-Layout-Cycle-2026092923.sha256)
-          tag="android-font-layout-cycle-preview-20260929"
-          notes="Independent signed preview, v2026092923: menstrual reminder reader and UI font/layout fixes. Offline-at-runtime OFL fonts. Existing app id and stable signing certificate preserved. No private Runtime, local messages, or secrets copied into this public mirror. Requires real-device QA before any production merge."
+          cp "$apk" /tmp/JLZ-Presence-Font-Size-2026092924.apk
+          (cd /tmp && sha256sum JLZ-Presence-Font-Size-2026092924.apk > JLZ-Presence-Font-Size-2026092924.sha256)
+          tag="android-font-size-preview-20260929"
+          notes="Independent signed preview, v2026092924: menstrual reminder reader and refined smaller typography (Great Vibes preserved) plus UI layout fixes. Offline-at-runtime OFL fonts. Existing app id and stable signing certificate preserved. No private Runtime, local messages, or secrets copied into this public mirror. Requires real-device QA before any production merge."
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$tag" /tmp/JLZ-Presence-Font-Layout-Cycle-2026092923.apk /tmp/JLZ-Presence-Font-Layout-Cycle-2026092923.sha256 --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit "$tag" --title "JLZ Presence · font/layout + cycle preview" --notes "$notes" --prerelease --repo "$GITHUB_REPOSITORY"
+            gh release upload "$tag" /tmp/JLZ-Presence-Font-Size-2026092924.apk /tmp/JLZ-Presence-Font-Size-2026092924.sha256 --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$tag" --title "JLZ Presence · smaller fonts preview" --notes "$notes" --prerelease --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$tag" /tmp/JLZ-Presence-Font-Layout-Cycle-2026092923.apk /tmp/JLZ-Presence-Font-Layout-Cycle-2026092923.sha256 --target "$GITHUB_SHA" --title "JLZ Presence · font/layout + cycle preview" --notes "$notes" --prerelease --repo "$GITHUB_REPOSITORY"
+            gh release create "$tag" /tmp/JLZ-Presence-Font-Size-2026092924.apk /tmp/JLZ-Presence-Font-Size-2026092924.sha256 --target "$GITHUB_SHA" --title "JLZ Presence · font/layout + cycle preview" --notes "$notes" --prerelease --repo "$GITHUB_REPOSITORY"
           fi

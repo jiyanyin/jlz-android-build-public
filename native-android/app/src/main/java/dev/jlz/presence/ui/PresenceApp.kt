@@ -118,7 +118,7 @@ fun WelcomeScreen() {
         Text(
             "Welcome home, Yinyin",
             color = ParchmentGold, fontFamily = WorldFonts.greatVibes,
-            fontSize = 34.sp, textAlign = TextAlign.Center,
+            fontSize = 27.sp, textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
             softWrap = true, maxLines = 2, overflow = TextOverflow.Ellipsis
         )
@@ -260,7 +260,7 @@ fun HomeScreen() {
                             "Always thinking of you...",
                             color = ParchmentGold,
                             fontFamily = WorldFonts.greatVibes,
-                            fontSize = 22.sp,
+                            fontSize = 18.sp,
                             softWrap = true, maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
