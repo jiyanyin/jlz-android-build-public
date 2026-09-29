@@ -2,7 +2,7 @@ name: Public Android Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, ci/cycle-reminder-reader-20260929]
     paths:
       - 'native-android/**'
       - '.github/workflows/android-build.yml'
@@ -67,7 +67,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: JLZ-Presence-2026092821
+          name: JLZ-Presence-Cycle-2026092922
           path: native-android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
