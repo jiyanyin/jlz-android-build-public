@@ -60,8 +60,8 @@ data class UnifiedTimelineSnapshot(
  *
  * Raw evidence remains in Android UsageEvents / DeviceActivityJournal /
  * LocalLifeStore. This class only normalizes those sources into one timeline.
- * USER_OR_NON_RUNTIME is intentionally displayed as phone-side evidence, not
- * proof that the human user performed the action.
+ * OS unlock events are treated as the phone owner's actions by the user's
+ * explicit product preference; all other phone events keep source labels.
  */
 class UnifiedPhoneTimeline(private val context: Context) {
     private val activity = DeviceActivityJournal(context)
@@ -134,8 +134,8 @@ class UnifiedPhoneTimeline(private val context: Context) {
                     "SCREEN_ON" -> "亮屏"
                     "SCREEN_OFF" -> "熄屏"
                     "KEYGUARD_SHOWN" -> "进入锁屏"
-                    "KEYGUARD_HIDDEN" -> "解锁"
-                    "USER_PRESENT" -> "进入手机"
+                    "KEYGUARD_HIDDEN" -> "音音解锁手机"
+                    "USER_PRESENT" -> "音音进入手机"
                     "DEVICE_BOOT" -> "手机启动"
                     "DATA_GAP_START" -> "记录中断"
                     "DATA_GAP_END" -> "记录恢复"
@@ -162,12 +162,18 @@ class UnifiedPhoneTimeline(private val context: Context) {
                     detail = detailParts.joinToString(" · "),
                     category = "PHONE",
                     origin = origin,
-                    actor = item.optString("actor", actorFor(origin)),
+                    actor = if (type == "KEYGUARD_HIDDEN" ||
+                        type == "USER_PRESENT") "user"
+                        else item.optString("actor", actorFor(origin)),
                     source = item.optString("source", screenJson.optString("source", "device")),
                     confidence = if (item.has("command_id") && !item.isNull("command_id")) {
                         "high_command_correlation"
                     } else "",
-                    side = if (origin == "JLZ_RUNTIME") -1 else 0
+                    side = when {
+                        type == "KEYGUARD_HIDDEN" || type == "USER_PRESENT" -> 1
+                        origin == "JLZ_RUNTIME" -> -1
+                        else -> 0
+                    }
                 )
             }
         }
