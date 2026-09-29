@@ -12,8 +12,8 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026092904
-        versionName = "0.4.3-floating-avatar-controls"
+        versionCode = 2026092905
+        versionName = "0.4.4-parchment-ui-preview"
     }
 
     buildTypes {
