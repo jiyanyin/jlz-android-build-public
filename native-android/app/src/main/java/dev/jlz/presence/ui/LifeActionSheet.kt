@@ -87,7 +87,7 @@ fun LifeActionSheet(
     }
 
     fun save(choice: LifeActionChoice) {
-        if (busy || active != null) return
+        if (busy || (active != null && choice.timed)) return
         busy = true
         scope.launch {
             val result = runCatching {
@@ -169,8 +169,8 @@ fun LifeActionSheet(
                         enabled = !busy, primary = true, modifier = Modifier.fillMaxWidth()
                     )
                 }
-            } else {
-                Row(
+            }
+            Row(
                     modifier = Modifier.fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -196,7 +196,9 @@ fun LifeActionSheet(
                                     .clip(RoundedCornerShape(19.dp))
                                     .background(ParchmentGlass)
                                     .border(0.5.dp, GlassBorder, RoundedCornerShape(19.dp))
-                                    .clickable(enabled = !busy) { save(choice) }
+                                    .clickable(enabled = !busy && (active == null || !choice.timed)) {
+                                        save(choice)
+                                    }
                                     .padding(horizontal = 5.dp, vertical = 9.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
@@ -207,7 +209,9 @@ fun LifeActionSheet(
                                 Text(choice.name, color = TextPrimary,
                                     style = MaterialTheme.typography.labelMedium,
                                     maxLines = 1)
-                                Text(if (choice.timed) "开始计时" else "立即记录",
+                                Text(
+                                    if (choice.timed && active != null) "先结束当前"
+                                    else if (choice.timed) "开始计时" else "立即记录",
                                     color = TextSecondary,
                                     style = MaterialTheme.typography.labelSmall)
                             }
@@ -215,7 +219,6 @@ fun LifeActionSheet(
                         repeat(3 - choices.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
-            }
 
             if (feedback.isNotBlank()) {
                 Text(feedback, color = TextSecondary,
