@@ -52,7 +52,7 @@ class UiLabActivity : Activity() {
             }
         }
         setContentView(webView)
-        webView.loadUrl("https://appassets.androidplatform.net/assets/index.html")
+        webView.loadUrl("https://appassets.androidplatform.net/assets/index_v3.html")
     }
 
     private fun blocked() = WebResourceResponse(
