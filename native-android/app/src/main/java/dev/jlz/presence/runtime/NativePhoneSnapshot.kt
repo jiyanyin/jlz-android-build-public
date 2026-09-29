@@ -9,6 +9,7 @@ import android.os.BatteryManager
 import android.os.PowerManager
 import org.json.JSONObject
 import dev.jlz.presence.usage.DeviceActivityJournal
+import dev.jlz.presence.life.LifeHealthJournalStore
 
 /** Recent Android system samples, not inferred health or official GPT memory. */
 object NativePhoneSnapshot {
@@ -71,5 +72,8 @@ object NativePhoneSnapshot {
             .put("current_screen_session_started_at_ms", highFrequency.opt("current_screen_session_started_at_ms"))
             .put("previous_screen_session", highFrequency.opt("previous_screen_session"))
             .put("network_type", kind)
+            .put("cycle_state", runCatching {
+                LifeHealthJournalStore(context.applicationContext).cycleSnapshot()
+            }.getOrNull() ?: JSONObject.NULL)
     }
 }
