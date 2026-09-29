@@ -63,9 +63,9 @@ class PresenceAccessibilityService : AccessibilityService() {
         AccessibilityActionGateway.observeEventSource(event)
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             AccessibilityActionGateway.observeWindow(packageName, event.className?.toString())
-            if (::automaticCapture.isInitialized) {
-                automaticCapture.onForegroundPackage(packageName, now)
-            }
+        }
+        if (::automaticCapture.isInitialized) {
+            automaticCapture.onAccessibilitySignal(packageName, eventType, now)
         }
         ForegroundUsageTracker.observe(packageName, now)
         val currentFocus = focusState
