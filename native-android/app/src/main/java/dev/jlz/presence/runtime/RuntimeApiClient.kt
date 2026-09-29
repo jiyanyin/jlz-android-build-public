@@ -144,7 +144,13 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         beforeState: JSONObject? = null,
         afterState: JSONObject? = null
     ) {
-        val structuredResult: Any = runCatching { JSONObject(result) }.getOrElse { result }
+        val structured = runCatching { JSONObject(result) }.getOrNull()
+        val structuredResult: Any = structured ?: result
+        // A successful call to NotificationManager is NOT proof that the
+        // person actually saw a banner. Preserve the Android-sourced stage.
+        val verification = structured?.optString("verification_status")
+            ?.takeIf { it.isNotBlank() }
+            ?: if (ok) "phone_reported_success" else "failed"
         postJson(
             "/api/device/report",
             JSONObject()
@@ -161,7 +167,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
                 .put("verified_at_ms", verifiedAtMs ?: JSONObject.NULL)
                 .put("ok", ok)
                 .put("execution_status", if (ok) "executed" else "failed")
-                .put("verification_status", if (ok) "phone_reported_success" else "failed")
+                .put("verification_status", verification)
                 .put("result", structuredResult)
                 .put("before_state", beforeState ?: JSONObject.NULL)
                 .put("after_state", afterState ?: JSONObject.NULL)
@@ -245,7 +251,9 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         metadata: JSONObject = JSONObject(),
         dedupeSeconds: Int = 0,
         eventId: String? = null,
-        sourcePackage: String? = null
+        sourcePackage: String? = null,
+        createdAtIso: String? = null,
+        status: String = "completed"
     ): JSONObject = postJson(
         "/api/activity/events",
         JSONObject()
@@ -254,13 +262,56 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
             .put("type", type)
             .put("title", title)
             .put("subtitle", subtitle)
+            .put("status", status)
             .put("metadata_json", metadata)
             .put("dedupe_seconds", dedupeSeconds.coerceIn(0, 300))
             .also { body ->
                 eventId?.let { body.put("id", it) }
                 sourcePackage?.let { body.put("package_name", it) }
+                createdAtIso?.let { body.put("created_at", it) }
             }
     )
+
+    fun getBetweenState(limit: Int = 80): JSONObject {
+        val q = URLEncoder.encode(settings.deviceId, Charsets.UTF_8.name())
+        val response = getJson(
+            "/api/between/state?device_id=" + q +
+                "&limit=" + limit.coerceIn(1, 200)
+        )
+        check(response.optBoolean("ok", false)) { "between_state_unavailable" }
+        return response.optJSONObject("between") ?: JSONObject()
+    }
+
+    /** Read-only P0-4 intervention echo; not a command and not an effect inference. */
+    fun getInterventionEcho(limit: Int = 100): JSONObject {
+        val device = URLEncoder.encode(settings.deviceId, Charsets.UTF_8.name())
+        val response = getJson(
+            "/api/agency/echo?device_id=" + device +
+                "&limit=" + limit.coerceIn(1, 120)
+        )
+        check(response.optBoolean("ok", false)) { "intervention_echo_unavailable" }
+        return response
+    }
+
+    fun postBetweenStatus(payload: JSONObject): JSONObject {
+        val body = JSONObject(payload.toString())
+            .put("device_id", settings.deviceId)
+            .put("actor", "user")
+            .put("source", "user_direct")
+        val response = postJson("/api/between/status", body)
+        check(response.optBoolean("ok", false)) { "between_status_not_accepted" }
+        return response
+    }
+
+    fun postBetweenMoment(payload: JSONObject): JSONObject {
+        val body = JSONObject(payload.toString())
+            .put("device_id", settings.deviceId)
+            .put("actor", "user")
+            .put("source", "user_direct")
+        val response = postJson("/api/between/moment", body)
+        check(response.optBoolean("ok", false)) { "between_moment_not_accepted" }
+        return response
+    }
 
     fun postStudyEvent(event: String, metadata: JSONObject = JSONObject()): JSONObject =
         postJson(
