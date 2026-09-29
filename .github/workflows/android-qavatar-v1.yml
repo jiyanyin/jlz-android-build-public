@@ -30,6 +30,8 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Verify avatar contracts
         run: python native-android/tests/avatar-v1-host/test_avatar_v1.py
+      - name: Verify native notification receipts and capture retry
+        run: python native-android/tests/notification-receipt-host/test_receipt_contract.py
       - name: Build debug APK
         working-directory: native-android
         shell: bash
@@ -63,7 +65,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: JLZ-Presence-QAvatar-V1-2026092901
+          name: JLZ-Presence-Native-Receipts-2026092902
           path: native-android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
