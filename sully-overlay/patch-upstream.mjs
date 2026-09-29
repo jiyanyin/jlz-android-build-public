@@ -13,7 +13,8 @@ function edit(file, fn) {
   fs.writeFileSync(target, after);
 }
 function replaceOnce(text, pattern, replacement, name) {
-  const matches = [...text.matchAll(pattern)];
+  const globalPattern = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g');
+  const matches = [...text.matchAll(globalPattern)];
   if (matches.length !== 1) throw new Error(name + ': expected one anchor, found ' + matches.length);
   return text.replace(pattern, replacement);
 }
