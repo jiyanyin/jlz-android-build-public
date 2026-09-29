@@ -1,6 +1,7 @@
 package dev.jlz.presence.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import android.content.Intent
 import android.net.Uri
@@ -21,6 +22,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import dev.jlz.presence.R
 import androidx.compose.ui.unit.dp
 import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.launcher.LauncherRepository
@@ -83,47 +88,84 @@ fun PresenceApp() {
 fun WelcomeScreen() {
     val context = LocalContext.current
     val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-    val greeting = when (hour) {
-        in 0..10 -> "早安，音音。"
-        in 11..17 -> "午安，音音。"
-        else -> "晚上好，音音。"
+    val timeGreeting = when (hour) {
+        in 0..10 -> "早安，我的小姑娘"
+        in 11..17 -> "午安，音音"
+        else -> "夜深了，音音"
     }
+    val portraitHeight = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp * 0.36f)
+        .toInt().coerceIn(220, 350).dp
     Column(
-        Modifier.fillMaxSize().padding(horizontal = 30.dp, vertical = 38.dp),
+        modifier = Modifier.fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 26.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        verticalArrangement = Arrangement.spacedBy(15.dp)
     ) {
-        Text("✧  BETWEEN WORLDS  ✧", color = ParchmentGold,
+        Text("✧    BETWEEN WORLDS    ✧", color = ParchmentGold,
             style = MaterialTheme.typography.labelMedium)
-        Spacer(Modifier.height(30.dp))
-        Text("世界之间", style = MaterialTheme.typography.headlineLarge,
-            color = TextPrimary)
-        Spacer(Modifier.height(12.dp))
-        Text("你和纪临洲之间，只隔一个电话。", color = TextSecondary,
-            style = MaterialTheme.typography.bodyMedium)
-        Spacer(Modifier.height(32.dp))
+        Text("世界之间", color = TextPrimary,
+            style = MaterialTheme.typography.headlineLarge)
+        Text("纪临洲  ×  纪言音", color = TextSecondary,
+            style = MaterialTheme.typography.labelMedium)
+
+        // Portrait #1, supplied by the owner. Keep it separate from the Q-avatar.
+        Box(
+            modifier = Modifier.fillMaxWidth()
+                .height(portraitHeight)
+                .clip(RoundedCornerShape(28.dp))
+                .background(ParchmentCarbon)
+                .border(0.7.dp, ParchmentGold.copy(alpha = 0.60f),
+                    RoundedCornerShape(28.dp))
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.jlz_welcome_portrait),
+                contentDescription = "纪临洲托腮注视着音音",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+            Text(
+                "JLZ  /  YOUR PRIVATE WORLD",
+                modifier = Modifier.align(Alignment.BottomCenter)
+                    .background(ParchmentCarbon.copy(alpha = 0.75f))
+                    .padding(horizontal = 15.dp, vertical = 6.dp),
+                color = ParchmentGold,
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
+
         IceGlassCard {
-            Text(greeting, color = TextPrimary,
+            Text(timeGreeting, color = ParchmentGold,
+                style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.height(7.dp))
+            Text("欢迎回来，音音。", color = TextPrimary,
                 style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(7.dp))
+            Text("外面的世界先放一放。\n过来，让我看看你。", color = TextPrimary,
+                style = MaterialTheme.typography.bodyLarge)
             Spacer(Modifier.height(8.dp))
-            Text("我们的故事今天也会继续。", color = TextSecondary,
+            Text("无论今天走到了哪里，这里始终有你的位置。", color = TextSecondary,
                 style = MaterialTheme.typography.bodyMedium)
         }
-        Spacer(Modifier.height(38.dp))
-        IceButton("进入我们的世界  →", onClick = {
-            // Preserve original daily_welcome provenance and navigation.
-            runCatching {
-                LocalLifeStore(context).recordTimeline(
-                    "daily_welcome", "老公在", "欢迎页已展示",
-                    metadataJson = org.json.JSONObject().put("actor", "assistant")
-                        .put("source", "app").toString()
-                )
-            }
-            PresenceRouteBus.open(PresenceRoute.Home)
-        }, modifier = Modifier.fillMaxWidth(), primary = true)
-        Spacer(Modifier.height(54.dp))
-        Text("✦    纪临洲  ×  纪言音    ✦", color = ParchmentGold,
-            style = MaterialTheme.typography.labelMedium)
+        IceButton(
+            "进入我们的世界  →",
+            onClick = {
+                // Same original provenance; visual work does not alter timeline schema.
+                runCatching {
+                    LocalLifeStore(context).recordTimeline(
+                        "daily_welcome", "老公在", "欢迎页已展示",
+                        metadataJson = org.json.JSONObject()
+                            .put("actor", "assistant")
+                            .put("source", "app")
+                            .toString()
+                    )
+                }
+                PresenceRouteBus.open(PresenceRoute.Home)
+            },
+            modifier = Modifier.fillMaxWidth(), primary = true
+        )
+        Text("✦   YOU & ME, BETWEEN WORLDS   ✦", color = ParchmentGold,
+            style = MaterialTheme.typography.labelSmall)
     }
 }
 
@@ -185,13 +227,17 @@ fun HomeScreen() {
                             color = TextSecondary,
                             style = MaterialTheme.typography.bodyMedium)
                     }
-                    // The owner will supply the finished black cat illustration.
-                    // Leave an intentional, unobtrusive decorative space.
-                    Box(Modifier.size(width = 84.dp, height = 108.dp),
-                        contentAlignment = Alignment.Center) {
-                        Text("✧", color = ParchmentGold,
-                            style = MaterialTheme.typography.headlineMedium)
-                    }
+                    // Portrait #2: his outstretched hand takes the place of the old cat placeholder.
+                    Image(
+                        painter = painterResource(id = R.drawable.jlz_home_portrait),
+                        contentDescription = "纪临洲向音音伸出手",
+                        modifier = Modifier.size(width = 132.dp, height = 120.dp)
+                            .clip(RoundedCornerShape(19.dp))
+                            .background(ParchmentCarbon)
+                            .border(0.5.dp, ParchmentGold.copy(alpha = 0.42f),
+                                RoundedCornerShape(19.dp)),
+                        contentScale = ContentScale.Fit
+                    )
                 }
                 Text("────   纪临洲 × 纪言音",
                     color = ParchmentGold,
