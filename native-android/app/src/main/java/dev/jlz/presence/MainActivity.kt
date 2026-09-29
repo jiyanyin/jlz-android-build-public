@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import dev.jlz.presence.navigation.PresenceRoute
 import dev.jlz.presence.navigation.PresenceRouteBus
+import dev.jlz.presence.notification.NotificationOpenReceipt
 import dev.jlz.presence.notification.NotificationReplyReceiver
 import dev.jlz.presence.ui.PresenceApp
 import dev.jlz.presence.ui.theme.IceCrystalTheme
@@ -24,6 +25,20 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
+        if (intent?.getStringExtra(EXTRA_DESTINATION) == DESTINATION_CHAT &&
+            intent?.getBooleanExtra(NotificationOpenReceipt.EXTRA_FROM_NOTIFICATION, false) == true) {
+            // Distinct interaction proof. Opening the app from some other
+            // route is not a notification-open acknowledgement.
+            runCatching {
+                NotificationOpenReceipt.recordOpen(
+                    applicationContext,
+                    intent.getStringExtra(NotificationReplyReceiver.EXTRA_EVENT_ID),
+                    intent.getStringExtra(NotificationReplyReceiver.EXTRA_INTENT_ID),
+                    intent.getIntExtra(NotificationReplyReceiver.EXTRA_NOTIFICATION_ID, -1)
+                )
+            }
+            intent.removeExtra(NotificationOpenReceipt.EXTRA_FROM_NOTIFICATION)
+        }
         when (intent?.getStringExtra(EXTRA_DESTINATION)) {
             DESTINATION_STUDY -> PresenceRouteBus.open(PresenceRoute.Study)
             DESTINATION_TODAY -> PresenceRouteBus.open(PresenceRoute.Today)
