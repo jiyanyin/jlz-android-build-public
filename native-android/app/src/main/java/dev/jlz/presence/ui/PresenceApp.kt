@@ -1,6 +1,9 @@
 package dev.jlz.presence.ui
 
 import androidx.compose.foundation.background
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +24,8 @@ import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.launcher.LauncherRepository
 import dev.jlz.presence.navigation.PresenceRoute
 import dev.jlz.presence.navigation.PresenceRouteBus
+import dev.jlz.presence.overlay.FloatingPresenceService
+import dev.jlz.presence.overlay.QAvatarScale
 import dev.jlz.presence.permissions.PermissionDoctor
 import dev.jlz.presence.permissions.PermissionItem
 import dev.jlz.presence.ui.components.IceButton
@@ -128,6 +133,8 @@ fun HomeScreen() {
             }
         }
         Spacer(Modifier.height(24.dp))
+        QAvatarHomeControls()
+        Spacer(Modifier.height(14.dp))
         StatusLightHomeCard()
         Spacer(Modifier.height(14.dp))
         SectionHeader("\u5feb\u6377")
@@ -156,6 +163,76 @@ fun HomeScreen() {
                 }
             }
         }
+    }
+}
+
+/**
+ * The user's explicit Q-avatar controls should not depend on finding
+ * a hidden long-press action on the floating character.
+ * Uses the existing foreground service and persisted size preference.
+ */
+@Composable
+private fun QAvatarHomeControls() {
+    val context = LocalContext.current
+    var sizeDp by remember { mutableStateOf(QAvatarScale.get(context)) }
+    var feedback by remember { mutableStateOf("长按悬浮小人，还能把他缩到屏幕边缘。") }
+
+    IceGlassCard {
+        Text("悬浮小人", color = TextPrimary, style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.height(4.dp))
+        Text("随时召唤、收起，或调整小人的大小。", color = TextSecondary,
+            style = MaterialTheme.typography.bodyMedium)
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            IceButton("显示小人", onClick = {
+                if (Settings.canDrawOverlays(context)) {
+                    feedback = if (FloatingPresenceService.start(context, restoreSuspended = true)) {
+                        "已发送显示指令；小人会出现在屏幕边缘。"
+                    } else "悬浮服务未能启动，请检查权限。"
+                } else {
+                    feedback = "需要先允许「显示在其他应用上层」，返回后再点显示。"
+                    runCatching {
+                        context.startActivity(
+                            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:${context.packageName}"))
+                        )
+                    }.onFailure {
+                        runCatching {
+                            context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+                        }
+                    }
+                }
+            }, modifier = Modifier.weight(1f), primary = true)
+            IceButton("收起小人", onClick = {
+                FloatingPresenceService.stop(context)
+                feedback = "已发送收起指令；再次点显示即可召唤。"
+            }, modifier = Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("小人大小", color = TextPrimary, style = MaterialTheme.typography.bodyMedium)
+            Text("${QAvatarScale.percentage(sizeDp)}% · ${sizeDp}dp", color = VioletGlow,
+                style = MaterialTheme.typography.labelMedium)
+        }
+        Spacer(Modifier.height(7.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            IceButton("－ 缩小", onClick = {
+                sizeDp = FloatingPresenceService.setAvatarSize(
+                    context, sizeDp - QAvatarScale.STEP_DP
+                )
+            }, modifier = Modifier.weight(1f))
+            IceButton("＋ 放大", onClick = {
+                sizeDp = FloatingPresenceService.setAvatarSize(
+                    context, sizeDp + QAvatarScale.STEP_DP
+                )
+            }, modifier = Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(feedback, color = TextTertiary, style = MaterialTheme.typography.labelMedium)
     }
 }
 
