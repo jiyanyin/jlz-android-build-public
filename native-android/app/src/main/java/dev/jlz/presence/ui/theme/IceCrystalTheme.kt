@@ -5,7 +5,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,15 +34,20 @@ fun IceCrystalTheme(content: @Composable () -> Unit) {
             extraLarge = RoundedCornerShape(28.dp)
         ),
         typography = MaterialTheme.typography.copy(
-            headlineLarge = TextStyle(fontSize = 30.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium),
-            headlineMedium = TextStyle(fontSize = 26.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium),
-            headlineSmall = TextStyle(fontSize = 22.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium),
-            titleLarge = TextStyle(fontSize = 20.sp, fontFamily = FontFamily.Serif, fontWeight = FontWeight.Medium),
-            titleMedium = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Medium),
-            bodyLarge = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Normal),
-            bodyMedium = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.Normal),
-            labelLarge = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium),
-            labelMedium = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Normal)
+            // English serif titles / dates / nicknames / card headings.
+            headlineLarge = TextStyle(fontSize = 30.sp, fontFamily = WorldFonts.playfairDisplay, fontWeight = FontWeight.Medium),
+            headlineMedium = TextStyle(fontSize = 26.sp, fontFamily = WorldFonts.playfairDisplay, fontWeight = FontWeight.Medium),
+            headlineSmall = TextStyle(fontSize = 22.sp, fontFamily = WorldFonts.playfairDisplay, fontWeight = FontWeight.Medium),
+            titleLarge = TextStyle(fontSize = 20.sp, fontFamily = WorldFonts.playfairDisplay, fontWeight = FontWeight.Medium),
+            titleMedium = TextStyle(fontSize = 16.sp, fontFamily = WorldFonts.playfairDisplay, fontWeight = FontWeight.Medium),
+            titleSmall = TextStyle(fontSize = 14.sp, fontFamily = WorldFonts.playfairDisplay, fontWeight = FontWeight.Medium),
+            // Chat bubbles, buttons, settings, captions and timestamps use Inter.
+            bodyLarge = TextStyle(fontSize = 15.sp, fontFamily = WorldFonts.inter, fontWeight = FontWeight.Normal),
+            bodyMedium = TextStyle(fontSize = 13.sp, fontFamily = WorldFonts.inter, fontWeight = FontWeight.Normal),
+            bodySmall = TextStyle(fontSize = 12.sp, fontFamily = WorldFonts.inter, fontWeight = FontWeight.Normal),
+            labelLarge = TextStyle(fontSize = 15.sp, fontFamily = WorldFonts.inter, fontWeight = FontWeight.Medium),
+            labelMedium = TextStyle(fontSize = 12.sp, fontFamily = WorldFonts.inter, fontWeight = FontWeight.Normal),
+            labelSmall = TextStyle(fontSize = 11.sp, fontFamily = WorldFonts.inter, fontWeight = FontWeight.Normal)
         ),
         content = content
     )

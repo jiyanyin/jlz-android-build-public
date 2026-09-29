@@ -9,11 +9,12 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.jlz.presence.ui.theme.*
 
@@ -43,20 +44,22 @@ fun IceButton(
     Box(
         modifier = modifier
             .scale(scale)
-            .height(48.dp)
+            .heightIn(min = 48.dp)
             .background(bg, shape)
             .border(0.5.dp, GlassBorder, shape)
             .clickable(interactionSource = interactionSource, indication = null, enabled = enabled) {
                 clickHaptic(IceHaptics.TYPE_TICK)
                 onClick()
             }
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
+        WorldText(
             text = text,
             color = if (enabled) TextPrimary else TextTertiary,
-            style = androidx.compose.material3.MaterialTheme.typography.labelLarge
+            style = androidx.compose.material3.MaterialTheme.typography.labelLarge,
+            textAlign = TextAlign.Center, softWrap = true,
+            maxLines = 2, overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -79,7 +82,7 @@ fun IceGlassCard(
 
 @Composable
 fun SectionHeader(title: String, modifier: Modifier = Modifier) {
-    Text(
+    WorldText(
         text = title,
         color = TextSecondary,
         style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
