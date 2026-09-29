@@ -14,17 +14,17 @@ import dev.jlz.presence.ui.theme.IceCrystalTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handleIntent(intent)
+        handleIntent(intent, freshLaunch = savedInstanceState == null)
         setContent { IceCrystalTheme { PresenceApp() } }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleIntent(intent)
+        handleIntent(intent, freshLaunch = false)
     }
 
-    private fun handleIntent(intent: Intent?) {
+    private fun handleIntent(intent: Intent?, freshLaunch: Boolean) {
         if (intent?.getStringExtra(EXTRA_DESTINATION) == DESTINATION_CHAT &&
             intent?.getBooleanExtra(NotificationOpenReceipt.EXTRA_FROM_NOTIFICATION, false) == true) {
             // Distinct interaction proof. Opening the app from some other
@@ -50,7 +50,9 @@ class MainActivity : ComponentActivity() {
                     intent.getStringExtra(NotificationReplyReceiver.EXTRA_INTENT_ID)
                 )
             )
-            else -> PresenceRouteBus.open(PresenceRoute.Home)
+            // Show the real welcome on a launcher cold start, not on notification/deep links.
+            // Keep the current route during Android Activity recreation or an ordinary new intent.
+            else -> if (freshLaunch) PresenceRouteBus.open(PresenceRoute.Welcome)
         }
     }
 
