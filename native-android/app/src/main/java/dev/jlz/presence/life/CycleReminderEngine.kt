@@ -37,8 +37,7 @@ class CycleReminderEngine(private val context: Context) {
                         prediction.source
 
                 val result = NotificationAdapter(appContext)
-                    .showMessage(
-                        title = "我提前提醒你一下",
+                    .showCycleReminder(
                         message = "生理期预计就在这几天。只是预计，不代表已经开始。"
                     )
                 if (result.ok && journal.markEventOnce(key)) {
