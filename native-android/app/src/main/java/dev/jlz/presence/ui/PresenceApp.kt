@@ -55,7 +55,7 @@ fun PresenceApp() {
     val showsTabs = route is PresenceRoute.Home || route is PresenceRoute.Chat ||
         route is PresenceRoute.TimeChain || route is PresenceRoute.Echo ||
         route is PresenceRoute.Between || route is PresenceRoute.More ||
-        route is PresenceRoute.Drawer
+        route is PresenceRoute.Drawer || route is PresenceRoute.Today
     Scaffold(
         containerColor = BgDeep,
         bottomBar = { if (showsTabs) ParchmentBottomBar(route) }
