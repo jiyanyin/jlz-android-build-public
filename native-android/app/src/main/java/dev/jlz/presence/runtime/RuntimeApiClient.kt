@@ -144,7 +144,13 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         beforeState: JSONObject? = null,
         afterState: JSONObject? = null
     ) {
-        val structuredResult: Any = runCatching { JSONObject(result) }.getOrElse { result }
+        val structured = runCatching { JSONObject(result) }.getOrNull()
+        val structuredResult: Any = structured ?: result
+        // A successful call to NotificationManager is NOT proof that the
+        // person actually saw a banner. Preserve the Android-sourced stage.
+        val verification = structured?.optString("verification_status")
+            ?.takeIf { it.isNotBlank() }
+            ?: if (ok) "phone_reported_success" else "failed"
         postJson(
             "/api/device/report",
             JSONObject()
@@ -161,7 +167,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
                 .put("verified_at_ms", verifiedAtMs ?: JSONObject.NULL)
                 .put("ok", ok)
                 .put("execution_status", if (ok) "executed" else "failed")
-                .put("verification_status", if (ok) "phone_reported_success" else "failed")
+                .put("verification_status", verification)
                 .put("result", structuredResult)
                 .put("before_state", beforeState ?: JSONObject.NULL)
                 .put("after_state", afterState ?: JSONObject.NULL)
