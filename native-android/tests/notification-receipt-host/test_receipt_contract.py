@@ -36,6 +36,9 @@ class NotificationReceiptContracts(unittest.TestCase):
     def test_screenshot_retry_reuses_same_event_id(self):
         queue = self.read("capture/PendingScreenshotQueue.kt")
         self.assertIn('remoteCapture(api, eventId)', queue)
+        runtime = self.read("runtime/NativeRuntimeService.kt")
+        self.assertIn('verification_status", "capture_queued_not_uploaded"', runtime)
+        self.assertIn('upload_mode", "asynchronous_durable_outbox"', runtime)
         self.assertIn('acceptRemoteUpload(photo, eventId, metadata', queue)
         self.assertIn('filter { it.extension == "image" }', queue)
 
