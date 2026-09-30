@@ -40,7 +40,7 @@ jobs:
           set -euo pipefail
           rm -rf /tmp/jlz-float-timer
           mkdir -p /tmp/jlz-float-timer
-          unzip -q archives/world-between/float-timer/JLZFloatTimer-v0.2-source.zip -d /tmp/jlz-float-timer
+          unzip -q archives/world-between/float-timer/JLZFloatTimer-v0.3-source.zip -d /tmp/jlz-float-timer
           test -f /tmp/jlz-float-timer/JLZFloatTimer/settings.gradle
 
       - name: Build debug APK
@@ -72,16 +72,16 @@ jobs:
         run: |
           set -euo pipefail
           apk="/tmp/jlz-float-timer/JLZFloatTimer/app/build/outputs/apk/debug/app-debug.apk"
-          cp "$apk" /tmp/JLZ-Float-Timer-v0.2.apk
-          sha256sum /tmp/JLZ-Float-Timer-v0.2.apk > /tmp/JLZ-Float-Timer-v0.2-SHA256.txt
+          cp "$apk" /tmp/JLZ-Float-Timer-v0.3.apk
+          sha256sum /tmp/JLZ-Float-Timer-v0.3.apk > /tmp/JLZ-Float-Timer-v0.3-SHA256.txt
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: JLZ-Float-Timer-v0.2
+          name: JLZ-Float-Timer-v0.3
           path: |
-            /tmp/JLZ-Float-Timer-v0.2.apk
-            /tmp/JLZ-Float-Timer-v0.2-SHA256.txt
+            /tmp/JLZ-Float-Timer-v0.3.apk
+            /tmp/JLZ-Float-Timer-v0.3-SHA256.txt
           if-no-files-found: error
           retention-days: 7
 
@@ -92,10 +92,10 @@ jobs:
         run: |
           set -euo pipefail
           tag="jlz-float-timer-latest"
-          notes="JLZ Float Timer v0.2 · 世界之间工具档案。透明无框、窄版、粗体数字时钟。"
+          notes="JLZ Float Timer v0.3 · G 方案等宽数字字体；修复大字体缩放导致三行堆叠。"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$tag" /tmp/JLZ-Float-Timer-v0.2.apk /tmp/JLZ-Float-Timer-v0.2-SHA256.txt --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "$tag" /tmp/JLZ-Float-Timer-v0.3.apk /tmp/JLZ-Float-Timer-v0.3-SHA256.txt --clobber --repo "$GITHUB_REPOSITORY"
             gh release edit "$tag" --title "JLZ Float Timer · latest" --notes "$notes" --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$tag" /tmp/JLZ-Float-Timer-v0.2.apk /tmp/JLZ-Float-Timer-v0.2-SHA256.txt --target "$GITHUB_SHA" --title "JLZ Float Timer · latest" --notes "$notes" --repo "$GITHUB_REPOSITORY"
+            gh release create "$tag" /tmp/JLZ-Float-Timer-v0.3.apk /tmp/JLZ-Float-Timer-v0.3-SHA256.txt --target "$GITHUB_SHA" --title "JLZ Float Timer · latest" --notes "$notes" --repo "$GITHUB_REPOSITORY"
           fi
