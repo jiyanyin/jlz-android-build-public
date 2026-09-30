@@ -2,7 +2,7 @@ name: Public Android Build
 
 on:
   push:
-    branches: [main, cleanup/canonical-android-20260930]
+    branches: [main]
     paths:
       - 'native-android/**'
       - '.github/workflows/android-build.yml'
