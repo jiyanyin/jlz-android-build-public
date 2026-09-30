@@ -19,16 +19,21 @@ class PendingCommandReportStoreTest {
         .put("command_id", id).put("device_id", "phone").put("result", "original")
     private fun ack(id: String = "cmd-1", status: String = "completed") = JSONObject()
         .put("ok", true).put("command", JSONObject().put("id", id).put("status", status))
+    // SQLiteOpenHelper only implements AutoCloseable on newer Android SDKs.
+    private fun withStore(block: (PendingCommandReportStore) -> Unit) {
+        val store = PendingCommandReportStore(context)
+        try { block(store) } finally { store.close() }
+    }
     @Before fun setup() {
         context = RuntimeEnvironment.getApplication()
         context.deleteDatabase("jlz_command_reports_v1.db")
     }
     @Test fun survivesFailureAndRestartWithoutChangingExecutionEvidence() {
-        PendingCommandReportStore(context).use { store ->
+        withStore { store ->
             store.enqueue(backend, body())
             store.sync(backend, "phone") { throw java.io.IOException("offline") }
         }
-        PendingCommandReportStore(context).use { store ->
+        withStore { store ->
             store.enqueue(backend, body().put("result", "replacement"))
             assertEquals("original", store.pending(backend, "phone").single().getString("result"))
             store.sync(backend, "phone") { ack() }
@@ -37,7 +42,7 @@ class PendingCommandReportStoreTest {
         }
     }
     @Test fun backendDeviceAndAcknowledgementMustMatch() {
-        PendingCommandReportStore(context).use { store ->
+        withStore { store ->
             store.enqueue(backend, body())
             store.sync("https://other.invalid", "phone") { fail("cross backend send"); ack() }
             store.sync(backend, "other-phone") { fail("cross device send"); ack() }
