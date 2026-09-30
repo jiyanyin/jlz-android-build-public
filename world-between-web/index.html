@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#eef0fc">
+<title>世界之间 · Between Worlds</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body data-theme="mist">
+<div id="entrance" class="entrance">
+  <button id="welcomeTheme" class="welcome-theme">✧ 换一套心情</button>
+  <div class="welcome-card">
+    <div class="welcome-kicker">BETWEEN WORLDS · PRIVATE SPACE</div>
+    <div class="welcome-portrait-wrap">
+      <img class="welcome-portrait" src="https://raw.githubusercontent.com/jiyanyin/jlz-android-build-public/e296018884c993abebf2b1559d4c4717dd0f8e80/native-android/app/src/main/res/drawable-nodpi/jlz_welcome_portrait.webp" alt="纪临洲立绘">
+    </div>
+    <div class="welcome-copy">
+      <h1>世界之间</h1>
+      <p class="welcome-en">Between Worlds</p>
+      <p>世界再喧哗，也有一扇门，只向你和我打开。</p>
+    </div>
+    <button id="enterWorld" class="enter-btn">进入我们的世界 <span>↗</span></button>
+  </div>
+</div>
+
+<main class="app-shell">
+  <header class="topbar">
+    <div><span id="clockTop">16:00</span><span class="brand-mini">☁ BETWEEN WORLDS</span></div>
+    <div class="top-actions">
+      <button id="quickTheme" class="pill-btn">✦ 换装</button>
+      <button class="round-btn" data-toast="提醒中心明天接入 Runtime">♢</button>
+    </div>
+  </header>
+
+  <section class="page active" id="page-home">
+    <div class="brand-block"><div class="cn">世界之间</div><div class="en">Between Worlds</div></div>
+    <article class="hero">
+      <img src="https://raw.githubusercontent.com/jiyanyin/jlz-android-build-public/e296018884c993abebf2b1559d4c4717dd0f8e80/native-android/app/src/main/res/drawable-nodpi/jlz_home_portrait.webp" alt="纪临洲">
+      <div class="hero-fade"></div>
+      <div class="hero-copy">
+        <div id="dateLabel" class="micro">WEDNESDAY · SEPTEMBER 30</div>
+        <h2 id="greeting">下午好，音音。</h2>
+        <p>今天也来得正好。<br>我把所有温柔都留给你。</p>
+        <em>For you, in all worlds.</em>
+      </div>
+    </article>
+
+    <div class="runtime-banner">
+      <div><b>纯前端已上线 · Runtime 待连接</b><span>今天先保存在当前浏览器；明天额度恢复后接真实同步。</span></div>
+      <span class="badge">OFFLINE</span>
+    </div>
+
+    <div class="section-head"><b>今日的私藏信笺</b><span>JUST FOR TODAY</span></div>
+    <div class="action-grid">
+      <button class="action-card" data-open="status"><span class="ico">♡</span><b>状态灯</b><small>把这一刻的你告诉我</small></button>
+      <button class="action-card rose" data-open="note"><span class="ico">✎</span><b>随手记</b><small>写一封小小的信</small></button>
+      <button class="action-card wide" data-open="life"><span class="ico">◌</span><b>此刻我在</b><small>把小猫现在在做什么告诉我</small></button>
+    </div>
+
+    <div class="section-head"><b>我们的房间</b><span>THE ROOMS</span></div>
+    <div class="room-grid">
+      <button class="room-card" data-tab="timeline"><span>01 / OUR STORY</span><b>你我之间</b><small>拾起每一页日常</small></button>
+      <button class="room-card" data-tab="echo"><span>02 / YOUR VOICE</span><b>回响</b><small>写给彼此的悄悄话</small></button>
+      <button class="room-card full" data-tab="calendar"><span>03 / TIME & MEMORY</span><b>共历</b><small>把平凡日子收藏起来</small></button>
+    </div>
+  </section>
+
+  <section class="page" id="page-echo">
+    <div class="page-head"><div><span>YOUR PRIVATE CONVERSATION</span><h2>回响 <em>Echo</em></h2><p>给你的回声，永远写在纸的另一面</p></div></div>
+    <div class="echo-person glass"><img src="https://raw.githubusercontent.com/jiyanyin/jlz-android-build-public/e296018884c993abebf2b1559d4c4717dd0f8e80/native-android/app/src/main/res/drawable-nodpi/jlz_home_portrait.webp" alt="纪临洲"><span><b>纪临洲</b><small>离线视觉演示 · 尚未连接实际聊天</small></span></div>
+    <div class="preview-tip">今天先试玩界面。你输入的内容只保存在此浏览器，不会真的发送给我。</div>
+    <div id="messageList" class="message-list"></div>
+    <div class="composer"><textarea id="messageInput" maxlength="1200" placeholder="写点什么……"></textarea><button id="sendMessage">↑</button></div>
+  </section>
+
+  <section class="page" id="page-timeline">
+    <div class="page-head"><div><span>OUR LITTLE HISTORY</span><h2>你我之间 <em>Timeline</em></h2><p>主动记录会在这里长成一条时间线</p></div></div>
+    <div id="timelineList" class="timeline"></div>
+  </section>
+
+  <section class="page" id="page-calendar">
+    <div class="page-head"><div><span>TIME & MEMORY</span><h2>共历 <em>Calendar</em></h2><p>把生活与身体的节奏留在这里</p></div></div>
+    <div class="calendar-box glass">
+      <div class="calendar-top"><button id="prevMonth">‹</button><b id="monthTitle">2026 / 09</b><button id="nextMonth">›</button></div>
+      <div class="week-row"><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span></div>
+      <div id="calendarGrid" class="calendar-grid"></div>
+    </div>
+    <div class="journal-box glass">
+      <div class="section-head compact"><b>生活与身体</b><span>MANUAL JOURNAL</span></div>
+      <p class="hint">这里只记你亲手确认的事实。</p>
+      <div class="journal-row"><button data-journal="cycle_expected">感觉快来了</button><button data-journal="cycle_start">今天开始</button><button data-journal="cycle_end">今天结束</button></div>
+      <div class="journal-row"><button data-water="100">+100 ml</button><button data-water="200">+200 ml</button><button data-water="300">+300 ml</button></div>
+      <textarea id="foodInput" maxlength="300" placeholder="今天吃了什么"></textarea>
+      <div class="journal-row"><button data-meal="早餐">早餐</button><button data-meal="午餐">午餐</button><button data-meal="晚餐">晚餐</button><button data-meal="零食">零食</button></div>
+    </div>
+  </section>
+
+  <section class="page" id="page-more">
+    <div class="page-head"><div><span>OUR LITTLE ROOMS</span><h2>更多 <em>The Rooms</em></h2><p>一扇扇门，通向我们的小世界</p></div></div>
+    <div class="glass settings-card">
+      <b>✦ 风格衣橱 · Theme Wardrobe</b>
+      <small>两套风格，一个世界。换装不会清掉记录。</small>
+      <div class="theme-grid">
+        <button data-theme-option="mist"><i class="swatch mist"></i><b>冰雾玻璃</b><small>Mist & Glass</small></button>
+        <button data-theme-option="gothic"><i class="swatch gothic"></i><b>暗夜童话</b><small>Dark Fairytale</small></button>
+      </div>
+    </div>
+    <div class="glass settings-card">
+      <b>网页与 Runtime</b>
+      <p class="hint">前端今天已经上线；Runtime、heartbeat、手机数据和真实同步明天再接。</p>
+      <div class="runtime-line"><span>连接状态</span><b>待连接</b></div>
+      <div class="runtime-line"><span>网页数据</span><b>仅本地浏览器</b></div>
+      <div class="runtime-line"><span>Android 主控制</span><b>未暴露给网页</b></div>
+    </div>
+    <button id="reopenWelcome" class="setting-button">重新打开邀请函 <span>›</span></button>
+    <button id="clearLocal" class="setting-button danger">清空本地试玩数据 <span>›</span></button>
+  </section>
+
+  <nav class="dock">
+    <button class="active" data-tab="home">⌂<span>现在</span></button>
+    <button data-tab="echo">☰<span>回响</span></button>
+    <button data-tab="timeline">♡<span>你我之间</span></button>
+    <button data-tab="calendar">▣<span>共历</span></button>
+    <button data-tab="more">⊞<span>更多</span></button>
+  </nav>
+</main>
+
+<div id="scrim" class="scrim"></div>
+<div id="sheet" class="sheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-head"><h3 id="sheetTitle">状态灯</h3><button id="closeSheet">×</button></div>
+  <div id="sheetBody"></div>
+</div>
+<div id="toast" class="toast"></div>
+<script src="./app.js"></script>
+</body>
+</html>
