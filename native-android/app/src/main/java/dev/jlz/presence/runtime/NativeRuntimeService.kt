@@ -241,6 +241,7 @@ class NativeRuntimeService : Service() {
                 // Retry locally saved "说点什么" notes without requiring
                 // a manual chat refresh. A deterministic inbox ID prevents
                 // duplicate messages after a response-timeout retry.
+                api.syncPendingReports()
                 syncCapturedNotes(api)
                 // A reply typed into an Android notification is locally durable
                 // even if the original network attempt failed or was interrupted.

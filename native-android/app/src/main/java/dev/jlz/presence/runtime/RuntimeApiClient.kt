@@ -147,9 +147,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         afterState: JSONObject? = null
     ) {
         val structuredResult: Any = runCatching { JSONObject(result) }.getOrElse { result }
-        postJson(
-            "/api/device/report",
-            JSONObject()
+        val body = JSONObject()
                 .put("command_id", command.id)
                 .put("intent_id", command.intentId ?: JSONObject.NULL)
                 .put("device_id", command.deviceId.ifBlank { settings.deviceId })
@@ -167,7 +165,19 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
                 .put("result", structuredResult)
                 .put("before_state", beforeState ?: JSONObject.NULL)
                 .put("after_state", afterState ?: JSONObject.NULL)
-        )
+        val outbox = settings.reports
+        if (outbox == null) {
+            postJson("/api/device/report", body)
+        } else {
+            outbox.enqueue(settings.baseUrl, body)
+            syncPendingReports()
+        }
+    }
+
+    fun syncPendingReports() {
+        settings.reports?.sync(settings.baseUrl, settings.deviceId) { body ->
+            postJson("/api/device/report", body)
+        }
     }
 
     fun getInbox(limit: Int = 80): List<InboxMessage> {

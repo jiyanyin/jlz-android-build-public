@@ -13,10 +13,12 @@ data class RuntimeSettings(
     val baseUrl: String = "",
     val token: String = "",
     val deviceId: String = "android-phone-native-n0",
-    val traffic: dev.jlz.presence.capture.CaptureTrafficPolicy? = null
+    val traffic: dev.jlz.presence.capture.CaptureTrafficPolicy? = null,
+    val reports: PendingCommandReportStore? = null
 )
 
 class RuntimeSettingsRepository(private val context: Context) {
+    private val reportStore by lazy { PendingCommandReportStore(context) }
     private object Keys {
         val baseUrl = stringPreferencesKey("base_url")
         val token = stringPreferencesKey("token")
@@ -27,6 +29,7 @@ class RuntimeSettingsRepository(private val context: Context) {
         context.runtimeDataStore.data.map { prefs ->
             RuntimeSettings(
                 traffic = dev.jlz.presence.capture.CaptureTrafficPolicy(context),
+                reports = reportStore,
                 baseUrl = prefs[Keys.baseUrl].orEmpty(),
                 token = prefs[Keys.token].orEmpty(),
                 deviceId = prefs[Keys.deviceId].orEmpty().ifBlank { "android-phone-native-n0" }
