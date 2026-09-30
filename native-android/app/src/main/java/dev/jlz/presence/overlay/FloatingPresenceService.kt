@@ -244,12 +244,8 @@ class FloatingPresenceService : Service() {
         action("说点什么") {
             if (!working) openNote()
         }
-        action("让我看看") {
-            if (!working) {
-                closeMenu()
-                scope.launch { captureWithoutOverlay() }
-            }
-        }
+        // The unused manual "让我看看" menu action is retired.
+        // Keep the automatic / explicitly requested remote capture paths.
         action("我在摸鱼") {
             if (!working) {
                 character.react("surprised", idleMood())
