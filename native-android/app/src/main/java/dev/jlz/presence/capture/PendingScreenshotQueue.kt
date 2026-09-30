@@ -256,7 +256,7 @@ class PendingScreenshotQueue(private val context: Context) {
                     if (stage == "quota_full") {
                         transportPrefs.edit().putLong(
                             "quota_pause_until_ms",
-                            System.currentTimeMillis() + 6L * 60L * 60L * 1000L
+                            System.currentTimeMillis() + 60L * 60L * 1000L
                         ).apply()
                     }
                     val retryDelay = RETRY_BASE_MS * (1L shl (retry - 1).coerceIn(0, 5))
