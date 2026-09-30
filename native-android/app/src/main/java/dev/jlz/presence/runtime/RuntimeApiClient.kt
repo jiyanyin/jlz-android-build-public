@@ -88,7 +88,9 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         }
     }
 
-    fun postDeviceState(snapshot: DeviceStateSnapshot) = postJson("/api/device/state", snapshot.toJson())
+    fun postDeviceState(snapshot: DeviceStateSnapshot) = postJson("/api/device/state", snapshot.toJson().apply {
+        settings.traffic?.let { put("traffic_state", it.snapshot()) }
+    })
 
     fun captureIndex(limit: Int = 100): JSONArray {
         val q = URLEncoder.encode(settings.deviceId, Charsets.UTF_8.name())
@@ -306,6 +308,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
             }
             setFixedLengthStreamingMode(bytes.size)
         }
+        settings.traffic?.record(upload = bytes.size.toLong(), screenshot = if (conn.url.path == "/api/screenshot") bytes.size.toLong() else 0)
         conn.outputStream.use { it.write(bytes) }
         return readJson(conn)
     }
@@ -325,7 +328,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
             }
             val length = conn.contentLengthLong
             check(length in 100L..24_000_000L) { "capture_readback_size_invalid" }
-            return conn.inputStream.use { it.readBytes() }
+            return conn.inputStream.use { it.readBytes() }.also { settings.traffic?.record(download = it.size.toLong()) }
         } finally {
             conn.disconnect()
         }
@@ -343,6 +346,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             setFixedLengthStreamingMode(bytes.size)
         }
+        settings.traffic?.record(upload = bytes.size.toLong(), screenshot = if (conn.url.path == "/api/screenshot") bytes.size.toLong() else 0)
         conn.outputStream.use { it.write(bytes) }
         return readJson(conn)
     }
@@ -350,7 +354,10 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
     private fun readJson(conn: HttpURLConnection): JSONObject {
         val code = conn.responseCode
         val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-        val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+        val bodyBytes = stream?.use { it.readBytes() } ?: byteArrayOf()
+        settings.traffic?.record(download = bodyBytes.size.toLong())
+        conn.disconnect()
+        val text = bodyBytes.toString(Charsets.UTF_8)
         if (code !in 200..299) {
             throw IllegalStateException("Runtime HTTP " + code + ": " + text.take(240))
         }

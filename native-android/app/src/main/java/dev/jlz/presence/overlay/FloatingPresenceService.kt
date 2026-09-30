@@ -669,7 +669,7 @@ class FloatingPresenceService : Service() {
         @Volatile private var liveService: FloatingPresenceService? = null
 
         /** The official GPT captures the underlying app, not its own Q menu. */
-        suspend fun captureForRuntime(): ScreenshotCaptureResult {
+        suspend fun captureForRuntime(automatic: Boolean = false): ScreenshotCaptureResult {
             val view = withContext(Dispatchers.Main.immediate) {
                 liveService?.panel?.also { it.visibility = View.INVISIBLE }
             }
@@ -677,7 +677,7 @@ class FloatingPresenceService : Service() {
                 if (view != null) delay(350L)
                 var result: ScreenshotCaptureResult = ScreenshotCaptureResult.Unavailable("capture_not_started")
                 for (attempt in 0..2) {
-                    result = AccessibilityScreenshotCaptureAdapter().capture()
+                    result = dev.jlz.presence.screen.AccessibilityScreenshotGateway.capture(automatic)
                     if (result is ScreenshotCaptureResult.Captured) break
                     if (attempt < 2) delay(300L * (attempt + 1))
                 }

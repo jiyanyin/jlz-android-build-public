@@ -210,6 +210,10 @@ class PendingScreenshotQueue(private val context: Context) {
                     check(metadata.optString("event_id") == eventId) {
                         "capture_event_identity_mismatch"
                     }
+                    if (metadata.optString("origin").startsWith("automatic_") &&
+                        !CaptureTrafficPolicy(context).reserveAutomaticTransfer(photo.length().toInt())) {
+                        return@mapNotNull SendResult(false, eventId, "automatic_transfer_budget_exhausted")
+                    }
                     val lifecycle = metadata.optJSONObject("lifecycle") ?: JSONObject()
                     lifecycle.put("uploading_at_ms", System.currentTimeMillis())
                     metadata.put("state", "uploading").put("lifecycle", lifecycle)

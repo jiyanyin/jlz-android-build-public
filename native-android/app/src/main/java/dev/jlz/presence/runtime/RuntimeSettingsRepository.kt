@@ -12,7 +12,8 @@ private val Context.runtimeDataStore by preferencesDataStore(name = "jlz_runtime
 data class RuntimeSettings(
     val baseUrl: String = "",
     val token: String = "",
-    val deviceId: String = "android-phone-native-n0"
+    val deviceId: String = "android-phone-native-n0",
+    val traffic: dev.jlz.presence.capture.CaptureTrafficPolicy? = null
 )
 
 class RuntimeSettingsRepository(private val context: Context) {
@@ -25,6 +26,7 @@ class RuntimeSettingsRepository(private val context: Context) {
     suspend fun load(): RuntimeSettings =
         context.runtimeDataStore.data.map { prefs ->
             RuntimeSettings(
+                traffic = dev.jlz.presence.capture.CaptureTrafficPolicy(context),
                 baseUrl = prefs[Keys.baseUrl].orEmpty(),
                 token = prefs[Keys.token].orEmpty(),
                 deviceId = prefs[Keys.deviceId].orEmpty().ifBlank { "android-phone-native-n0" }
