@@ -1,4 +1,4 @@
-name: Deploy World Between Web
+name: World Between Web Check
 
 on:
   push:
@@ -10,30 +10,31 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: "world-between-pages"
-  cancel-in-progress: true
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  static-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - name: Upload static frontend
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: world-between-web
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - uses: actions/checkout@v4
+      - name: Check JavaScript syntax
+        run: node --check world-between-web/app.js
+      - name: Verify required frontend files
+        run: |
+          test -s world-between-web/index.html
+          test -s world-between-web/styles.css
+          test -s world-between-web/app.js
+          test -s world-between-web/manifest.webmanifest
+          grep -q "状态灯" world-between-web/index.html
+          grep -q "随手记" world-between-web/index.html
+          grep -q "此刻我在" world-between-web/index.html
+          grep -q "Runtime 待连接" world-between-web/index.html
+      - name: Smoke-test static serving
+        run: |
+          python3 -m http.server 8765 --directory world-between-web >/tmp/world-between-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          sleep 1
+          curl --fail --silent http://127.0.0.1:8765/index.html | grep -q "世界之间"
+          curl --fail --silent http://127.0.0.1:8765/styles.css >/dev/null
+          curl --fail --silent http://127.0.0.1:8765/app.js >/dev/null
