@@ -173,10 +173,13 @@ class PendingScreenshotQueue(private val context: Context) {
         val transportPrefs = context.applicationContext.getSharedPreferences(
             "jlz_capture_transport_backoff_v1", Context.MODE_PRIVATE
         )
-        // After a server-side 507, do not retry every queued automatic photo
-        // in the same batch or every few minutes. Explicit GPT captures can
-        // still bypass the automatic-upload pause.
-        if (priorityEventId == null &&
+        // AutomaticCaptureCoordinator also passes priorityEventId for its
+        // 30-second capture. Priority alone does NOT imply an owner/GPT
+        // request; only an explicitly tagged official capture can bypass
+        // the automatic retry pause.
+        val priorityIsOfficial = priorityEventId != null &&
+            readMeta(priorityEventId)?.optString("origin") == "official_gpt_request"
+        if (!priorityIsOfficial &&
             transportPrefs.getLong("quota_pause_until_ms", 0L) > now) {
             return emptyList()
         }
@@ -196,7 +199,7 @@ class PendingScreenshotQueue(private val context: Context) {
             .take(limit.coerceIn(1, 10))
             .mapNotNull { photo ->
                 val eventId = photo.nameWithoutExtension
-                if (eventId != priorityEventId &&
+                if ((!priorityIsOfficial || eventId != priorityEventId) &&
                     transportPrefs.getLong("quota_pause_until_ms", 0L) >
                     System.currentTimeMillis()) {
                     return@mapNotNull null
