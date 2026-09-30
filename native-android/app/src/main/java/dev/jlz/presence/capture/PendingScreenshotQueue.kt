@@ -21,70 +21,6 @@ class PendingScreenshotQueue(private val context: Context) {
 
     data class SendResult(val sent: Boolean, val eventId: String, val reason: String)
 
-    /**
-     * Owner-authorized full screenshot reset for the 2026-09-28 capture-policy cutover.
-     * Deletes screenshot transport files and screenshot event rows only.
-     * Notes, replies, focus state and other local data are untouched.
-     */
-    @Synchronized
-    fun clearAllScreenshotsOnce(marker: String): Int {
-        val prefs = context.applicationContext.getSharedPreferences(
-            "jlz_presence_capture_full_reset_v1", Context.MODE_PRIVATE
-        )
-        val key = "done:" + marker
-        if (prefs.getBoolean(key, false)) return 0
-
-        var removed = 0
-        if (root.isDirectory) {
-            root.listFiles().orEmpty().forEach { file ->
-                if (file.delete()) removed++
-            }
-        }
-        journal.deleteScreenshotRecordsBefore(Long.MAX_VALUE)
-        check(prefs.edit().putBoolean(key, true).commit()) {
-            "capture_full_reset_marker_not_saved"
-        }
-        return removed
-    }
-
-    /**
-     * One-time screenshot clean slate authorized 2026-09-27 11:55 Asia/Shanghai.
-     * The server resets the same earlier screenshot cutoff. Prevent an old
-     * phone-side retry from repopulating wiped server captures.
-     * Text notes, replies, skin packs and user settings are not touched.
-     */
-    @Synchronized
-    fun clearLegacyTestImagesOnce(): Int {
-        val prefs = root.parentFile?.let {
-            context.applicationContext.getSharedPreferences(
-                "jlz_presence_capture_reset_20260927", Context.MODE_PRIVATE
-            )
-        } ?: return 0
-        if (prefs.getBoolean("done", false)) return 0
-        val cutoffMs = 1790481300000L
-        var removed = 0
-        if (root.isDirectory) {
-            root.listFiles().orEmpty()
-                .filter { it.extension == "image" || it.extension == "uploaded" }
-                .forEach { photo ->
-                    val meta = File(root, "${photo.nameWithoutExtension}.json")
-                    val observedAt = runCatching {
-                        JSONObject(meta.readText()).optLong("observed_at_ms", 0L)
-                    }.getOrDefault(0L)
-                    val actualAt = if (observedAt > 0L) observedAt else photo.lastModified()
-                    if (actualAt in 1 until cutoffMs && photo.delete()) {
-                        meta.delete()
-                        removed++
-                    }
-                }
-        }
-        journal.deleteScreenshotRecordsBefore(cutoffMs)
-        check(prefs.edit().putBoolean("done", true).commit()) {
-            "test_screenshot_reset_marker_not_saved"
-        }
-        return removed
-    }
-
     @Synchronized
     fun enqueue(
         capture: ScreenshotCaptureResult.Captured,
@@ -398,7 +334,15 @@ class PendingScreenshotQueue(private val context: Context) {
     fun reconcileWithRuntime(api: RuntimeApiClient): Int {
         if (!root.isDirectory) return 0
         cleanupExpired()
+        // A durable outbox directory can exist forever after the first capture.
+        // Empty queues must not download the 100-record index every heartbeat.
+        if (root.listFiles().orEmpty().none { it.extension == "uploaded" }) return 0
+        val syncPrefs = context.applicationContext.getSharedPreferences("jlz_capture_reconcile_v1", Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val last = syncPrefs.getLong("last_success_ms", 0L)
+        if (now >= last && now - last < 5 * 60_000L) return 0
         val index = api.captureIndex(limit = 100)
+        check(syncPrefs.edit().putLong("last_success_ms", now).commit())
         val remote = mutableMapOf<String, JSONObject>()
         for (i in 0 until index.length()) {
             index.optJSONObject(i)?.let { item ->
