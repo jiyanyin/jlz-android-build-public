@@ -708,8 +708,7 @@ class NativeRuntimeService : Service() {
                 true to "focus_ended"
             }
 
-            "approve_focus_unlock", "temporary_unlock_app",
-            "temporary_screen_break_release", "temporary_screen_release" -> {
+            "temporary_unlock_app" -> {
                 val pkg = command.packageName
                     ?: command.payload.optString("package_name").takeIf { it.isNotBlank() }
                     ?: command.payload.optString("package").takeIf { it.isNotBlank() }
@@ -737,8 +736,7 @@ class NativeRuntimeService : Service() {
                 }
             }
 
-            "deny_focus_unlock", "deny_unlock_request",
-            "deny_screen_break_release_request", "deny_break_release_request" -> {
+            "deny_unlock_request" -> {
                 val message = command.payload.optString("message")
                     .ifBlank { "不行。先把这一段做完，再来找我。" }
                 NotificationAdapter(this).showMessage(
@@ -787,7 +785,7 @@ class NativeRuntimeService : Service() {
                     .toString()
             }
 
-            "screen_break_app", "lock_app", "add_locked_app" -> {
+            "lock_app" -> {
                 val pkg = command.packageName
                     ?: command.payload.optString("package").takeIf { it.isNotBlank() }
                 if (pkg == null) false to "package_required"
@@ -803,7 +801,7 @@ class NativeRuntimeService : Service() {
                 }
             }
 
-            "end_screen_break", "unlock_app", "remove_locked_app" -> {
+            "unlock_app" -> {
                 val pkg = command.packageName
                     ?: command.payload.optString("package").takeIf { it.isNotBlank() }
                 if (pkg == null) false to "package_required"
@@ -812,10 +810,6 @@ class NativeRuntimeService : Service() {
                     true to ("app_unblocked:" + pkg)
                 }
             }
-
-            // V2: sleep / co-sleep / white-noise / music commands removed.
-            "start_sleep_mode", "end_sleep_mode", "set_sleep_soundscape",
-            "open_sleep_screen" -> false to "v2_removed_sleep_audio"
 
             "set_persona_state" -> {
                 personaRepository.update(

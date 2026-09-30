@@ -170,6 +170,19 @@ class PendingScreenshotQueue(private val context: Context) {
         if (!root.isDirectory) return emptyList()
         cleanupExpired()
         val now = System.currentTimeMillis()
+        val transportPrefs = context.applicationContext.getSharedPreferences(
+            "jlz_capture_transport_backoff_v1", Context.MODE_PRIVATE
+        )
+        // AutomaticCaptureCoordinator also passes priorityEventId for its
+        // 30-second capture. Priority alone does NOT imply an owner/GPT
+        // request; only an explicitly tagged official capture can bypass
+        // the automatic retry pause.
+        val priorityIsOfficial = priorityEventId != null &&
+            readMeta(priorityEventId)?.optString("origin") == "official_gpt_request"
+        if (!priorityIsOfficial &&
+            transportPrefs.getLong("quota_pause_until_ms", 0L) > now) {
+            return emptyList()
+        }
         return root.listFiles().orEmpty()
             .filter { it.isFile && it.extension == "image" }
             .filter { photo ->
@@ -184,8 +197,13 @@ class PendingScreenshotQueue(private val context: Context) {
                     .thenBy { it.lastModified() }
             )
             .take(limit.coerceIn(1, 10))
-            .map { photo ->
+            .mapNotNull { photo ->
                 val eventId = photo.nameWithoutExtension
+                if ((!priorityIsOfficial || eventId != priorityEventId) &&
+                    transportPrefs.getLong("quota_pause_until_ms", 0L) >
+                    System.currentTimeMillis()) {
+                    return@mapNotNull null
+                }
                 val metadataFile = File(root, "$eventId.json")
                 try {
                     val metadata = JSONObject(metadataFile.readText())
@@ -229,12 +247,21 @@ class PendingScreenshotQueue(private val context: Context) {
                     check(photo.renameTo(File(root, "$eventId.uploaded"))) {
                         "capture_local_uploaded_transition_failed"
                     }
+                    // A successful upload proves the server is accepting
+                    // screenshots again; allow the normal queue to drain.
+                    transportPrefs.edit().remove("quota_pause_until_ms").apply()
                     SendResult(true, eventId, filename)
                 } catch (failure: Exception) {
                     val message = (failure.message ?: failure.javaClass.simpleName).take(230)
                     val metadata = readMeta(eventId) ?: JSONObject().put("event_id", eventId)
                     val retry = metadata.optInt("retry_count", 0) + 1
                     val stage = failureStage(message)
+                    if (stage == "quota_full") {
+                        transportPrefs.edit().putLong(
+                            "quota_pause_until_ms",
+                            System.currentTimeMillis() + 60L * 60L * 1000L
+                        ).apply()
+                    }
                     val retryDelay = RETRY_BASE_MS * (1L shl (retry - 1).coerceIn(0, 5))
                     metadata.put("state", "failed")
                         .put("retry_count", retry)
@@ -389,11 +416,32 @@ class PendingScreenshotQueue(private val context: Context) {
                 meta?.put("state", "reviewed")?.put("lifecycle", lifecycle)
                 writeMeta(id, meta ?: JSONObject().put("event_id", id).put("lifecycle", lifecycle))
                 if (releasePixel(image, "gpt_reviewed_ack")) changed++
-            } else if (entry == null || !entry.optBoolean("available", false)) {
-                if (image.renameTo(File(root, "$id.image"))) {
-                    journal.updateDelivery(id, "upload_pending",
-                        detail = "remote_image_unavailable_requeue_original_uuid")
-                    changed++
+            } else if (entry != null && !entry.optBoolean("available", false)) {
+                // The server returns only the newest 100 capture records here.
+                // Missing from that page does NOT mean that older image pixels
+                // disappeared: do not reupload already-acknowledged screenshots.
+                // A matching record with available=false is positive evidence.
+                val meta = readMeta(id)
+                val origin = meta?.optString("origin").orEmpty()
+                val attemptCount = meta?.optInt("remote_restore_attempts", 0) ?: 0
+                // An explicit server "unavailable" may justify one
+                // restoration, but not indefinite auto reuploads after
+                // quota eviction. Officially requested captures get two.
+                val restoreLimit = if (origin == "official_gpt_request") 2 else 1
+                if (meta != null && attemptCount < restoreLimit) {
+                    // Persist the restore budget before changing the file
+                    // back to an outbound image; failure remains uploaded.
+                    val updated = JSONObject(meta.toString())
+                        .put("remote_restore_attempts", attemptCount + 1)
+                        .put("state", "queued")
+                    val saved = runCatching {
+                        File(root, "$id.json").writeText(updated.toString())
+                    }.isSuccess
+                    if (saved && image.renameTo(File(root, "$id.image"))) {
+                        journal.updateDelivery(id, "upload_pending",
+                            detail = "remote_unavailable_bounded_restore_original_uuid")
+                        changed++
+                    }
                 }
             }
         }
