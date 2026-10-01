@@ -14,6 +14,7 @@ android {
         targetSdk = 35
         versionCode = 2026100103
         versionName = "0.3.9-slim.3"
+        // slim.3 settings hotfix build anchor
     }
 
     buildTypes {
