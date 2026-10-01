@@ -17,6 +17,13 @@ data class RuntimeSettings(
     val reports: PendingCommandReportStore? = null
 )
 
+private fun defaultNativeDeviceId(context: Context): String =
+    if (context.resources.configuration.smallestScreenWidthDp >= 600) {
+        "android-tablet-native-n0"
+    } else {
+        "android-phone-native-n0"
+    }
+
 class RuntimeSettingsRepository(private val context: Context) {
     private val reportStore by lazy { PendingCommandReportStore(context) }
     private object Keys {
@@ -32,7 +39,13 @@ class RuntimeSettingsRepository(private val context: Context) {
                 reports = reportStore,
                 baseUrl = prefs[Keys.baseUrl].orEmpty(),
                 token = prefs[Keys.token].orEmpty(),
-                deviceId = prefs[Keys.deviceId].orEmpty().ifBlank { "android-phone-native-n0" }
+                deviceId = prefs[Keys.deviceId].orEmpty().let { configured ->
+                    val fallback = defaultNativeDeviceId(context)
+                    if (configured.isBlank() ||
+                        (fallback.startsWith("android-tablet") && configured == "android-phone-native-n0")) {
+                        fallback
+                    } else configured
+                }
             )
         }.first()
 
@@ -40,7 +53,7 @@ class RuntimeSettingsRepository(private val context: Context) {
         context.runtimeDataStore.edit { prefs ->
             prefs[Keys.baseUrl] = settings.baseUrl.trim().trimEnd('/')
             prefs[Keys.token] = settings.token.trim()
-            prefs[Keys.deviceId] = settings.deviceId.trim().ifBlank { "android-phone-native-n0" }
+            prefs[Keys.deviceId] = settings.deviceId.trim().ifBlank { defaultNativeDeviceId(context) }
         }
     }
 }

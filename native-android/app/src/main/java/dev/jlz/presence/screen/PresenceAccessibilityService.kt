@@ -11,6 +11,7 @@ import dev.jlz.presence.focus.FocusState
 import dev.jlz.presence.overlay.FloatingPresenceMode
 import dev.jlz.presence.overlay.FloatingPresenceService
 import dev.jlz.presence.usage.ForegroundUsageTracker
+import dev.jlz.presence.usage.AttentionRhythmTracker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -49,6 +50,7 @@ class PresenceAccessibilityService : AccessibilityService() {
         AccessibilityScreenshotGateway.bind(this)
         AccessibilityActionGateway.bind(this)
         ForegroundUsageTracker.bind(applicationContext)
+        AttentionRhythmTracker.bind(applicationContext)
         focusRepository = FocusRepository(applicationContext)
         automaticCapture = AutomaticCaptureCoordinator(applicationContext)
         scope.launch {
@@ -68,6 +70,7 @@ class PresenceAccessibilityService : AccessibilityService() {
             }
         }
         ForegroundUsageTracker.observe(packageName, now)
+        AttentionRhythmTracker.observe(packageName, eventType, now)
         val currentFocus = focusState
         if (currentFocus.active && !currentFocus.isActiveNow()) {
             scope.launch { focusRepository.stop() }

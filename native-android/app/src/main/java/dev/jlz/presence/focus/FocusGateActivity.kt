@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import dev.jlz.presence.MainActivity
 import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.notification.NotificationReplyReceiver
+import dev.jlz.presence.notification.PendingReplyStore
 import dev.jlz.presence.runtime.RuntimeApiClient
 import dev.jlz.presence.runtime.RuntimeSettingsRepository
 import kotlinx.coroutines.Dispatchers
@@ -94,28 +95,19 @@ class FocusGateActivity : ComponentActivity() {
                                             eventId = requestId,
                                             intentId = requestId
                                         )
+                                        val outbox = PendingReplyStore(app)
+                                        outbox.keep(
+                                            text = "我想临时打开 " + appLabel,
+                                            parentEventId = requestId,
+                                            intentId = requestId
+                                        )
                                         val settings = RuntimeSettingsRepository(app).load()
                                         if (
                                             settings.baseUrl.isNotBlank() &&
                                             settings.token.isNotBlank()
                                         ) {
                                             val api = RuntimeApiClient(settings)
-                                            runCatching {
-                                                api.postFocusUnlockRequest(
-                                                    packageName = packageName,
-                                                    requestId = requestId,
-                                                    message = "我想临时打开 " + appLabel
-                                                )
-                                            }
-                                            runCatching {
-                                                api.postInboxMessage(
-                                                    text = "我想临时打开 " + appLabel,
-                                                    role = "user",
-                                                    eventId = requestId,
-                                                    intentId = requestId,
-                                                    notify = false
-                                                )
-                                            }
+                                            runCatching { outbox.sync(api, limit = 20) }
                                         }
                                     }
 

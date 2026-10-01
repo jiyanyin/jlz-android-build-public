@@ -12,6 +12,9 @@ import dev.jlz.presence.usage.DeviceActivityJournal
 
 /** Recent Android system samples, not inferred health or official GPT memory. */
 object NativePhoneSnapshot {
+    fun deviceType(context: Context): String =
+        if (context.resources.configuration.smallestScreenWidthDp >= 600) "tablet" else "phone"
+
     fun collect(
         context: Context,
         deviceId: String = DeviceActivityJournal.DEFAULT_DEVICE_ID
@@ -45,7 +48,7 @@ object NativePhoneSnapshot {
         return JSONObject()
             .put("source", "android_system_battery_power_network+android_usage_events")
             .put("device_id", deviceId)
-            .put("device_type", "phone")
+            .put("device_type", deviceType(context))
             .put("observed_at_ms", System.currentTimeMillis())
             .put("battery_percent", percent ?: JSONObject.NULL)
             .put("charging", charging)

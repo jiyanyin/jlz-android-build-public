@@ -35,6 +35,7 @@ data class InboxMessage(
 
 data class DeviceStateSnapshot(
     val deviceId: String,
+    val deviceType: String = if (deviceId.contains("tablet", ignoreCase = true)) "tablet" else "phone",
     val appVersion: String,
     val manufacturer: String = Build.MANUFACTURER,
     val model: String = Build.MODEL,
@@ -45,6 +46,7 @@ data class DeviceStateSnapshot(
     val weather: JSONObject? = null,
     val presencePlan: JSONObject? = null,
     val usage: JSONObject? = null,
+    val attention: JSONObject? = null,
     val screen: JSONObject? = null,
     val deviceVitals: JSONObject? = null,
     val media: JSONObject? = null,
@@ -52,6 +54,7 @@ data class DeviceStateSnapshot(
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("device_id", deviceId)
+        .put("device_type", deviceType)
         .put("client", "jlz-native-android")
         .put("client_version", appVersion)
         .put("manufacturer", manufacturer)
@@ -64,6 +67,7 @@ data class DeviceStateSnapshot(
             weather?.let { json.put("weather_state", it) }
             presencePlan?.let { json.put("presence_plan", it) }
             usage?.let { json.put("usage_state", it) }
+            attention?.let { json.put("attention_state", it) }
             screen?.let { json.put("screen_state", it) }
             deviceVitals?.let { json.put("device_vitals", it) }
             media?.let { json.put("media_state", it) }
@@ -147,11 +151,12 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         afterState: JSONObject? = null
     ) {
         val structuredResult: Any = runCatching { JSONObject(result) }.getOrElse { result }
+        val effectiveDeviceId = command.deviceId.ifBlank { settings.deviceId }
         val body = JSONObject()
                 .put("command_id", command.id)
                 .put("intent_id", command.intentId ?: JSONObject.NULL)
-                .put("device_id", command.deviceId.ifBlank { settings.deviceId })
-                .put("device_type", "phone")
+                .put("device_id", effectiveDeviceId)
+                .put("device_type", if (effectiveDeviceId.contains("tablet", ignoreCase = true)) "tablet" else "phone")
                 .put("origin", command.origin)
                 .put("actor", command.actor)
                 .put("controller", command.controller)
@@ -282,21 +287,6 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
                 .put("event", event)
                 .put("source", "jlz_native_android")
                 .put("metadata", metadata)
-        )
-
-    fun postFocusUnlockRequest(
-        packageName: String,
-        requestId: String,
-        message: String
-    ): JSONObject =
-        postJson(
-            "/api/appgate/unlock_request",
-            JSONObject()
-                .put("device_id", settings.deviceId)
-                .put("request_id", requestId)
-                .put("package_name", packageName)
-                .put("message", message)
-                .put("source", "jlz_native_android")
         )
 
     fun uploadScreenshot(
