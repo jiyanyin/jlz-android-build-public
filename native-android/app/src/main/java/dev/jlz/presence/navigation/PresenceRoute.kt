@@ -14,6 +14,7 @@ sealed interface PresenceRoute {
     data object Trip : PresenceRoute
     data object Diagnostics : PresenceRoute
     data object PermissionDoctor : PresenceRoute
+    data object Settings : PresenceRoute
     data object QuickCapture : PresenceRoute
     data class Chat(val eventId: String? = null, val intentId: String? = null) : PresenceRoute
 }
