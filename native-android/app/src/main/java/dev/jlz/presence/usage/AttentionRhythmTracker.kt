@@ -84,7 +84,7 @@ class AttentionRhythmAccumulator {
 
     @Synchronized
     private fun prune(nowMs: Long) {
-        while (samples.isNotEmpty() && nowMs - samples.peekFirst().atMs > 5 * 60_000L) {
+        while (samples.peekFirst()?.let { nowMs - it.atMs > 5 * 60_000L } == true) {
             samples.removeFirst()
         }
     }

@@ -2,7 +2,10 @@ package dev.jlz.presence.usage
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+@RunWith(RobolectricTestRunner::class)
 class AttentionRhythmTrackerTest {
     @Test fun classifiesStructuredScrollRateWithoutPixels() {
         val tracker = AttentionRhythmAccumulator()
