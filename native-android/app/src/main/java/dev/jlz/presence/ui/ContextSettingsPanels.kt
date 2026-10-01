@@ -40,7 +40,106 @@ import dev.jlz.presence.notification.NotificationSourceRepository
 import dev.jlz.presence.notification.HuaweiHealthNotificationReading
 import dev.jlz.presence.place.PlaceWeatherCoordinator
 import dev.jlz.presence.security.LocalUnlockSecretStore
+import dev.jlz.presence.runtime.NativePhoneSnapshot
+import dev.jlz.presence.runtime.RuntimeSettingsRepository
 import kotlinx.coroutines.launch
+
+@Composable
+fun RuntimeIdentityPanel() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val repository = remember { RuntimeSettingsRepository(context.applicationContext) }
+    var deviceId by remember { mutableStateOf("正在读取…") }
+    var baseUrl by remember { mutableStateOf("") }
+    var tokenInput by remember { mutableStateOf("") }
+    var configured by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf("") }
+    val deviceType = remember { NativePhoneSnapshot.deviceType(context) }
+    val automaticDeviceId = remember(deviceType) {
+        if (deviceType == "tablet") "android-tablet-native-n0" else "android-phone-native-n0"
+    }
+
+    suspend fun refresh() {
+        val settings = repository.load()
+        deviceId = settings.deviceId
+        baseUrl = settings.baseUrl
+        configured = settings.baseUrl.isNotBlank() && settings.token.isNotBlank()
+    }
+
+    LaunchedEffect(Unit) { refresh() }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Runtime 设备身份", style = MaterialTheme.typography.titleMedium)
+            Text(deviceId)
+            Text(
+                if (deviceType == "tablet") "设备类型：平板（自动分配）"
+                else "设备类型：手机（自动分配）",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                if (configured) "Runtime 地址和令牌已配置。"
+                else "Runtime 地址或令牌尚未配置。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text("设备 ID 由同一 APK 根据设备类型自动选择，不需要手工输入。", style = MaterialTheme.typography.bodySmall)
+            if (deviceId != automaticDeviceId) {
+                Button(onClick = {
+                    scope.launch {
+                        val current = repository.load()
+                        repository.save(current.copy(deviceId = automaticDeviceId))
+                        refresh()
+                        message = "已恢复为本机自动设备身份。"
+                    }
+                }) {
+                    Text("恢复自动设备身份")
+                }
+            }
+            OutlinedTextField(
+                value = baseUrl,
+                onValueChange = { baseUrl = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Runtime HTTPS 地址") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                singleLine = true
+            )
+            OutlinedTextField(
+                value = tokenInput,
+                onValueChange = { tokenInput = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(if (configured) "Runtime 令牌（留空则保留现有令牌）" else "Runtime 令牌") },
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true
+            )
+            Button(onClick = {
+                scope.launch {
+                    val normalizedUrl = baseUrl.trim().trimEnd('/')
+                    val current = repository.load()
+                    val effectiveToken = tokenInput.trim().ifBlank { current.token }
+                    if (!normalizedUrl.startsWith("https://")) {
+                        message = "Runtime 地址必须以 https:// 开头。"
+                    } else if (effectiveToken.isBlank()) {
+                        message = "请输入 Runtime 令牌。"
+                    } else {
+                        repository.save(
+                            current.copy(
+                                baseUrl = normalizedUrl,
+                                token = effectiveToken,
+                                deviceId = deviceId
+                            )
+                        )
+                        tokenInput = ""
+                        refresh()
+                        message = "Runtime 配置已保存，后台将自动重连。"
+                    }
+                }
+            }) {
+                Text("保存 Runtime 配置")
+            }
+            if (message.isNotBlank()) Text(message, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
 
 @Composable
 fun NotificationSourcesPanel() {

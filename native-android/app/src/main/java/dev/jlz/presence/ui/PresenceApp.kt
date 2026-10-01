@@ -1,5 +1,7 @@
 package dev.jlz.presence.ui
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -611,14 +613,18 @@ fun TripScreen() {
 fun PermissionDoctorScreen() {
     val context = LocalContext.current
     val doctor = remember { PermissionDoctor(context) }
-    val items = remember { doctor.checkAll() }
+    var refresh by remember { mutableIntStateOf(0) }
+    val items = remember(refresh) { doctor.checkAll() }
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("\u6743\u9650\u533b\u751f", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
             Text("\u8fd4\u56de", color = BlueGlow, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Home) }.padding(8.dp))
         }
         Spacer(Modifier.height(16.dp))
+        IceButton("重新检查全部权限", onClick = { refresh += 1 })
+        Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            item { RuntimeIdentityPanel() }
             item { DeviceUnlockSettingsPanel() }
             items(items) { item ->
                 IceGlassCard {
@@ -639,9 +645,23 @@ fun PermissionDoctorScreen() {
                             PermissionItem.Status.NOT_APPLICABLE -> TextTertiary
                         })
                     }
-                    if (item.intent != null && item.status != PermissionItem.Status.OK) {
+                    val target = item.intent
+                    if (target != null && item.status != PermissionItem.Status.OK) {
                         Spacer(Modifier.height(8.dp))
-                        IceButton("\u53bb\u8bbe\u7f6e", onClick = { context.startActivity(item.intent) })
+                        IceButton("\u53bb\u8bbe\u7f6e", onClick = {
+                            val opened = runCatching {
+                                context.startActivity(target)
+                                true
+                            }.getOrDefault(false)
+                            if (!opened && item.key == "battery") {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                }
+                            }
+                        })
                     }
                 }
             }

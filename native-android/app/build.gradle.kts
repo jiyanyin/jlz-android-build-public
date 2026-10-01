@@ -12,8 +12,8 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026100101
-        versionName = "0.3.9-slim.1"
+        versionCode = 2026100102
+        versionName = "0.3.9-slim.2"
     }
 
     buildTypes {
