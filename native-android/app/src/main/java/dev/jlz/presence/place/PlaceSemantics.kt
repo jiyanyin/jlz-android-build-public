@@ -56,6 +56,8 @@ class PlaceAnchorRepository(private val context: Context) {
 
     suspend fun home(): PlaceAnchor? = anchor(Keys.homeLat, Keys.homeLon, Keys.homeRadius)
     suspend fun office(): PlaceAnchor? = anchor(Keys.officeLat, Keys.officeLon, Keys.officeRadius)
+    suspend fun hasHome(): Boolean = home() != null
+    suspend fun hasOffice(): Boolean = office() != null
 
     suspend fun setHome(location: Location, radiusMeters: Float = 180f) {
         context.placeDataStore.edit { prefs ->
@@ -159,23 +161,52 @@ class SemanticPlaceEngine(private val anchors: PlaceAnchorRepository) {
 
         val home = anchors.home()
         val office = anchors.office()
+        if (home == null && office == null) {
+            return SemanticPlaceState(
+                place = SemanticPlace.UNKNOWN,
+                confidence = 0f,
+                observedAtMs = location.time,
+                source = "anchors_unconfigured"
+            )
+        }
+
+        if (location.hasAccuracy() && location.accuracy > 500f) {
+            return SemanticPlaceState(
+                place = SemanticPlace.UNKNOWN,
+                confidence = 0.2f,
+                observedAtMs = location.time,
+                source = "location_accuracy_low"
+            )
+        }
+
+        val accuracyAllowance = if (location.hasAccuracy()) {
+            location.accuracy.coerceIn(0f, 250f)
+        } else 0f
         val homeDistance = home?.let { distance(location, it) }
         val officeDistance = office?.let { distance(location, it) }
 
-        if (home != null && homeDistance != null && homeDistance <= home.radiusMeters) {
+        if (
+            home != null &&
+            homeDistance != null &&
+            homeDistance <= home.radiusMeters + accuracyAllowance
+        ) {
             return SemanticPlaceState(
                 SemanticPlace.HOME,
-                confidence(homeDistance, home.radiusMeters),
+                confidence(homeDistance, home.radiusMeters + accuracyAllowance),
                 location.time,
-                "local_anchor"
+                if (accuracyAllowance > 0f) "local_anchor_accuracy_tolerant" else "local_anchor"
             )
         }
-        if (office != null && officeDistance != null && officeDistance <= office.radiusMeters) {
+        if (
+            office != null &&
+            officeDistance != null &&
+            officeDistance <= office.radiusMeters + accuracyAllowance
+        ) {
             return SemanticPlaceState(
                 SemanticPlace.OFFICE,
-                confidence(officeDistance, office.radiusMeters),
+                confidence(officeDistance, office.radiusMeters + accuracyAllowance),
                 location.time,
-                "local_anchor"
+                if (accuracyAllowance > 0f) "local_anchor_accuracy_tolerant" else "local_anchor"
             )
         }
 
