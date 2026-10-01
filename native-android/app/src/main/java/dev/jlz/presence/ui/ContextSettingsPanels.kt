@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -38,9 +39,14 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.jlz.presence.notification.NotificationSourceRepository
 import dev.jlz.presence.notification.HuaweiHealthNotificationReading
+import dev.jlz.presence.overlay.FloatingPresenceMode
+import dev.jlz.presence.overlay.FloatingPresenceService
+import dev.jlz.presence.overlay.QAvatarScale
 import dev.jlz.presence.place.PlaceWeatherCoordinator
+import dev.jlz.presence.place.PlaceAnchorRepository
 import dev.jlz.presence.security.LocalUnlockSecretStore
 import dev.jlz.presence.runtime.NativePhoneSnapshot
+import dev.jlz.presence.runtime.NativeRuntimeService
 import dev.jlz.presence.runtime.RuntimeSettingsRepository
 import kotlinx.coroutines.launch
 
@@ -130,13 +136,107 @@ fun RuntimeIdentityPanel() {
                         )
                         tokenInput = ""
                         refresh()
-                        message = "Runtime 配置已保存，后台将自动重连。"
+                        runCatching {
+                            NativeRuntimeService.start(context.applicationContext)
+                        }.onSuccess {
+                            message = "Runtime 配置已保存，后台已请求重连。"
+                        }.onFailure {
+                            message = "Runtime 配置已保存；后台重连请求失败，请重启 App 或设备。"
+                        }
                     }
                 }
             }) {
                 Text("保存 Runtime 配置")
             }
             if (message.isNotBlank()) Text(message, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+fun OverlaySettingsPanel() {
+    val context = LocalContext.current
+    var canOverlay by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    var sizeDp by remember { mutableIntStateOf(QAvatarScale.get(context)) }
+    var message by remember { mutableStateOf("") }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("宠物悬浮", style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (canOverlay) "悬浮窗权限已允许。"
+                else "还没有悬浮窗权限，先允许后才能显示 Q 版纪临洲。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            if (!canOverlay) {
+                Button(onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                                .setData(Uri.parse("package:" + context.packageName))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }
+                }) {
+                    Text("允许悬浮窗")
+                }
+                Button(onClick = {
+                    canOverlay = Settings.canDrawOverlays(context)
+                    message = if (canOverlay) "悬浮窗权限已允许。" else "暂时还没有悬浮窗权限。"
+                }) {
+                    Text("重新检查悬浮权限")
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    enabled = canOverlay,
+                    onClick = {
+                        val ok = FloatingPresenceService.start(
+                            context.applicationContext,
+                            mode = FloatingPresenceMode.LIFE
+                        )
+                        message = if (ok) "宠物悬浮已请求显示。" else "悬浮权限尚未允许。"
+                    }
+                ) {
+                    Text("显示宠物")
+                }
+                Button(onClick = {
+                    FloatingPresenceService.stop(context.applicationContext)
+                    message = "宠物悬浮已收起。"
+                }) {
+                    Text("收起宠物")
+                }
+            }
+
+            Text(
+                "大小：" + QAvatarScale.percentage(sizeDp) + "%（" + sizeDp + "dp）",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    sizeDp = FloatingPresenceService.setAvatarSize(
+                        context.applicationContext,
+                        sizeDp - QAvatarScale.STEP_DP
+                    )
+                }) {
+                    Text("缩小")
+                }
+                Button(onClick = {
+                    sizeDp = FloatingPresenceService.setAvatarSize(
+                        context.applicationContext,
+                        sizeDp + QAvatarScale.STEP_DP
+                    )
+                }) {
+                    Text("放大")
+                }
+            }
+            if (message.isNotBlank()) {
+                Text(message, style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 }
@@ -241,7 +341,17 @@ fun PlaceSettingsPanel() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val coordinator = remember { PlaceWeatherCoordinator(context.applicationContext) }
+    val anchors = remember { PlaceAnchorRepository(context.applicationContext) }
     var message by remember { mutableStateOf("") }
+    var homeConfigured by remember { mutableStateOf(false) }
+    var officeConfigured by remember { mutableStateOf(false) }
+
+    suspend fun refreshAnchors() {
+        homeConfigured = anchors.hasHome()
+        officeConfigured = anchors.hasOffice()
+    }
+
+    LaunchedEffect(Unit) { refreshAnchors() }
 
     val permission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -255,7 +365,12 @@ fun PlaceSettingsPanel() {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text("生活位置", style = MaterialTheme.typography.titleMedium)
-            Text("精确坐标留在手机里；Runtime 默认只拿语义位置和天气。")
+            Text("精确坐标留在本机；Runtime 默认只拿语义位置和天气。")
+            Text(
+                "HOME：" + (if (homeConfigured) "已设置" else "未设置") +
+                    " · OFFICE：" + (if (officeConfigured) "已设置" else "未设置"),
+                style = MaterialTheme.typography.bodySmall
+            )
             Button(onClick = {
                 permission.launch(
                     arrayOf(
@@ -269,16 +384,20 @@ fun PlaceSettingsPanel() {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = {
                     scope.launch {
-                        message = if (coordinator.setCurrentAsHome()) "这里已记作 HOME"
-                        else "暂时拿不到当前位置"
+                        message = if (coordinator.setCurrentAsHome()) {
+                            refreshAnchors()
+                            "这里已记作 HOME"
+                        } else "暂时拿不到当前位置"
                     }
                 }) {
                     Text("这里是家")
                 }
                 Button(onClick = {
                     scope.launch {
-                        message = if (coordinator.setCurrentAsOffice()) "这里已记作 OFFICE"
-                        else "暂时拿不到当前位置"
+                        message = if (coordinator.setCurrentAsOffice()) {
+                            refreshAnchors()
+                            "这里已记作 OFFICE"
+                        } else "暂时拿不到当前位置"
                     }
                 }) {
                     Text("这里是单位")
