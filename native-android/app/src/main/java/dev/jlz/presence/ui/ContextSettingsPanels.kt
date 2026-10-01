@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -38,6 +39,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.jlz.presence.notification.NotificationSourceRepository
 import dev.jlz.presence.notification.HuaweiHealthNotificationReading
+import dev.jlz.presence.overlay.FloatingPresenceMode
+import dev.jlz.presence.overlay.FloatingPresenceService
+import dev.jlz.presence.overlay.QAvatarScale
 import dev.jlz.presence.place.PlaceWeatherCoordinator
 import dev.jlz.presence.place.PlaceAnchorRepository
 import dev.jlz.presence.security.LocalUnlockSecretStore
@@ -145,6 +149,94 @@ fun RuntimeIdentityPanel() {
                 Text("保存 Runtime 配置")
             }
             if (message.isNotBlank()) Text(message, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+fun OverlaySettingsPanel() {
+    val context = LocalContext.current
+    var canOverlay by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    var sizeDp by remember { mutableIntStateOf(QAvatarScale.get(context)) }
+    var message by remember { mutableStateOf("") }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("宠物悬浮", style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (canOverlay) "悬浮窗权限已允许。"
+                else "还没有悬浮窗权限，先允许后才能显示 Q 版纪临洲。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            if (!canOverlay) {
+                Button(onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                                .setData(Uri.parse("package:" + context.packageName))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }
+                }) {
+                    Text("允许悬浮窗")
+                }
+                Button(onClick = {
+                    canOverlay = Settings.canDrawOverlays(context)
+                    message = if (canOverlay) "悬浮窗权限已允许。" else "暂时还没有悬浮窗权限。"
+                }) {
+                    Text("重新检查悬浮权限")
+                }
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    enabled = canOverlay,
+                    onClick = {
+                        val ok = FloatingPresenceService.start(
+                            context.applicationContext,
+                            mode = FloatingPresenceMode.LIFE
+                        )
+                        message = if (ok) "宠物悬浮已请求显示。" else "悬浮权限尚未允许。"
+                    }
+                ) {
+                    Text("显示宠物")
+                }
+                Button(onClick = {
+                    FloatingPresenceService.stop(context.applicationContext)
+                    message = "宠物悬浮已收起。"
+                }) {
+                    Text("收起宠物")
+                }
+            }
+
+            Text(
+                "大小：" + QAvatarScale.percentage(sizeDp) + "%（" + sizeDp + "dp）",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    sizeDp = FloatingPresenceService.setAvatarSize(
+                        context.applicationContext,
+                        sizeDp - QAvatarScale.STEP_DP
+                    )
+                }) {
+                    Text("缩小")
+                }
+                Button(onClick = {
+                    sizeDp = FloatingPresenceService.setAvatarSize(
+                        context.applicationContext,
+                        sizeDp + QAvatarScale.STEP_DP
+                    )
+                }) {
+                    Text("放大")
+                }
+            }
+            if (message.isNotBlank()) {
+                Text(message, style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 }
