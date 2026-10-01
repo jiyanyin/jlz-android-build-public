@@ -15,7 +15,10 @@ import java.util.UUID
  *
  * This queue is transport working storage, NOT the official GPT Memory.
  */
-class PendingScreenshotQueue(private val context: Context) {
+class PendingScreenshotQueue(
+    private val context: Context,
+    private val uploadOverride: ((RuntimeApiClient, ByteArray, JSONObject) -> JSONObject)? = null
+) {
     private val root = File(context.applicationContext.filesDir, "jlz_capture_outbox_v1")
     private val journal = CaptureEventStore(context.applicationContext)
 
@@ -109,14 +112,9 @@ class PendingScreenshotQueue(private val context: Context) {
         val transportPrefs = context.applicationContext.getSharedPreferences(
             "jlz_capture_transport_backoff_v1", Context.MODE_PRIVATE
         )
-        // AutomaticCaptureCoordinator also passes priorityEventId for its
-        // 30-second capture. Priority alone does NOT imply an owner/GPT
-        // request; only an explicitly tagged official capture can bypass
-        // the automatic retry pause.
-        val priorityIsOfficial = priorityEventId != null &&
-            readMeta(priorityEventId)?.optString("origin") == "official_gpt_request"
-        if (!priorityIsOfficial &&
-            transportPrefs.getLong("quota_pause_until_ms", 0L) > now) {
+        // A 507 means the Runtime cannot accept another byte. Explicit captures
+        // remain durable locally, but they cannot bypass a backend capacity pause.
+        if (transportPrefs.getLong("quota_pause_until_ms", 0L) > now) {
             return emptyList()
         }
         return root.listFiles().orEmpty()
@@ -135,8 +133,7 @@ class PendingScreenshotQueue(private val context: Context) {
             .take(limit.coerceIn(1, 10))
             .mapNotNull { photo ->
                 val eventId = photo.nameWithoutExtension
-                if ((!priorityIsOfficial || eventId != priorityEventId) &&
-                    transportPrefs.getLong("quota_pause_until_ms", 0L) >
+                if (transportPrefs.getLong("quota_pause_until_ms", 0L) >
                     System.currentTimeMillis()) {
                     return@mapNotNull null
                 }
@@ -154,17 +151,19 @@ class PendingScreenshotQueue(private val context: Context) {
                     lifecycle.put("uploading_at_ms", System.currentTimeMillis())
                     metadata.put("state", "uploading").put("lifecycle", lifecycle)
                     writeMeta(eventId, metadata)
-                    val result = api.uploadScreenshot(
-                        bytes = photo.readBytes(),
-                        mimeType = metadata.optString("mime_type"),
-                        eventId = eventId,
-                        originPackage = metadata.optString("source_package")
-                            .takeIf { it.isNotBlank() && it != "null" },
-                        studySessionId = metadata.optString("study_session_id")
-                            .takeIf { it.isNotBlank() && it != "null" },
-                        capturedAtMs = metadata.optLong("observed_at_ms"),
-                        captureOrigin = metadata.optString("origin").takeIf { it.isNotBlank() }
-                    )
+                    val imageBytes = photo.readBytes()
+                    val result = uploadOverride?.invoke(api, imageBytes, metadata)
+                        ?: api.uploadScreenshot(
+                            bytes = imageBytes,
+                            mimeType = metadata.optString("mime_type"),
+                            eventId = eventId,
+                            originPackage = metadata.optString("source_package")
+                                .takeIf { it.isNotBlank() && it != "null" },
+                            studySessionId = metadata.optString("study_session_id")
+                                .takeIf { it.isNotBlank() && it != "null" },
+                            capturedAtMs = metadata.optLong("observed_at_ms"),
+                            captureOrigin = metadata.optString("origin").takeIf { it.isNotBlank() }
+                        )
                     val filename = result.optString("filename")
                     check(result.optBoolean("ok") &&
                         result.optString("event_id") == eventId &&
@@ -199,10 +198,11 @@ class PendingScreenshotQueue(private val context: Context) {
                     if (stage == "quota_full") {
                         transportPrefs.edit().putLong(
                             "quota_pause_until_ms",
-                            System.currentTimeMillis() + 60L * 60L * 1000L
+                            System.currentTimeMillis() + QUOTA_RETRY_DELAY_MS
                         ).apply()
                     }
-                    val retryDelay = RETRY_BASE_MS * (1L shl (retry - 1).coerceIn(0, 5))
+                    val retryDelay = if (stage == "quota_full") QUOTA_RETRY_DELAY_MS else
+                        RETRY_BASE_MS * (1L shl (retry - 1).coerceIn(0, 7))
                     metadata.put("state", "failed")
                         .put("retry_count", retry)
                         .put("last_error_stage", stage)
@@ -241,12 +241,16 @@ class PendingScreenshotQueue(private val context: Context) {
         else -> 6
     }
 
-    private fun maxRetries(origin: String): Int =
-        if (origin == "official_gpt_request") 8 else 4
+    private fun maxRetries(origin: String): Int = when (origin) {
+        "official_gpt_request", "manual_q" -> Int.MAX_VALUE
+        else -> 4
+    }
 
     private fun pixelTtlMs(origin: String, uploaded: Boolean): Long = when {
         origin == "official_gpt_request" && uploaded -> 24L * 60L * 60L * 1000L
         origin == "official_gpt_request" -> Long.MAX_VALUE
+        origin == "manual_q" && !uploaded -> Long.MAX_VALUE
+        origin == "manual_q" -> 24L * 60L * 60L * 1000L
         origin.contains("work", ignoreCase = true) -> 2L * 60L * 60L * 1000L
         origin.startsWith("automatic_") -> 6L * 60L * 60L * 1000L
         uploaded -> 12L * 60L * 60L * 1000L
@@ -340,7 +344,7 @@ class PendingScreenshotQueue(private val context: Context) {
         val syncPrefs = context.applicationContext.getSharedPreferences("jlz_capture_reconcile_v1", Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         val last = syncPrefs.getLong("last_success_ms", 0L)
-        if (now >= last && now - last < 5 * 60_000L) return 0
+        if (now >= last && now - last < CAPTURE_REVIEW_SYNC_INTERVAL_MS) return 0
         val index = api.captureIndex(limit = 100)
         check(syncPrefs.edit().putLong("last_success_ms", now).commit())
         val remote = mutableMapOf<String, JSONObject>()
@@ -404,5 +408,7 @@ class PendingScreenshotQueue(private val context: Context) {
         const val OFFICIAL_UPLOADED_TTL_MS = 24L * 60L * 60L * 1000L
         private const val MAX_SINGLE_BYTES = 12 * 1024 * 1024
         private const val RETRY_BASE_MS = 30_000L
+        const val QUOTA_RETRY_DELAY_MS = 6L * 60L * 60L * 1000L
+        const val CAPTURE_REVIEW_SYNC_INTERVAL_MS = 30L * 60L * 1000L
     }
 }

@@ -590,17 +590,12 @@ class NativeRuntimeService : Service() {
                                     .put("delivery", "local_outbox")
                                     .toString()
                             )
-                            var sent: PendingScreenshotQueue.SendResult? = null
-                            var attempts = 0
-                            while (attempts < 3 && sent?.sent != true) {
-                                attempts++
-                                sent = screenshotQueue.sendPending(
-                                    api,
-                                    limit = 10,
-                                    priorityEventId = eventId
-                                ).firstOrNull { it.eventId == eventId }
-                                if (sent?.sent != true && attempts < 3) delay(400L * attempts)
-                            }
+                            val sent = screenshotQueue.sendPending(
+                                api,
+                                limit = 1,
+                                priorityEventId = eventId
+                            ).firstOrNull { it.eventId == eventId }
+                            val attempts = if (sent == null) 0 else 1
                             // The queued screenshot may be behind prior
                             // offline photos; report pending, not viewed.
                             val failedStage = sent?.reason
