@@ -2,7 +2,7 @@ name: Public Android Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, runtime-slim-20260930]
     paths:
       - 'native-android/**'
       - '.github/workflows/android-build.yml'
@@ -52,7 +52,7 @@ jobs:
           exit $status
 
       - name: Re-sign APK with stable private certificate
-        if: success() && github.ref == 'refs/heads/main'
+        if: success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/runtime-slim-20260930')
         shell: bash
         env:
           JLZ_DEBUG_KEYSTORE_BASE64: ${{ secrets.JLZ_DEBUG_KEYSTORE_BASE64 }}
@@ -74,7 +74,7 @@ jobs:
           rm -f /tmp/jlz-signing/jlz-native-debug.keystore
 
       - name: Upload APK artifact
-        if: success() && github.ref == 'refs/heads/main'
+        if: success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/runtime-slim-20260930')
         uses: actions/upload-artifact@v4
         with:
           name: JLZ-Presence-${{ github.sha }}
