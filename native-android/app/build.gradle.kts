@@ -12,8 +12,8 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026100103
-        versionName = "0.3.9-slim.3"
+        versionCode = 2026100301
+        versionName = "0.4.0-twa.1"
         // slim.3 settings hotfix build anchor
     }
 
@@ -53,6 +53,7 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.10.0")
     implementation("androidx.core:core-ktx:1.15.0")
+    implementation("com.google.androidbrowserhelper:androidbrowserhelper:2.7.3")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-service:2.8.7")
     implementation("androidx.datastore:datastore-preferences:1.1.1")

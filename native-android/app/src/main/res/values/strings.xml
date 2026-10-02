@@ -5,4 +5,6 @@
     <string name="accessibility_service_description">让我在你明确开启后读取当前屏幕的应用与可访问文本，用于本地屏幕观察与手势执行。</string>
     <string name="quick_capture_tile_label">留给老公</string>
     <string name="share_target_label">给老公看</string>
+    <string name="twa_start_url" translatable="false">https://between-worlds-prod.onrender.com</string>
+    <string name="asset_statements" translatable="false">[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"web","site":"https://between-worlds-prod.onrender.com"}}]</string>
 </resources>
