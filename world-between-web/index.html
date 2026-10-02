@@ -112,6 +112,19 @@
       <p class="hint">这里只使用网页专用低权限令牌，不能控制手机或读取 MCP 密钥。断网记录会留在本机 outbox，恢复后继续同步。</p>
       <div class="field"><label>Runtime 地址</label><input id="runtimeBaseUrl" type="url" inputmode="url" placeholder="https://你的-runtime.example.com"></div>
       <div class="field"><label>私人连接钥匙</label><input id="runtimeWebToken" type="password" autocomplete="current-password" placeholder="只保存在这个浏览器"></div>
+      <div class="sheet-actions">
+        <button id="generateRuntimeKey" class="secondary" type="button">生成私人连接钥匙</button>
+        <button id="hashRuntimeKey" class="secondary" type="button">计算当前钥匙 SHA-256</button>
+      </div>
+      <div id="runtimeHashBox" class="field" hidden>
+        <label>部署用 SHA-256（可以发给纪临洲；它不是连接钥匙）</label>
+        <input id="runtimeTokenHash" type="text" readonly autocomplete="off">
+        <div class="sheet-actions">
+          <button id="copyRuntimeHash" class="secondary" type="button">复制 SHA-256</button>
+          <button id="copyRuntimeRaw" class="secondary" type="button">复制连接钥匙到本机剪贴板</button>
+        </div>
+        <small>原始连接钥匙不会显示成页面文本；只会留在本机密码框／浏览器存储，或按你的操作复制到本机剪贴板。</small>
+      </div>
       <button id="connectRuntime" class="setting-button"><span>连接并同步</span><span>↗</span></button>
       <div class="runtime-line"><span>连接状态</span><b id="runtimeConnectionState">待连接</b></div>
       <div class="runtime-line"><span>待同步记录</span><b id="runtimePendingCount">0</b></div>
