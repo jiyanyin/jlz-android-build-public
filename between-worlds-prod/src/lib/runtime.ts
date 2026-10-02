@@ -52,6 +52,20 @@ export const runtime = {
   health: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, "/api/web/health"),
   state: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, `/api/web/state?${q}`),
   messages: (cfg: RuntimeConfig, limit = 80) => request<unknown>(cfg, `/api/web/messages?${q}&limit=${limit}`),
+  pushPublicKey: (cfg: RuntimeConfig) =>
+    request<{ ok: boolean; configured: boolean; public_key: string }>(cfg, "/api/web/push/public-key"),
+  pushSubscribe: (cfg: RuntimeConfig, subscription: PushSubscriptionJSON) =>
+    request<Record<string, unknown>>(cfg, "/api/web/push/subscribe", {
+      method: "POST",
+      body: { space_id: SPACE_ID, client_id: "between-worlds-pwa", subscription },
+    }),
+  pushUnsubscribe: (cfg: RuntimeConfig, endpoint: string) =>
+    request<Record<string, unknown>>(cfg, "/api/web/push/unsubscribe", {
+      method: "POST",
+      body: { space_id: SPACE_ID, endpoint },
+    }),
+  pushTest: (cfg: RuntimeConfig) =>
+    request<{ ok: boolean; queued?: boolean; count?: number }>(cfg, "/api/web/push/test", { method: "POST", body: { space_id: SPACE_ID } }),
   write: (cfg: RuntimeConfig, item: OutboxItem) =>
     request<Record<string, unknown>>(cfg, item.path, { method: "POST", body: { space_id: SPACE_ID, event_id: item.event_id, ...item.body } }),
 };
