@@ -13,6 +13,19 @@ type Conn = "local" | "syncing" | "online";
 type Send = (path: WritePath, body: Record<string, unknown>, eventId?: string) => string;
 type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
 
+let deferredInstallPrompt: InstallPromptEvent | null = null;
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event as InstallPromptEvent;
+    window.dispatchEvent(new Event("pwa-install-ready"));
+  });
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    window.dispatchEvent(new Event("pwa-installed"));
+  });
+}
+
 const vapidKeyBytes = (value: string) => {
   const pad = "=".repeat((4 - value.length % 4) % 4);
   const raw = atob((value + pad).replace(/-/g, "+").replace(/_/g, "/"));
@@ -321,26 +334,26 @@ function keyDate(d: Date) { return [d.getFullYear(),String(d.getMonth()+1).padSt
 function MorePage({ state, update, setWelcome, banner, reconnect }: { state: AppState; update:(fn:(s:AppState)=>AppState)=>void; setWelcome:(v:boolean)=>void; banner: Banner; reconnect: () => void }) {
  const [key, setKey] = useState(state.webToken);
  const [url, setUrl] = useState(state.runtimeUrl);
- const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+ const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(() => deferredInstallPrompt);
  const [installState, setInstallState] = useState(() => window.matchMedia("(display-mode: standalone)").matches ? "已作为 App 打开" : "浏览器模式");
  const [pushState, setPushState] = useState(() => typeof Notification !== "undefined" && Notification.permission === "granted" ? "检查中" : "未开启");
  const [pushNote, setPushNote] = useState("");
 
  useEffect(() => {
-   const onPrompt = (event: Event) => {
-     event.preventDefault();
-     setInstallPrompt(event as InstallPromptEvent);
-     setInstallState("可以安装");
+   const syncReady = () => {
+     setInstallPrompt(deferredInstallPrompt);
+     if (deferredInstallPrompt) setInstallState("可以安装");
    };
    const onInstalled = () => {
      setInstallPrompt(null);
      setInstallState("已安装");
    };
-   window.addEventListener("beforeinstallprompt", onPrompt);
-   window.addEventListener("appinstalled", onInstalled);
+   syncReady();
+   window.addEventListener("pwa-install-ready", syncReady);
+   window.addEventListener("pwa-installed", onInstalled);
    return () => {
-     window.removeEventListener("beforeinstallprompt", onPrompt);
-     window.removeEventListener("appinstalled", onInstalled);
+     window.removeEventListener("pwa-install-ready", syncReady);
+     window.removeEventListener("pwa-installed", onInstalled);
    };
  }, []);
 
@@ -363,12 +376,13 @@ function MorePage({ state, update, setWelcome, banner, reconnect }: { state: App
      setInstallState("已作为 App 打开");
      return;
    }
-   if (!installPrompt) {
-     setPushNote("如果这里没有安装按钮，请用浏览器菜单里的「添加到主屏幕 / 安装应用」。");
+   const promptEvent = installPrompt || deferredInstallPrompt;
+   if (!promptEvent) {
+     setPushNote("浏览器还没有判定为可安装应用。请刷新一次；如果仍只看到「添加到主屏幕」，告诉我浏览器名称，我继续查安装资格。");
      return;
    }
-   await installPrompt.prompt();
-   const choice = await installPrompt.userChoice;
+   await promptEvent.prompt();
+   const choice = await promptEvent.userChoice;
    setInstallState(choice.outcome === "accepted" ? "正在安装" : "暂未安装");
    if (choice.outcome === "accepted") setInstallPrompt(null);
  };
