@@ -12,8 +12,8 @@ type AppState = { theme: Theme; notes: RecordItem[]; messages: Message[]; status
 type Conn = "local" | "syncing" | "online";
 type Send = (path: WritePath, body: Record<string, unknown>, eventId?: string) => string;
 
-const welcomePortrait = "https://between-worlds-frontend.lovable.app/__l5e/assets-v1/0772c687-9b52-4ed4-9b0a-6b1ecdb3f05e/jlz-welcome-portrait.webp";
-const homePortrait = "https://between-worlds-frontend.lovable.app/__l5e/assets-v1/26a23b4e-a5a3-480f-a23e-1e90d2e05a59/jlz-home-portrait.webp";
+const welcomePortrait = "/jlz-welcome-portrait.webp";
+const homePortrait = "/jlz-home-portrait.webp";
 const STORE = "world-between-web-v1";
 const OUTBOX_CAP = 300;
 const defaults: AppState = { theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
