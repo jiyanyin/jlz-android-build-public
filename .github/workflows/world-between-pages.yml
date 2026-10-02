@@ -2,7 +2,7 @@ name: Deploy World Between Web
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "runtime-slim-20260930"]
     paths:
       - "world-between-web/**"
       - ".github/workflows/world-between-pages.yml"
@@ -44,7 +44,7 @@ jobs:
           grep -q "状态灯" world-between-web/index.html
           grep -q "随手记" world-between-web/index.html
           grep -q "此刻我在" world-between-web/index.html
-          grep -q "网页专用令牌" world-between-web/index.html
+          grep -q "私人连接钥匙" world-between-web/index.html
 
       - name: Configure Pages
         if: github.event_name != 'pull_request'
