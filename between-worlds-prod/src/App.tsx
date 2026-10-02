@@ -199,6 +199,22 @@ export default function BetweenWorlds() {
     let registration: ServiceWorkerRegistration | undefined;
     try { registration = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration() : undefined; } catch { /* diagnostic only */ }
     const manifest = document.querySelector('link[rel="manifest"]') as HTMLLinkElement | null;
+    const probe = async (url: string) => {
+      try {
+        const response = await fetch(url, { cache: "no-store" });
+        return { status: response.status, contentType: response.headers.get("content-type") || "", text: await response.text() };
+      } catch {
+        return { status: 0, contentType: "", text: "" };
+      }
+    };
+    const [manifestProbe, swProbe, icon192Probe, icon512Probe] = await Promise.all([
+      probe(manifest?.href || "/manifest.webmanifest"),
+      probe("/sw.js"),
+      probe("/icon-192.png"),
+      probe("/icon-512.png"),
+    ]);
+    let manifestJsonOk = false;
+    try { JSON.parse(manifestProbe.text); manifestJsonOk = true; } catch { /* diagnostic only */ }
     const pwaDiag = {
       user_agent: navigator.userAgent || "",
       service_worker_supported: "serviceWorker" in navigator,
@@ -209,6 +225,15 @@ export default function BetweenWorlds() {
       beforeinstallprompt_seen: !!deferredInstallPrompt,
       standalone: window.matchMedia("(display-mode: standalone)").matches || !!(navigator as Navigator & { standalone?: boolean }).standalone,
       push_supported: "PushManager" in window,
+      manifest_status: manifestProbe.status,
+      manifest_content_type: manifestProbe.contentType,
+      manifest_json_ok: manifestJsonOk,
+      service_worker_fetch_status: swProbe.status,
+      service_worker_content_type: swProbe.contentType,
+      icon_192_status: icon192Probe.status,
+      icon_192_content_type: icon192Probe.contentType,
+      icon_512_status: icon512Probe.status,
+      icon_512_content_type: icon512Probe.contentType,
     };
     const item: OutboxItem = { event_id: newEventId(), path: "/api/web/presence", queuedAt: new Date().toISOString(), tries: 0,
       body: { state: stateName, visible: document.visibilityState === "visible", focused: document.hasFocus(), tab: tabRef.current, client_at: new Date().toISOString(), pwa_diag: pwaDiag } };
