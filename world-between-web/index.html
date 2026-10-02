@@ -155,7 +155,30 @@
   <p id="webMessageText"></p>
   <button id="openWebEcho">去回响里看</button>
 </div>
-<script src="./runtime-client.js?v=20261002-1408"></script>
-<script src="./app.js?v=20261002-1408"></script>
+<script>
+/*
+ * Emergency navigation guard for Android/in-app browsers.
+ * Runs in capture phase and does not depend on app.js tab().
+ * This keeps every [data-tab] entry usable even if an older cached app.js
+ * still contains a broken navigation handler.
+ */
+document.addEventListener('click', function(event) {
+  var trigger = event.target && event.target.closest ? event.target.closest('[data-tab]') : null;
+  if (!trigger) return;
+  var name = trigger.getAttribute('data-tab');
+  var target = document.getElementById('page-' + name);
+  if (!target) return;
+  event.preventDefault();
+  document.querySelectorAll('.page').forEach(function(page) {
+    page.classList.toggle('active', page === target);
+  });
+  document.querySelectorAll('.dock [data-tab]').forEach(function(button) {
+    button.classList.toggle('active', button.getAttribute('data-tab') === name);
+  });
+  try { window.scrollTo(0, 0); } catch (_) {}
+}, true);
+</script>
+<script src="./runtime-client.js?v=20261002-1431"></script>
+<script src="./app.js?v=20261002-1431"></script>
 </body>
 </html>
