@@ -111,7 +111,7 @@
       <b>网页与 Runtime</b>
       <p class="hint">这里只使用网页专用低权限令牌，不能控制手机或读取 MCP 密钥。断网记录会留在本机 outbox，恢复后继续同步。</p>
       <div class="field"><label>Runtime 地址</label><input id="runtimeBaseUrl" type="url" inputmode="url" placeholder="https://你的-runtime.example.com"></div>
-      <div class="field"><label>网页专用令牌</label><input id="runtimeWebToken" type="password" autocomplete="current-password" placeholder="X-Web-Token"></div>
+      <div class="field"><label>私人连接钥匙</label><input id="runtimeWebToken" type="password" autocomplete="current-password" placeholder="只保存在这个浏览器"></div>
       <button id="connectRuntime" class="setting-button"><span>连接并同步</span><span>↗</span></button>
       <div class="runtime-line"><span>连接状态</span><b id="runtimeConnectionState">待连接</b></div>
       <div class="runtime-line"><span>待同步记录</span><b id="runtimePendingCount">0</b></div>
