@@ -9,7 +9,9 @@
   const read = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
   const write = (key, value) => localStorage.setItem(key, JSON.stringify(value));
   const uuid = () => crypto.randomUUID?.() || `web-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  let config = read(CFG, { baseUrl: "", token: "" });
+  const DEFAULT_BASE_URL = "https://jlz-palm-server.onrender.com";
+  let config = read(CFG, { baseUrl: DEFAULT_BASE_URL, token: "" });
+  if (!config.baseUrl) config.baseUrl = DEFAULT_BASE_URL;
   let outbox = read(OUTBOX, []);
   let lastInteractionAtMs = Date.now();
   const clientId = localStorage.getItem(CLIENT) || uuid();
