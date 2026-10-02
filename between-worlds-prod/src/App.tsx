@@ -15,6 +15,7 @@ type Send = (path: WritePath, body: Record<string, unknown>, eventId?: string) =
 const welcomePortrait = "/jlz-welcome-portrait.webp";
 const homePortrait = "/jlz-home-portrait.webp";
 const STORE = "world-between-web-v1";
+const CLEANUP_MARKER = "world-between-cleanup-20261002-v1";
 const OUTBOX_CAP = 300;
 const defaults: AppState = { theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
   runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [] };
@@ -61,7 +62,27 @@ export default function BetweenWorlds() {
   tabRef.current = tab;
 
   useEffect(() => {
-    try { setState({ ...defaults, ...JSON.parse(localStorage.getItem(STORE) || "{}") }); } catch { setState(defaults); }
+    try {
+      const current = { ...defaults, ...JSON.parse(localStorage.getItem(STORE) || "{}") } as AppState;
+      if (!localStorage.getItem(CLEANUP_MARKER)) {
+        const cleaned: AppState = {
+          ...defaults,
+          theme: current.theme,
+          runtimeUrl: current.runtimeUrl || DEFAULT_RUNTIME_URL,
+          webToken: current.webToken || "",
+        };
+        localStorage.setItem(STORE, JSON.stringify(cleaned));
+        localStorage.setItem(CLEANUP_MARKER, "done");
+        stateRef.current = cleaned;
+        setState(cleaned);
+      } else {
+        stateRef.current = current;
+        setState(current);
+      }
+    } catch {
+      stateRef.current = defaults;
+      setState(defaults);
+    }
     setLoaded(true);
     setNow(new Date());
     const timer = window.setInterval(() => setNow(new Date()), 30000);
