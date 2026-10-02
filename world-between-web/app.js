@@ -1,12 +1,34 @@
 (()=>{'use strict';
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
-const STORE='world-between-web-v1';const defaults={theme:'mist',notes:[],messages:[],status:null,life:[],journal:[],activeLife:null};
+const STORE='world-between-web-v1';const defaults={theme:'mist',notes:[],remoteNotes:[],messages:[],status:null,life:[],journal:[],activeLife:null};
 let state;try{state={...defaults,...JSON.parse(localStorage.getItem(STORE)||'{}')}}catch{state={...defaults}};
 state.messages=(state.messages||[]).map(message=>({...message,role:message.role||'user'}));
 const save=()=>{try{localStorage.setItem(STORE,JSON.stringify(state))}catch{}};
 const esc=s=>String(s??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
 const runtime=()=>window.JLZWorldBetween;
 const eventId=prefix=>prefix+'-'+Date.now()+'-'+Math.random().toString(16).slice(2);
+function normalizeRuntimeEvent(event){
+ if(!event||typeof event!=='object')return null;
+ const meta=event.metadata_json&&typeof event.metadata_json==='object'?event.metadata_json:{};
+ const id=String(event.id||event.event_id||'').trim();if(!id)return null;
+ const kind=String(meta.kind||'');
+ let type='记录';
+ if(event.type==='between_status')type='状态灯';
+ else if(event.type==='between_moment')type=kind==='note'?'随手记':(kind||'随手记');
+ else if(event.type==='life_action')type='此刻我在';
+ else if(event.type==='journal_event')type=kind==='water'?'饮水':(kind.startsWith('meal_')?kind.slice(5):(kind||'共历'));
+ const body=String(event.subtitle||meta.text||meta.detail||event.title||event.action||'（记录）');
+ const at=event.created_at||new Date(Number(meta.created_at_ms||meta.updated_at_ms||Date.now())).toISOString();
+ return {id,type,body,at,source:'runtime'};
+}
+function hydrateRuntimeState(payload){
+ const between=payload?.between||{};
+ const groups=['moments','status_history','life_actions','journal_events'];
+ const merged=[];
+ groups.forEach(key=>(between[key]||[]).forEach(event=>{const row=normalizeRuntimeEvent(event);if(row)merged.push(row)}));
+ const seen=new Set();state.remoteNotes=merged.filter(row=>!seen.has(row.id)&&(seen.add(row.id),true)).slice(0,300);save();renderTimeline();
+}
+async function refreshRuntimeState(){if(!runtime().configured())return;hydrateRuntimeState(await runtime().state())}
 function runtimeUi(mode,detail=''){
  const connected=mode==='online';
  $('#runtimeBadge').textContent=connected?'ONLINE':mode==='syncing'?'SYNC':'LOCAL';
@@ -20,7 +42,7 @@ async function syncRecord(promise,label){
  const result=await promise;
  $('#runtimePendingCount').textContent=String(runtime()?.pendingCount?.()||0);
  if(result?.queued){runtimeUi('local','网络暂不可用，记录已进入本机耐久队列。');toast(label+'已留在本机，恢复后同步')}
- else{runtimeUi('online');toast(label+'已同步')}
+ else{runtimeUi('online');await refreshRuntimeState().catch(()=>{});toast(label+'已同步')}
  return result;
 }
 let toastTimer;
@@ -38,7 +60,7 @@ function clock(){const d=new Date();$('#clockTop').textContent=d.toLocaleTimeStr
 clock();setInterval(clock,30000);
 
 let current='home';
-function tab(name){if(!$('#page-'+name))return;current=name;$$('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+name));$$('.dock [data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));window.scrollTo({top:0,behavior:'smooth'});if(name==='timeline')renderTimeline();if(name==='echo')renderMessages();if(name==='calendar')renderCalendar()}
+function tab(name){if(!$('#page-'+name))return;current=name;$('.page').forEach(p=>p.classList.toggle('active',p.id==='page-'+name));$('.dock [data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));window.scrollTo({top:0,behavior:'smooth'});if(name==='timeline'){renderTimeline();if(runtime().configured())refreshRuntimeState().catch(()=>{})}if(name==='echo')renderMessages();if(name==='calendar')renderCalendar()}
 $$('[data-tab]').forEach(b=>b.onclick=()=>tab(b.dataset.tab));
 
 function openSheet(title,html){$('#sheetTitle').textContent=title;$('#sheetBody').innerHTML=html;$('#scrim').classList.add('show');$('#sheet').classList.add('open');return $('#sheetBody')}
@@ -92,7 +114,7 @@ function openLife(){
 }
 $$('[data-open]').forEach(b=>b.onclick=()=>({status:openStatus,note:openNote,life:openLife}[b.dataset.open]||(()=>{}))());
 
-function renderTimeline(){const items=[...state.notes].sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));$('#timelineList').innerHTML=items.length?items.map(x=>'<article class="timeline-entry"><b>音音 · '+esc(x.type)+'</b><p>'+esc(x.body)+'</p><time>'+new Date(x.at).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+' · 本地</time></article>').join(''):'<div class="preview-tip">还没有本地记录。去首页留第一条吧。</div>'}
+function renderTimeline(){const byId=new Map();(state.notes||[]).forEach(x=>byId.set(String(x.id),{...x,source:x.source||'local'}));(state.remoteNotes||[]).forEach(x=>byId.set(String(x.id),x));const items=[...byId.values()].sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));$('#timelineList').innerHTML=items.length?items.map(x=>'<article class="timeline-entry"><b>音音 · '+esc(x.type)+'</b><p>'+esc(x.body)+'</p><time>'+new Date(x.at).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})+' · '+(x.source==='runtime'?'Runtime':'本地')+'</time></article>').join(''):'<div class="preview-tip">还没有记录。去首页留第一条吧。</div>'}
 renderTimeline();
 
 function renderMessages(){$('#messageList').innerHTML=state.messages.map(x=>'<div class="message '+(x.role==='user'?'me':'')+'">'+esc(x.text)+'<time>'+new Date(x.at).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})+' · '+(x.synced?'已同步':'本机')+'</time></div>').join('')||'<div class="preview-tip">还没有消息。网页连接后，你写的话会进入同一个 Inbox。</div>'}
@@ -115,7 +137,7 @@ async function connectRuntime(){
  const baseUrl=$('#runtimeBaseUrl').value.trim(),token=$('#runtimeWebToken').value.trim();
  if(!baseUrl){toast('先填写 Runtime 地址');return}
  runtime().configure({baseUrl,token});runtimeUi('syncing');
- try{await runtime().health();await runtime().flush();await runtime().presence();await runtime().pollMessages();$('#runtimeWebToken').value='';runtimeUi('online');toast('世界已经接通')}
+ try{await runtime().health();await runtime().flush();await refreshRuntimeState();await runtime().presence();await runtime().pollMessages();$('#runtimeWebToken').value='';runtimeUi('online');toast('世界已经接通')}
  catch(error){runtimeUi('local','连接失败：'+String(error.message||error));toast('暂时没接通，记录仍会留在本机')}
 }
 $('#connectRuntime').onclick=connectRuntime;
@@ -131,7 +153,7 @@ $('#closeWebMessage').onclick=()=>$('#webMessagePopup').classList.remove('show')
 $('#openWebEcho').onclick=()=>{$('#webMessagePopup').classList.remove('show');tab('echo')};
 
 runtimeUi(runtime().configured()?'syncing':'local');
-if(runtime().configured())runtime().health().then(()=>runtime().flush()).then(()=>runtime().presence()).then(()=>runtime().pollMessages()).then(()=>runtimeUi('online')).catch(error=>runtimeUi('local','Runtime 暂不可用：'+String(error.message||error)));
+if(runtime().configured())runtime().health().then(()=>runtime().flush()).then(()=>refreshRuntimeState()).then(()=>runtime().presence()).then(()=>runtime().pollMessages()).then(()=>runtimeUi('online')).catch(error=>runtimeUi('local','Runtime 暂不可用：'+String(error.message||error)));
 
 $('#clearLocal').onclick=()=>{if(confirm('确定清空这个浏览器里的试玩记录吗？')){localStorage.removeItem(STORE);location.reload()}};
 })();
