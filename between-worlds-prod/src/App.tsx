@@ -193,11 +193,25 @@ export default function BetweenWorlds() {
     }
   }, [flush, pullMessages, update]);
 
-  const presence = useCallback((stateName: string) => {
+  const presence = useCallback(async (stateName: string) => {
     const c = cfg();
     if (!c) return;
+    let registration: ServiceWorkerRegistration | undefined;
+    try { registration = "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration() : undefined; } catch { /* diagnostic only */ }
+    const manifest = document.querySelector('link[rel="manifest"]') as HTMLLinkElement | null;
+    const pwaDiag = {
+      user_agent: navigator.userAgent || "",
+      service_worker_supported: "serviceWorker" in navigator,
+      service_worker_controller: !!navigator.serviceWorker?.controller,
+      service_worker_active: !!registration?.active,
+      service_worker_script: registration?.active?.scriptURL || registration?.waiting?.scriptURL || registration?.installing?.scriptURL || "",
+      manifest_url: manifest?.href || "",
+      beforeinstallprompt_seen: !!deferredInstallPrompt,
+      standalone: window.matchMedia("(display-mode: standalone)").matches || !!(navigator as Navigator & { standalone?: boolean }).standalone,
+      push_supported: "PushManager" in window,
+    };
     const item: OutboxItem = { event_id: newEventId(), path: "/api/web/presence", queuedAt: new Date().toISOString(), tries: 0,
-      body: { state: stateName, visible: document.visibilityState === "visible", focused: document.hasFocus(), tab: tabRef.current, client_at: new Date().toISOString() } };
+      body: { state: stateName, visible: document.visibilityState === "visible", focused: document.hasFocus(), tab: tabRef.current, client_at: new Date().toISOString(), pwa_diag: pwaDiag } };
     runtime.write(c, item).catch(() => { /* presence is ephemeral; never queued */ });
   }, []);
 
