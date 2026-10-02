@@ -120,12 +120,16 @@ export default function BetweenWorlds() {
     if (!loaded) return;
     const standalone = window.matchMedia("(display-mode: standalone)").matches || !!(navigator as Navigator & { standalone?: boolean }).standalone;
     if (standalone || localStorage.getItem(INSTALL_GUIDE_DISMISSED)) return;
-    const show = () => setInstallGuide(true);
-    const timer = window.setTimeout(show, 1400);
-    window.addEventListener("pwa-install-ready", show);
+    const isMi = /MiuiBrowser/i.test(navigator.userAgent);
+    const showReady = () => setInstallGuide(true);
+    // Chromium only allows a real install prompt after its own installability
+    // and engagement checks. Never show a dead install button before that.
+    if (deferredInstallPrompt) setInstallGuide(true);
+    const fallbackTimer = isMi ? window.setTimeout(showReady, 1200) : 0;
+    window.addEventListener("pwa-install-ready", showReady);
     return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("pwa-install-ready", show);
+      if (fallbackTimer) window.clearTimeout(fallbackTimer);
+      window.removeEventListener("pwa-install-ready", showReady);
     };
   }, [loaded]);
 
@@ -333,10 +337,10 @@ export default function BetweenWorlds() {
         <img src="/icon-192.png" alt="世界之间图标" />
         <span className="install-guide-kicker">BETWEEN WORLDS · APP</span>
         <h3>把「世界之间」带到桌面</h3>
-        <p>{isMiBrowser ? "当前小米浏览器只能创建网址快捷方式，而且不支持我们的后台 Web Push。用 Chrome 安装后，会以独立 App 打开，并能接收系统通知。" : canPromptInstall ? "安装后会像独立 App 一样打开，不显示普通浏览器地址栏。" : "如果当前浏览器支持网页应用安装，这里会直接唤起系统安装框。"}</p>
+        <p>{isMiBrowser ? "当前小米浏览器只能创建网址快捷方式，而且不支持我们的后台 Web Push。用 Chrome 安装后，会以独立 App 打开，并能接收系统通知。" : canPromptInstall ? "Chrome 已确认这个站点可以安装。点下面按钮会直接唤起系统安装框。" : "Chrome 还在检查安装资格；满足条件后这张卡片会自动变成可安装状态。"}</p>
         <div className="install-guide-actions">
           <button className="secondary" onClick={dismissInstallGuide}>暂时不要</button>
-          {isMiBrowser ? <a className="primary install-guide-link" href={chromeIntent}>用 Chrome 打开</a> : <button className="primary" onClick={() => void installFromGuide()}>安装世界之间</button>}
+          {isMiBrowser ? <a className="primary install-guide-link" href={chromeIntent}>用 Chrome 打开</a> : canPromptInstall ? <button className="primary" onClick={() => void installFromGuide()}>安装世界之间</button> : <button className="primary" disabled>正在准备安装…</button>}
         </div>
       </div>
     </div>}
