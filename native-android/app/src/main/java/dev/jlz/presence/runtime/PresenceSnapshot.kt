@@ -14,15 +14,18 @@ import org.json.JSONObject
  * single capture moment. Optional sensors that are missing simply report
  * unavailable and never crash the app.
  */
-class PresenceSnapshot(private val context: Context) {
+class PresenceSnapshot(
+    private val context: Context,
+    private val deviceId: String
+) {
     fun snapshot(): JSONObject {
         val now = System.currentTimeMillis()
         val bm = context.getSystemService(BatteryManager::class.java)
         val pm = context.getSystemService(PowerManager::class.java)
         return JSONObject()
             .put("schema_version", 2)
-            .put("device_id", "phone-1")
-            .put("device_type", "phone")
+            .put("device_id", deviceId)
+            .put("device_type", NativePhoneSnapshot.deviceType(context))
             .put("active_at_ms", now)
             .put(
                 "battery", JSONObject()

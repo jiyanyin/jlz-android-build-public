@@ -15,29 +15,19 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
 
-/**
- * Unified screenshot policy.
- *
- * There is deliberately no LIFE/STUDY timer split anymore.
- * A real foreground app switch is the only trigger:
- * - 30s in the new app -> one screenshot
- * - still in the same app at 5m -> one more screenshot
- * - selected attention-heavy apps -> one local overlay nudge at 5m
- *
- * ChatGPT is excluded from automatic capture by owner request.
- */
+/** Structured app observation first. Only explicit allowlisted long-stay rules may capture. */
 class AutomaticCaptureCoordinator(context: Context) {
     private val appContext = context.applicationContext
     private val preferences = appContext.getSharedPreferences(
         "jlz_presence_auto_capture_v2", Context.MODE_PRIVATE
     )
+    private val traffic = CaptureTrafficPolicy(appContext)
     private val outbox = PendingScreenshotQueue(appContext)
     private val settings = RuntimeSettingsRepository(appContext)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Volatile private var currentPackage: String? = null
     @Volatile private var generation: Long = 0L
-    private var firstCaptureJob: Job? = null
     private var longStayJob: Job? = null
 
     fun enabled(): Boolean = preferences.getBoolean("enabled", true)
@@ -60,21 +50,11 @@ class AutomaticCaptureCoordinator(context: Context) {
         currentPackage = pkg
         generation += 1L
         val myGeneration = generation
-        firstCaptureJob?.cancel()
         longStayJob?.cancel()
-        firstCaptureJob = null
         longStayJob = null
 
-        if (!enabled() || pkg in NO_AUTOMATIC_CAPTURE_PACKAGES || pkg in SYSTEM_SURFACE_PACKAGES) {
+        if (pkg in NO_AUTOMATIC_CAPTURE_PACKAGES || pkg in SYSTEM_SURFACE_PACKAGES) {
             return
-        }
-
-        firstCaptureJob = scope.launch {
-            val remaining = (observedAtMs + FIRST_CAPTURE_DELAY_MS - System.currentTimeMillis())
-                .coerceAtLeast(0L)
-            delay(remaining)
-            if (!stillOn(pkg, myGeneration)) return@launch
-            captureAndUpload(pkg, myGeneration, "automatic_app_switch_30s")
         }
 
         longStayJob = scope.launch {
@@ -82,7 +62,9 @@ class AutomaticCaptureCoordinator(context: Context) {
                 .coerceAtLeast(0L)
             delay(remaining)
             if (!stillOn(pkg, myGeneration)) return@launch
-            captureAndUpload(pkg, myGeneration, "automatic_app_stay_5m")
+            if (enabled() && traffic.canCapture(pkg)) {
+                captureAndUpload(pkg, myGeneration, "automatic_rule_long_stay")
+            }
             if (pkg in ATTENTION_PACKAGES && stillOn(pkg, myGeneration)) {
                 FloatingPresenceService.showAttentionNudge(
                     appContext,
@@ -94,9 +76,7 @@ class AutomaticCaptureCoordinator(context: Context) {
 
     @Synchronized
     fun close() {
-        firstCaptureJob?.cancel()
         longStayJob?.cancel()
-        firstCaptureJob = null
         longStayJob = null
         currentPackage = null
         generation += 1L
@@ -116,7 +96,7 @@ class AutomaticCaptureCoordinator(context: Context) {
     ): String {
         if (!stillOn(packageName, expectedGeneration)) return "foreground_changed"
 
-        val image = when (val capture = FloatingPresenceService.captureForRuntime()) {
+        val image = when (val capture = FloatingPresenceService.captureForRuntime(automatic = true)) {
             is ScreenshotCaptureResult.Captured -> capture
             is ScreenshotCaptureResult.Unavailable ->
                 return "screenshot_unavailable:" + capture.reason.take(140)
@@ -126,6 +106,7 @@ class AutomaticCaptureCoordinator(context: Context) {
         // later app's pixels as the earlier package.
         if (!stillOn(packageName, expectedGeneration)) return "foreground_changed_after_capture"
 
+        if (!traffic.reserve(packageName, image.bytes)) return "automatic_budget_or_duplicate"
         val eventId = UUID.randomUUID().toString()
         outbox.enqueue(
             capture = image,
@@ -163,7 +144,6 @@ class AutomaticCaptureCoordinator(context: Context) {
     }
 
     companion object {
-        private const val FIRST_CAPTURE_DELAY_MS = 30_000L
         private const val LONG_STAY_DELAY_MS = 5 * 60_000L
 
         private val NO_AUTOMATIC_CAPTURE_PACKAGES = setOf(

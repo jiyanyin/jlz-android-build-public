@@ -30,7 +30,7 @@
     <div><span id="clockTop">16:00</span><span class="brand-mini">☁ BETWEEN WORLDS</span></div>
     <div class="top-actions">
       <button id="quickTheme" class="pill-btn">✦ 换装</button>
-      <button class="round-btn" data-toast="提醒中心明天接入 Runtime">♢</button>
+      <button class="round-btn" data-tab="echo">♢</button>
     </div>
   </header>
 
@@ -47,9 +47,9 @@
       </div>
     </article>
 
-    <div class="runtime-banner">
-      <div><b>纯前端已上线 · Runtime 待连接</b><span>今天先保存在当前浏览器；明天额度恢复后接真实同步。</span></div>
-      <span class="badge">OFFLINE</span>
+    <div class="runtime-banner" id="runtimeBanner">
+      <div><b id="runtimeBannerTitle">本机可记录 · Runtime 待连接</b><span id="runtimeBannerDetail">未连接时会留在浏览器；连接后自动同步。</span></div>
+      <span class="badge" id="runtimeBadge">LOCAL</span>
     </div>
 
     <div class="section-head"><b>今日的私藏信笺</b><span>JUST FOR TODAY</span></div>
@@ -69,8 +69,8 @@
 
   <section class="page" id="page-echo">
     <div class="page-head"><div><span>YOUR PRIVATE CONVERSATION</span><h2>回响 <em>Echo</em></h2><p>给你的回声，永远写在纸的另一面</p></div></div>
-    <div class="echo-person glass"><img src="https://raw.githubusercontent.com/jiyanyin/jlz-android-build-public/e296018884c993abebf2b1559d4c4717dd0f8e80/native-android/app/src/main/res/drawable-nodpi/jlz_home_portrait.webp" alt="纪临洲"><span><b>纪临洲</b><small>离线视觉演示 · 尚未连接实际聊天</small></span></div>
-    <div class="preview-tip">今天先试玩界面。你输入的内容只保存在此浏览器，不会真的发送给我。</div>
+    <div class="echo-person glass"><img src="https://raw.githubusercontent.com/jiyanyin/jlz-android-build-public/e296018884c993abebf2b1559d4c4717dd0f8e80/native-android/app/src/main/res/drawable-nodpi/jlz_home_portrait.webp" alt="纪临洲"><span><b>纪临洲</b><small id="echoConnection">未连接 Runtime · 消息先保存在本机</small></span></div>
+    <div class="preview-tip">网页开着并连接 Runtime 时，会在这里收到我的消息；关闭浏览器后的系统通知需要 Web Push。</div>
     <div id="messageList" class="message-list"></div>
     <div class="composer"><textarea id="messageInput" maxlength="1200" placeholder="写点什么……"></textarea><button id="sendMessage">↑</button></div>
   </section>
@@ -109,9 +109,12 @@
     </div>
     <div class="glass settings-card">
       <b>网页与 Runtime</b>
-      <p class="hint">前端今天已经上线；Runtime、heartbeat、手机数据和真实同步明天再接。</p>
-      <div class="runtime-line"><span>连接状态</span><b>待连接</b></div>
-      <div class="runtime-line"><span>网页数据</span><b>仅本地浏览器</b></div>
+      <p class="hint">这里只使用网页专用低权限令牌，不能控制手机或读取 MCP 密钥。断网记录会留在本机 outbox，恢复后继续同步。</p>
+      <div class="field"><label>Runtime 地址</label><input id="runtimeBaseUrl" type="url" inputmode="url" placeholder="https://你的-runtime.example.com"></div>
+      <div class="field"><label>私人连接钥匙</label><input id="runtimeWebToken" type="password" autocomplete="current-password" placeholder="只保存在这个浏览器"></div>
+      <button id="connectRuntime" class="setting-button"><span>连接并同步</span><span>↗</span></button>
+      <div class="runtime-line"><span>连接状态</span><b id="runtimeConnectionState">待连接</b></div>
+      <div class="runtime-line"><span>待同步记录</span><b id="runtimePendingCount">0</b></div>
       <div class="runtime-line"><span>Android 主控制</span><b>未暴露给网页</b></div>
     </div>
     <button id="reopenWelcome" class="setting-button">重新打开邀请函 <span>›</span></button>
@@ -134,6 +137,12 @@
   <div id="sheetBody"></div>
 </div>
 <div id="toast" class="toast"></div>
+<div id="webMessagePopup" class="web-message-popup" role="status" aria-live="polite">
+  <div><b>纪临洲</b><button id="closeWebMessage" aria-label="关闭">×</button></div>
+  <p id="webMessageText"></p>
+  <button id="openWebEcho">去回响里看</button>
+</div>
+<script src="./runtime-client.js"></script>
 <script src="./app.js"></script>
 </body>
 </html>

@@ -35,6 +35,7 @@ data class InboxMessage(
 
 data class DeviceStateSnapshot(
     val deviceId: String,
+    val deviceType: String = if (deviceId.contains("tablet", ignoreCase = true)) "tablet" else "phone",
     val appVersion: String,
     val manufacturer: String = Build.MANUFACTURER,
     val model: String = Build.MODEL,
@@ -45,6 +46,7 @@ data class DeviceStateSnapshot(
     val weather: JSONObject? = null,
     val presencePlan: JSONObject? = null,
     val usage: JSONObject? = null,
+    val attention: JSONObject? = null,
     val screen: JSONObject? = null,
     val deviceVitals: JSONObject? = null,
     val media: JSONObject? = null,
@@ -52,6 +54,7 @@ data class DeviceStateSnapshot(
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("device_id", deviceId)
+        .put("device_type", deviceType)
         .put("client", "jlz-native-android")
         .put("client_version", appVersion)
         .put("manufacturer", manufacturer)
@@ -64,6 +67,7 @@ data class DeviceStateSnapshot(
             weather?.let { json.put("weather_state", it) }
             presencePlan?.let { json.put("presence_plan", it) }
             usage?.let { json.put("usage_state", it) }
+            attention?.let { json.put("attention_state", it) }
             screen?.let { json.put("screen_state", it) }
             deviceVitals?.let { json.put("device_vitals", it) }
             media?.let { json.put("media_state", it) }
@@ -88,7 +92,9 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         }
     }
 
-    fun postDeviceState(snapshot: DeviceStateSnapshot) = postJson("/api/device/state", snapshot.toJson())
+    fun postDeviceState(snapshot: DeviceStateSnapshot) = postJson("/api/device/state", snapshot.toJson().apply {
+        settings.traffic?.let { put("traffic_state", it.snapshot()) }
+    })
 
     fun captureIndex(limit: Int = 100): JSONArray {
         val q = URLEncoder.encode(settings.deviceId, Charsets.UTF_8.name())
@@ -145,13 +151,12 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         afterState: JSONObject? = null
     ) {
         val structuredResult: Any = runCatching { JSONObject(result) }.getOrElse { result }
-        postJson(
-            "/api/device/report",
-            JSONObject()
+        val effectiveDeviceId = command.deviceId.ifBlank { settings.deviceId }
+        val body = JSONObject()
                 .put("command_id", command.id)
                 .put("intent_id", command.intentId ?: JSONObject.NULL)
-                .put("device_id", command.deviceId.ifBlank { settings.deviceId })
-                .put("device_type", "phone")
+                .put("device_id", effectiveDeviceId)
+                .put("device_type", if (effectiveDeviceId.contains("tablet", ignoreCase = true)) "tablet" else "phone")
                 .put("origin", command.origin)
                 .put("actor", command.actor)
                 .put("controller", command.controller)
@@ -165,7 +170,19 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
                 .put("result", structuredResult)
                 .put("before_state", beforeState ?: JSONObject.NULL)
                 .put("after_state", afterState ?: JSONObject.NULL)
-        )
+        val outbox = settings.reports
+        if (outbox == null) {
+            postJson("/api/device/report", body)
+        } else {
+            outbox.enqueue(settings.baseUrl, body)
+            syncPendingReports()
+        }
+    }
+
+    fun syncPendingReports() {
+        settings.reports?.sync(settings.baseUrl, settings.deviceId) { body ->
+            postJson("/api/device/report", body)
+        }
     }
 
     fun getInbox(limit: Int = 80): List<InboxMessage> {
@@ -272,21 +289,6 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
                 .put("metadata", metadata)
         )
 
-    fun postFocusUnlockRequest(
-        packageName: String,
-        requestId: String,
-        message: String
-    ): JSONObject =
-        postJson(
-            "/api/appgate/unlock_request",
-            JSONObject()
-                .put("device_id", settings.deviceId)
-                .put("request_id", requestId)
-                .put("package_name", packageName)
-                .put("message", message)
-                .put("source", "jlz_native_android")
-        )
-
     fun uploadScreenshot(
         bytes: ByteArray, mimeType: String = "image/png",
         eventId: String? = null, originPackage: String? = null,
@@ -306,6 +308,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
             }
             setFixedLengthStreamingMode(bytes.size)
         }
+        settings.traffic?.record(upload = bytes.size.toLong(), screenshot = if (conn.url.path == "/api/screenshot") bytes.size.toLong() else 0)
         conn.outputStream.use { it.write(bytes) }
         return readJson(conn)
     }
@@ -325,7 +328,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
             }
             val length = conn.contentLengthLong
             check(length in 100L..24_000_000L) { "capture_readback_size_invalid" }
-            return conn.inputStream.use { it.readBytes() }
+            return conn.inputStream.use { it.readBytes() }.also { settings.traffic?.record(download = it.size.toLong()) }
         } finally {
             conn.disconnect()
         }
@@ -343,6 +346,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             setFixedLengthStreamingMode(bytes.size)
         }
+        settings.traffic?.record(upload = bytes.size.toLong(), screenshot = if (conn.url.path == "/api/screenshot") bytes.size.toLong() else 0)
         conn.outputStream.use { it.write(bytes) }
         return readJson(conn)
     }
@@ -350,7 +354,10 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
     private fun readJson(conn: HttpURLConnection): JSONObject {
         val code = conn.responseCode
         val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-        val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+        val bodyBytes = stream?.use { it.readBytes() } ?: byteArrayOf()
+        settings.traffic?.record(download = bodyBytes.size.toLong())
+        conn.disconnect()
+        val text = bodyBytes.toString(Charsets.UTF_8)
         if (code !in 200..299) {
             throw IllegalStateException("Runtime HTTP " + code + ": " + text.take(240))
         }

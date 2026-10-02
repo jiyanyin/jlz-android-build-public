@@ -2,7 +2,11 @@ name: Deploy World Between Web
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "runtime-slim-20260930"]
+    paths:
+      - "world-between-web/**"
+      - ".github/workflows/world-between-pages.yml"
+  pull_request:
     paths:
       - "world-between-web/**"
       - ".github/workflows/world-between-pages.yml"
@@ -26,28 +30,34 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Check JavaScript syntax
-        run: node --check world-between-web/app.js
+        run: |
+          node --check world-between-web/runtime-client.js
+          node --check world-between-web/app.js
 
       - name: Verify required frontend files
         run: |
           test -s world-between-web/index.html
           test -s world-between-web/styles.css
           test -s world-between-web/app.js
+          test -s world-between-web/runtime-client.js
           test -s world-between-web/manifest.webmanifest
           grep -q "状态灯" world-between-web/index.html
           grep -q "随手记" world-between-web/index.html
           grep -q "此刻我在" world-between-web/index.html
-          grep -q "Runtime 待连接" world-between-web/index.html
+          grep -q "私人连接钥匙" world-between-web/index.html
 
       - name: Configure Pages
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v4
         with:
           path: world-between-web
 
   deploy:
+    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

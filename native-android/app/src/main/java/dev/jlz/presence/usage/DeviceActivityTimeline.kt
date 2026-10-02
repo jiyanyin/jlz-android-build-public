@@ -93,7 +93,7 @@ class DeviceActivityJournal(context: Context) :
         commandId: String? = null,
         intentId: String? = null,
         deviceId: String = DEFAULT_DEVICE_ID,
-        deviceType: String = "phone",
+        deviceType: String = deviceTypeForId(deviceId),
         metadata: JSONObject = JSONObject()
     ): String {
         val inferred = inferOrigin(eventType, AccessibilityActionGateway.currentPackage(), atMs)
@@ -134,7 +134,7 @@ class DeviceActivityJournal(context: Context) :
         packageName: String?,
         beforeState: JSONObject,
         deviceId: String,
-        deviceType: String = "phone"
+        deviceType: String = deviceTypeForId(deviceId)
     ) {
         writableDatabase.insertWithOnConflict(
             "command_executions", null,
@@ -238,7 +238,7 @@ class DeviceActivityJournal(context: Context) :
         val all = mutableListOf<JSONObject>()
         if (!SystemUsageSnapshot.hasPermission(context)) {
             return JSONObject().put("ok", false).put("reason", "usage_access_not_granted")
-                .put("device_id", deviceId).put("device_type", "phone").put("items", JSONArray())
+                .put("device_id", deviceId).put("device_type", deviceTypeForId(deviceId)).put("items", JSONArray())
         }
         val manager = context.getSystemService(UsageStatsManager::class.java)
         val events = manager?.queryEvents(safeStart, safeEnd)
@@ -267,7 +267,7 @@ class DeviceActivityJournal(context: Context) :
                     .put("origin", origin.name).put("actor", actorFor(origin))
                     .put("command_id", inferred.second ?: JSONObject.NULL)
                     .put("intent_id", JSONObject.NULL)
-                    .put("device_id", deviceId).put("device_type", "phone")
+                    .put("device_id", deviceId).put("device_type", deviceTypeForId(deviceId))
                     .put("source", "android_usage_events")
                 if (type == "SCREEN_OFF") {
                     item.put("screen_off_reason",
@@ -300,7 +300,7 @@ class DeviceActivityJournal(context: Context) :
     ): JSONObject {
         if (!SystemUsageSnapshot.hasPermission(context)) {
             return JSONObject().put("ok", false).put("reason", "usage_access_not_granted")
-                .put("device_id", deviceId).put("device_type", "phone").put("sessions", JSONArray())
+                .put("device_id", deviceId).put("device_type", deviceTypeForId(deviceId)).put("sessions", JSONArray())
         }
         val manager = context.getSystemService(UsageStatsManager::class.java)
             ?: return JSONObject().put("ok", false).put("reason", "usage_stats_manager_unavailable")
@@ -333,7 +333,7 @@ class DeviceActivityJournal(context: Context) :
                         .put("command_id", inferred.second ?: JSONObject.NULL)
                         .put("confidence", if (inferred.second != null) "high_command_correlation" else "medium_non_runtime_attribution")
                         .put("source", "android_usage_events")
-                        .put("device_id", deviceId).put("device_type", "phone")
+                        .put("device_id", deviceId).put("device_type", deviceTypeForId(deviceId))
                 }
             }
             currentPackage = null; currentStart = 0L; currentStartType = ""
@@ -445,7 +445,7 @@ class DeviceActivityJournal(context: Context) :
             .put("ok", screen.optBoolean("ok", false))
             .put("classification", "phone_inferred_rest_window")
             .put("medical_sleep_data", false).put("warning", "NOT_MEDICAL_SLEEP_DATA")
-            .put("device_id", deviceId).put("device_type", "phone")
+            .put("device_id", deviceId).put("device_type", deviceTypeForId(deviceId))
             .put("last_non_runtime_screen_off_at", lastNonRuntimeScreenOff ?: JSONObject.NULL)
             .put("last_non_runtime_interaction_at", lastNonRuntimeInteraction ?: JSONObject.NULL)
             .put("last_user_present_at", lastUserPresent ?: JSONObject.NULL)
@@ -654,7 +654,7 @@ class DeviceActivityJournal(context: Context) :
         val page = all.drop(offset).take(safeLimit)
         val next = if (offset + page.size < all.size) (offset + page.size).toString() else ""
         return JSONObject().put("ok", true).put("kind", kind)
-            .put("device_id", deviceId).put("device_type", "phone")
+            .put("device_id", deviceId).put("device_type", deviceTypeForId(deviceId))
             .put("items", JSONArray(page)).put("count", page.size).put("next_cursor", next)
     }
 
@@ -686,6 +686,9 @@ class DeviceActivityJournal(context: Context) :
         }
 
         fun actorFor(origin: Origin): String = origin.name
+
+        fun deviceTypeForId(deviceId: String): String =
+            if (deviceId.contains("tablet", ignoreCase = true)) "tablet" else "phone"
 
         private fun eventName(type: Int): String = when (type) {
             UsageEvents.Event.MOVE_TO_FOREGROUND -> "MOVE_TO_FOREGROUND"

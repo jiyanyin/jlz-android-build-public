@@ -12,10 +12,20 @@ private val Context.runtimeDataStore by preferencesDataStore(name = "jlz_runtime
 data class RuntimeSettings(
     val baseUrl: String = "",
     val token: String = "",
-    val deviceId: String = "android-phone-native-n0"
+    val deviceId: String = "android-phone-native-n0",
+    val traffic: dev.jlz.presence.capture.CaptureTrafficPolicy? = null,
+    val reports: PendingCommandReportStore? = null
 )
 
+private fun defaultNativeDeviceId(context: Context): String =
+    if (context.resources.configuration.smallestScreenWidthDp >= 600) {
+        "android-tablet-native-n0"
+    } else {
+        "android-phone-native-n0"
+    }
+
 class RuntimeSettingsRepository(private val context: Context) {
+    private val reportStore by lazy { PendingCommandReportStore(context) }
     private object Keys {
         val baseUrl = stringPreferencesKey("base_url")
         val token = stringPreferencesKey("token")
@@ -25,9 +35,17 @@ class RuntimeSettingsRepository(private val context: Context) {
     suspend fun load(): RuntimeSettings =
         context.runtimeDataStore.data.map { prefs ->
             RuntimeSettings(
+                traffic = dev.jlz.presence.capture.CaptureTrafficPolicy(context),
+                reports = reportStore,
                 baseUrl = prefs[Keys.baseUrl].orEmpty(),
                 token = prefs[Keys.token].orEmpty(),
-                deviceId = prefs[Keys.deviceId].orEmpty().ifBlank { "android-phone-native-n0" }
+                deviceId = prefs[Keys.deviceId].orEmpty().let { configured ->
+                    val fallback = defaultNativeDeviceId(context)
+                    if (configured.isBlank() ||
+                        (fallback.startsWith("android-tablet") && configured == "android-phone-native-n0")) {
+                        fallback
+                    } else configured
+                }
             )
         }.first()
 
@@ -35,7 +53,7 @@ class RuntimeSettingsRepository(private val context: Context) {
         context.runtimeDataStore.edit { prefs ->
             prefs[Keys.baseUrl] = settings.baseUrl.trim().trimEnd('/')
             prefs[Keys.token] = settings.token.trim()
-            prefs[Keys.deviceId] = settings.deviceId.trim().ifBlank { "android-phone-native-n0" }
+            prefs[Keys.deviceId] = settings.deviceId.trim().ifBlank { defaultNativeDeviceId(context) }
         }
     }
 }

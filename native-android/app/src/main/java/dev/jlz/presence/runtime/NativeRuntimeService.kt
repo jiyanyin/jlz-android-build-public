@@ -19,6 +19,7 @@ import dev.jlz.presence.capture.PendingScreenshotQueue
 import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.usage.ForegroundUsageTracker
 import dev.jlz.presence.usage.ForegroundUsageStore
+import dev.jlz.presence.usage.AttentionRhythmTracker
 import dev.jlz.presence.usage.SystemUsageSnapshot
 import dev.jlz.presence.usage.DeviceActivityJournal
 import dev.jlz.presence.screen.ScreenObservationBus
@@ -30,7 +31,7 @@ import dev.jlz.presence.life.CycleReminderEngine
 import dev.jlz.presence.life.NativeCalendarBridge
 import dev.jlz.presence.notification.NotificationAdapter
 import dev.jlz.presence.notification.PendingReplyStore
-import dev.jlz.presence.notification.PendingNotificationEventStore
+import dev.jlz.presence.usage.PendingActivityEventStore
 import dev.jlz.presence.overlay.FloatingPresenceMode
 import dev.jlz.presence.overlay.FloatingPresenceService
 import dev.jlz.presence.persona.PersonaStateRepository
@@ -75,6 +76,7 @@ class NativeRuntimeService : Service() {
     private lateinit var screenshotQueue: PendingScreenshotQueue
     private lateinit var settingsRepository: RuntimeSettingsRepository
     private lateinit var deviceActivityJournal: DeviceActivityJournal
+    private lateinit var activityOutbox: PendingActivityEventStore
     private lateinit var deviceSystem: DeviceSystemController
 
     private val deviceEventReceiver = object : BroadcastReceiver() {
@@ -112,22 +114,10 @@ class NativeRuntimeService : Service() {
         lifeStore = LocalLifeStore(applicationContext)
         captureEvents = CaptureEventStore(applicationContext)
         screenshotQueue = PendingScreenshotQueue(applicationContext)
-        screenshotQueue.clearLegacyTestImagesOnce()
-        // 2026-09-28 owner-authorized screenshot policy reset:
-        // discard every pre-cutover screenshot transport item exactly once,
-        // including diagnostic/manual images queued while the policy was being rebuilt.
-        screenshotQueue.clearAllScreenshotsOnce("20260928_app_switch_v2_final")
-        val resetPrefs = getSharedPreferences(
-            "jlz_presence_capture_policy_reset_v2", Context.MODE_PRIVATE
-        )
-        if (!resetPrefs.getBoolean("timeline_done", false)) {
-            lifeStore.deleteScreenshotTimelineRecordsBefore(Long.MAX_VALUE)
-            check(resetPrefs.edit().putBoolean("timeline_done", true).commit()) {
-                "capture_timeline_reset_marker_not_saved"
-            }
-        }
+        // Historical cutover purge hooks retired: startup must preserve queued user evidence.
         settingsRepository = RuntimeSettingsRepository(applicationContext)
         deviceActivityJournal = DeviceActivityJournal(applicationContext)
+        activityOutbox = PendingActivityEventStore(applicationContext)
         deviceSystem = DeviceSystemController(applicationContext)
         val eventFilter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
@@ -218,18 +208,18 @@ class NativeRuntimeService : Service() {
                     val current =
                         placeWeatherSnapshot.place.place.name
 
-                    lifeStore.recordTimeline(
+                    val transition = lifeStore.recordTimeline(
                         type = "place_transition",
                         title = "位置变化",
                         detail = previous + " → " + current
                     )
 
-                    runCatching {
-                        api.postActivityEvent(
+                    activityOutbox.enqueue(
+                            id = transition.id,
                             source = "semantic_location",
-                            type = "place_transition",
+                            kind = "place_transition",
                             title = previous + " → " + current,
-                            subtitle =
+                            body =
                                 placeWeatherSnapshot.place.source,
                             metadata = JSONObject()
                                 .put("from", previous)
@@ -246,21 +236,19 @@ class NativeRuntimeService : Service() {
                                         .place
                                         .freshnessMs
                                 ),
-                            dedupeSeconds = 60
+                            observedAtMs = transition.createdAtMs
                         )
-                    }
                 }
 
                 // Retry locally saved "说点什么" notes without requiring
                 // a manual chat refresh. A deterministic inbox ID prevents
                 // duplicate messages after a response-timeout retry.
+                api.syncPendingReports()
                 syncCapturedNotes(api)
                 // A reply typed into an Android notification is locally durable
                 // even if the original network attempt failed or was interrupted.
                 runCatching { PendingReplyStore(applicationContext).sync(api, limit = 40) }
-                runCatching {
-                    PendingNotificationEventStore(applicationContext).sync(api, limit = 50)
-                }
+                runCatching { activityOutbox.sync(api, limit = 100) }
                 // Never discard images after a network timeout. Uploads may
                 // have received an ACK at Runtime while Android was offline.
                 runCatching { screenshotQueue.reconcileWithRuntime(api) }
@@ -308,12 +296,14 @@ class NativeRuntimeService : Service() {
                 api.postDeviceState(
                     DeviceStateSnapshot(
                         deviceId = settings.deviceId,
+                        deviceType = NativePhoneSnapshot.deviceType(applicationContext),
                         appVersion = RuntimeApiClient.appVersion(applicationContext),
                         health = null,
                         place = placeWeatherSnapshot?.placeJson(),
                         weather = placeWeatherSnapshot?.weather?.toJson(),
                         presencePlan = presencePlanRepository.summaryJson(),
                         usage = usageJson,
+                        attention = AttentionRhythmTracker.snapshot(),
                         screen = screenJson,
                         deviceVitals = NativePhoneSnapshot.collect(applicationContext, settings.deviceId),
                         media = NativeMediaSnapshot.collect(applicationContext),
@@ -602,17 +592,12 @@ class NativeRuntimeService : Service() {
                                     .put("delivery", "local_outbox")
                                     .toString()
                             )
-                            var sent: PendingScreenshotQueue.SendResult? = null
-                            var attempts = 0
-                            while (attempts < 3 && sent?.sent != true) {
-                                attempts++
-                                sent = screenshotQueue.sendPending(
-                                    api,
-                                    limit = 10,
-                                    priorityEventId = eventId
-                                ).firstOrNull { it.eventId == eventId }
-                                if (sent?.sent != true && attempts < 3) delay(400L * attempts)
-                            }
+                            val sent = screenshotQueue.sendPending(
+                                api,
+                                limit = 1,
+                                priorityEventId = eventId
+                            ).firstOrNull { it.eventId == eventId }
+                            val attempts = if (sent == null) 0 else 1
                             // The queued screenshot may be behind prior
                             // offline photos; report pending, not viewed.
                             val failedStage = sent?.reason
@@ -853,7 +838,7 @@ class NativeRuntimeService : Service() {
             // Structured presence snapshot; every observed block carries its
             // own observed_at_ms/freshness. Optional sensors report removed.
             "check_now", "presence_snapshot" -> {
-                true to PresenceSnapshot(applicationContext).snapshot().toString()
+                true to PresenceSnapshot(applicationContext, command.deviceId).snapshot().toString()
             }
 
             else -> false to ("native_presence_unsupported:" + command.action)

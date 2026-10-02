@@ -12,8 +12,9 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026092821
-        versionName = "0.3.6-app-switch-capture.21"
+        versionCode = 2026100103
+        versionName = "0.3.9-slim.3"
+        // slim.3 settings hotfix build anchor
     }
 
     buildTypes {
@@ -34,6 +35,8 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
+    testOptions { unitTests.isIncludeAndroidResources = true }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -45,6 +48,8 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.10.0")
     implementation("androidx.core:core-ktx:1.15.0")

@@ -4,6 +4,7 @@ import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import dev.jlz.presence.data.LocalLifeStore
+import dev.jlz.presence.usage.PendingActivityEventStore
 import dev.jlz.presence.runtime.RuntimeApiClient
 import dev.jlz.presence.runtime.RuntimeSettingsRepository
 import kotlinx.coroutines.CoroutineScope
@@ -165,9 +166,10 @@ class PresenceNotificationListenerService :
 
             // Local persistence precedes best-effort HTTP; the next Runtime
             // heartbeat flushes any notifications received while offline.
-            val outbox = PendingNotificationEventStore(appContext)
+            val outbox = PendingActivityEventStore(appContext)
             outbox.enqueue(
                 id = eventId,
+                source = "android_notification",
                 kind = if (isHealth) "health_notification" else "notification",
                 title = policy.title,
                 body = policy.body,

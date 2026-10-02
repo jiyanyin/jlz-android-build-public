@@ -22,7 +22,7 @@ object AccessibilityScreenshotGateway {
         }
     }
 
-    suspend fun capture(): ScreenshotCaptureResult {
+    suspend fun capture(automatic: Boolean = false): ScreenshotCaptureResult {
         if (Build.VERSION.SDK_INT < 30) {
             return ScreenshotCaptureResult.Unavailable(
                 "Accessibility screenshot requires Android 11 or newer."
@@ -68,7 +68,15 @@ object AccessibilityScreenshotGateway {
                             // cutting upload latency dramatically versus full-screen PNG.
                             val mimeType = "image/jpeg"
                             val output = ByteArrayOutputStream()
-                            bitmap.compress(Bitmap.CompressFormat.JPEG, 86, output)
+                            val edge = maxOf(bitmap.width, bitmap.height)
+                            val scaled = if (automatic && edge > 1080) {
+                                val ratio = 1080.0 / edge
+                                Bitmap.createScaledBitmap(bitmap, (bitmap.width * ratio).toInt().coerceAtLeast(1),
+                                    (bitmap.height * ratio).toInt().coerceAtLeast(1), true)
+                            } else bitmap
+                            check(scaled.compress(Bitmap.CompressFormat.JPEG, if (automatic) 75 else 86, output))
+                            if (scaled !== bitmap) scaled.recycle()
+                            hardwareBitmap?.recycle()
                             bitmap.recycle()
                             if (continuation.isActive) {
                                 continuation.resume(

@@ -1,5 +1,7 @@
 package dev.jlz.presence.ui
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -47,6 +49,8 @@ fun PresenceApp() {
                 is PresenceRoute.Study -> StudyScreen()
                 is PresenceRoute.Trip -> TripScreen()
                 is PresenceRoute.PermissionDoctor -> PermissionDoctorScreen()
+                is PresenceRoute.Settings -> SettingsScreen()
+                is PresenceRoute.Today -> LifeTodayScreen()
                 is PresenceRoute.QuickCapture -> QuickCaptureScreen()
                 is PresenceRoute.Diagnostics -> DiagnosticsScreen()
                 else -> HomeScreen()
@@ -86,8 +90,9 @@ fun HomeScreen() {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("\u4e16\u754c\u4e4b\u95f4", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
             Row {
-                Text("\u65f6\u95f4\u7ebf", color = TextSecondary, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Timeline) }.padding(8.dp))
-                Text("\u8bca\u65ad", color = TextTertiary, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Diagnostics) }.padding(8.dp))
+                Text("时间线", color = TextSecondary, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Timeline) }.padding(8.dp))
+                Text("设置", color = BlueGlow, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Settings) }.padding(8.dp))
+                Text("诊断", color = TextTertiary, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Diagnostics) }.padding(8.dp))
             }
         }
         Spacer(Modifier.height(24.dp))
@@ -112,8 +117,13 @@ fun HomeScreen() {
             }
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                IceButton("\u540c\u884c", onClick = { PresenceRouteBus.open(PresenceRoute.Trip) }, modifier = Modifier.weight(1f))
-                IceButton("\u6743\u9650\u68c0\u67e5", onClick = { PresenceRouteBus.open(PresenceRoute.PermissionDoctor) }, modifier = Modifier.weight(1f))
+                IceButton("同行", onClick = { PresenceRouteBus.open(PresenceRoute.Trip) }, modifier = Modifier.weight(1f))
+                IceButton("今日", onClick = { PresenceRouteBus.open(PresenceRoute.Today) }, modifier = Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                IceButton("设置", onClick = { PresenceRouteBus.open(PresenceRoute.Settings) }, modifier = Modifier.weight(1f))
+                IceButton("权限检查", onClick = { PresenceRouteBus.open(PresenceRoute.PermissionDoctor) }, modifier = Modifier.weight(1f))
             }
         }
         Spacer(Modifier.height(24.dp))
@@ -608,17 +618,54 @@ fun TripScreen() {
 }
 
 @Composable
+fun SettingsScreen() {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Row(
+                Modifier.fillMaxWidth().padding(top = 20.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("设置", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
+                Text(
+                    "返回",
+                    color = BlueGlow,
+                    modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Home) }.padding(8.dp)
+                )
+            }
+        }
+        item { OverlaySettingsPanel() }
+        item { RuntimeIdentityPanel() }
+        item { PlaceSettingsPanel() }
+        item { NotificationSourcesPanel() }
+        item { UsageSettingsPanel() }
+        item { CalendarSettingsPanel() }
+        item { IncomingCallSettingsPanel() }
+        item { AutomaticCaptureSettingsPanel() }
+        item { DeviceUnlockSettingsPanel() }
+        item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
 fun PermissionDoctorScreen() {
     val context = LocalContext.current
     val doctor = remember { PermissionDoctor(context) }
-    val items = remember { doctor.checkAll() }
+    var refresh by remember { mutableIntStateOf(0) }
+    val items = remember(refresh) { doctor.checkAll() }
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("\u6743\u9650\u533b\u751f", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
             Text("\u8fd4\u56de", color = BlueGlow, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Home) }.padding(8.dp))
         }
         Spacer(Modifier.height(16.dp))
+        IceButton("重新检查全部权限", onClick = { refresh += 1 })
+        Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            item { RuntimeIdentityPanel() }
             item { DeviceUnlockSettingsPanel() }
             items(items) { item ->
                 IceGlassCard {
@@ -639,9 +686,23 @@ fun PermissionDoctorScreen() {
                             PermissionItem.Status.NOT_APPLICABLE -> TextTertiary
                         })
                     }
-                    if (item.intent != null && item.status != PermissionItem.Status.OK) {
+                    val target = item.intent
+                    if (target != null && item.status != PermissionItem.Status.OK) {
                         Spacer(Modifier.height(8.dp))
-                        IceButton("\u53bb\u8bbe\u7f6e", onClick = { context.startActivity(item.intent) })
+                        IceButton("\u53bb\u8bbe\u7f6e", onClick = {
+                            val opened = runCatching {
+                                context.startActivity(target)
+                                true
+                            }.getOrDefault(false)
+                            if (!opened && item.key == "battery") {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    )
+                                }
+                            }
+                        })
                     }
                 }
             }
