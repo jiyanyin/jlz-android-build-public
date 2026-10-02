@@ -36,6 +36,7 @@ const welcomePortrait = "/jlz-welcome-portrait.webp";
 const homePortrait = "/jlz-home-portrait.webp";
 const STORE = "world-between-web-v1";
 const CLEANUP_MARKER = "world-between-cleanup-20261002-v1";
+const INSTALL_GUIDE_DISMISSED = "world-between-install-guide-dismissed-v1";
 const OUTBOX_CAP = 300;
 const defaults: AppState = { theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
   runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [] };
@@ -75,6 +76,7 @@ export default function BetweenWorlds() {
   const [conn, setConn] = useState<Conn>("local");
   const [loaded, setLoaded] = useState(false);
   const [lastError, setLastError] = useState("");
+  const [installGuide, setInstallGuide] = useState(false);
   const stateRef = useRef(state);
   stateRef.current = state;
   const flushing = useRef(false);
@@ -113,6 +115,19 @@ export default function BetweenWorlds() {
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", state.theme === "gothic" ? "#21171c" : "#eef0fc");
   }, [state.theme]);
+
+  useEffect(() => {
+    if (!loaded) return;
+    const standalone = window.matchMedia("(display-mode: standalone)").matches || !!(navigator as Navigator & { standalone?: boolean }).standalone;
+    if (standalone || localStorage.getItem(INSTALL_GUIDE_DISMISSED)) return;
+    const show = () => setInstallGuide(true);
+    const timer = window.setTimeout(show, 1400);
+    window.addEventListener("pwa-install-ready", show);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pwa-install-ready", show);
+    };
+  }, [loaded]);
 
   const update = useCallback((fn: (draft: AppState) => AppState) => {
     const next = fn(stateRef.current);
@@ -290,8 +305,41 @@ export default function BetweenWorlds() {
 
   const configured = !!state.webToken.trim();
   const banner = { conn, configured, pending: state.outbox.length, lastError };
+  const isMiBrowser = /MiuiBrowser/i.test(navigator.userAgent);
+  const canPromptInstall = !!deferredInstallPrompt;
+  const chromeIntent = "intent://between-worlds-prod.onrender.com/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https%3A%2F%2Fbetween-worlds-prod.onrender.com;end";
+  const dismissInstallGuide = () => {
+    localStorage.setItem(INSTALL_GUIDE_DISMISSED, "1");
+    setInstallGuide(false);
+  };
+  const installFromGuide = async () => {
+    const promptEvent = deferredInstallPrompt;
+    if (promptEvent) {
+      await promptEvent.prompt();
+      const result = await promptEvent.userChoice;
+      if (result.outcome === "accepted") dismissInstallGuide();
+      return;
+    }
+    if (isMiBrowser) {
+      window.location.href = chromeIntent;
+      return;
+    }
+    notify("这个浏览器还没有给出安装资格。请用 Chrome / Edge 打开正式站安装。");
+  };
 
   return <div className="bw-root">
+    {installGuide && <div className="install-guide-backdrop" role="dialog" aria-modal="true" aria-label="安装世界之间">
+      <div className="install-guide-card">
+        <img src="/icon-192.png" alt="世界之间图标" />
+        <span className="install-guide-kicker">BETWEEN WORLDS · APP</span>
+        <h3>把「世界之间」带到桌面</h3>
+        <p>{isMiBrowser ? "当前小米浏览器只能创建网址快捷方式，而且不支持我们的后台 Web Push。用 Chrome 安装后，会以独立 App 打开，并能接收系统通知。" : canPromptInstall ? "安装后会像独立 App 一样打开，不显示普通浏览器地址栏。" : "如果当前浏览器支持网页应用安装，这里会直接唤起系统安装框。"}</p>
+        <div className="install-guide-actions">
+          <button className="secondary" onClick={dismissInstallGuide}>暂时不要</button>
+          {isMiBrowser ? <a className="primary install-guide-link" href={chromeIntent}>用 Chrome 打开</a> : <button className="primary" onClick={() => void installFromGuide()}>安装世界之间</button>}
+        </div>
+      </div>
+    </div>}
     <div className={`entrance ${welcome ? "" : "hidden"}`}>
       <button className="welcome-theme" onClick={flipTheme}>✧ 换一套心情</button>
       <div className="welcome-card">
