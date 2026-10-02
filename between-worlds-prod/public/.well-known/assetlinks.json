@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "dev.jlz.presence",
+      "sha256_cert_fingerprints": [
+        "A1:29:34:0E:E7:3C:5E:F1:D0:58:08:25:85:82:A8:3D:FA:53:D4:19:1E:0B:D4:9B:55:16:EF:08:3F:3E:5E:F5"
+      ]
+    }
+  }
+]
