@@ -133,6 +133,53 @@ $$('[data-meal]').forEach(b=>b.onclick=()=>{const t=$('#foodInput').value.trim()
 const savedRuntime=runtime().config();
 $('#runtimeBaseUrl').value=savedRuntime.baseUrl||'';
 $('#runtimeBanner').onclick=()=>tab('more');
+
+const PAIRING_TOKEN_KEY='jlz-world-between-pairing-token-v1';
+let pairingRawToken='';
+try{pairingRawToken=localStorage.getItem(PAIRING_TOKEN_KEY)||''}catch{}
+async function sha256Hex(value){
+ const bytes=new TextEncoder().encode(value);
+ const digest=await crypto.subtle.digest('SHA-256',bytes);
+ return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
+}
+function generateRawWebToken(){
+ const bytes=new Uint8Array(32);crypto.getRandomValues(bytes);
+ return Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
+}
+async function showRuntimeHash(raw){
+ const value=String(raw||'').trim();
+ if(!value){toast('先生成或填写连接钥匙');return}
+ const hash=await sha256Hex(value);
+ $('#runtimeTokenHash').value=hash;$('#runtimeHashBox').hidden=false;
+ return hash;
+}
+$('#generateRuntimeKey').onclick=async()=>{
+ pairingRawToken=generateRawWebToken();
+ try{localStorage.setItem(PAIRING_TOKEN_KEY,pairingRawToken)}catch{}
+ $('#runtimeWebToken').value=pairingRawToken;
+ await showRuntimeHash(pairingRawToken);
+ toast('钥匙已在本机生成；把 SHA-256 发给纪临洲');
+};
+$('#hashRuntimeKey').onclick=async()=>{
+ const raw=$('#runtimeWebToken').value.trim()||pairingRawToken;
+ if(raw&&!pairingRawToken){pairingRawToken=raw;try{localStorage.setItem(PAIRING_TOKEN_KEY,raw)}catch{}}
+ await showRuntimeHash(raw);
+};
+$('#copyRuntimeHash').onclick=async()=>{
+ const hash=$('#runtimeTokenHash').value.trim();
+ if(!hash){toast('先计算 SHA-256');return}
+ try{await navigator.clipboard.writeText(hash);toast('SHA-256 已复制')}catch{toast('复制失败，请长按哈希框复制')}
+};
+$('#copyRuntimeRaw').onclick=async()=>{
+ const raw=$('#runtimeWebToken').value.trim()||pairingRawToken;
+ if(!raw){toast('先生成连接钥匙');return}
+ try{await navigator.clipboard.writeText(raw);toast('连接钥匙已复制到本机剪贴板')}catch{toast('复制失败，请在密码框内长按复制')}
+};
+if(pairingRawToken){
+ $('#runtimeWebToken').value=pairingRawToken;
+ showRuntimeHash(pairingRawToken).catch(()=>{});
+}
+
 async function connectRuntime(){
  const baseUrl=$('#runtimeBaseUrl').value.trim(),token=$('#runtimeWebToken').value.trim();
  if(!baseUrl){toast('先填写 Runtime 地址');return}
