@@ -1,5 +1,5 @@
 const CACHE = "between-worlds-pwa-v1";
-const CORE = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/jlz-welcome-portrait.webp", "/jlz-home-portrait.webp"];
+const CORE = ["/", "/manifest.webmanifest", "/icon.svg", "/jlz-welcome-portrait.webp", "/jlz-home-portrait.webp"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)).then(() => self.skipWaiting()));
@@ -37,8 +37,8 @@ self.addEventListener("push", event => {
   const title = data.title || "纪临洲";
   const options = {
     body: data.body || "来看看我。",
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
+    icon: "/jlz-home-portrait.webp",
+    badge: "/jlz-home-portrait.webp",
     tag: data.tag || "between-worlds-message",
     renotify: true,
     data: { url: data.url || "/#echo" }
