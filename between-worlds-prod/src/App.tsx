@@ -11,6 +11,13 @@ type AppState = { theme: Theme; notes: RecordItem[]; messages: Message[]; status
   runtimeUrl: string; webToken: string; outbox: OutboxItem[]; remoteRecords: RemoteRecord[]; remoteMessages: RemoteMessage[]; seenCompanion: string[] };
 type Conn = "local" | "syncing" | "online";
 type Send = (path: WritePath, body: Record<string, unknown>, eventId?: string) => string;
+type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
+
+const vapidKeyBytes = (value: string) => {
+  const pad = "=".repeat((4 - value.length % 4) % 4);
+  const raw = atob((value + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+};
 
 const welcomePortrait = "/jlz-welcome-portrait.webp";
 const homePortrait = "/jlz-home-portrait.webp";
@@ -46,7 +53,7 @@ const GROUPS: Record<string, [string, boolean][]> = {
 
 export default function BetweenWorlds() {
   const [state, setState] = useState<AppState>(defaults);
-  const [tab, setTab] = useState<Tab>("home");
+  const [tab, setTab] = useState<Tab>(() => window.location.hash === "#echo" ? "echo" : "home");
   const [welcome, setWelcome] = useState(true);
   const [sheet, setSheet] = useState<"status" | "note" | "life" | null>(null);
   const [toast, setToast] = useState("");
@@ -101,7 +108,12 @@ export default function BetweenWorlds() {
     setState(next);
   }, []);
   const notify = useCallback((message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); }, []);
-  const switchTab = (next: Tab) => { setTab(next); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const switchTab = (next: Tab) => {
+    setTab(next);
+    if (next === "echo") history.replaceState(null, "", "#echo");
+    else if (window.location.hash) history.replaceState(null, "", window.location.pathname + window.location.search);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   const flipTheme = () => update((s) => ({ ...s, theme: s.theme === "mist" ? "gothic" : "mist" }));
 
   const cfg = (): RuntimeConfig | null => {
@@ -307,11 +319,137 @@ function CalendarPage({ month, setMonth, addRecord, send, notify, savedText }: {
 function keyDate(d: Date) { return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-"); }
 
 function MorePage({ state, update, setWelcome, banner, reconnect }: { state: AppState; update:(fn:(s:AppState)=>AppState)=>void; setWelcome:(v:boolean)=>void; banner: Banner; reconnect: () => void }) {
- const [key, setKey] = useState(state.webToken); const [url, setUrl] = useState(state.runtimeUrl);
- const label = banner.conn === "online" ? "ONLINE · 已连接" : banner.conn === "syncing" ? "SYNCING · 同步中" : banner.configured ? `LOCAL · ${banner.lastError || "连不上"}` : "LOCAL · 未填写钥匙";
- return <section className="page active"><PageHead kicker="OUR LITTLE ROOMS" title="更多" en="The Rooms" copy="一扇扇门，通向我们的小世界" /><div className="glass settings-card"><b>✦ 风格衣橱 · Theme Wardrobe</b><small>两套风格，一个世界。换装不会清掉记录。</small><div className="theme-grid"><button className={state.theme==="mist"?"active":""} onClick={()=>update(s=>({...s,theme:"mist"}))}><i className="swatch mist"/><b>冰雾玻璃</b><small>Mist & Glass</small></button><button className={state.theme==="gothic"?"active":""} onClick={()=>update(s=>({...s,theme:"gothic"}))}><i className="swatch gothic"/><b>暗夜童话</b><small>Dark Fairytale</small></button></div></div><div className="glass settings-card"><b>网页与 Runtime</b><p className="hint">钥匙只保存在这个浏览器里。留空就保持本地模式，记录会排队等待同步。</p><div className="field"><label>私人连接钥匙</label><input type="password" autoComplete="off" placeholder="留空则仅本地" value={key} onChange={e=>setKey(e.target.value)} /></div><div className="field"><label>Runtime 地址</label><input type="url" value={url} onChange={e=>setUrl(e.target.value)} /></div><div className="sheet-actions"><button className="secondary" onClick={()=>{setKey("");update(s=>({...s,webToken:""}))}}>清除钥匙</button><button className="primary" onClick={()=>{update(s=>({...s,webToken:key.trim(),runtimeUrl:url.trim()||DEFAULT_RUNTIME_URL}));reconnect()}}>保存并连接</button></div><div className="runtime-line"><span>连接状态</span><b>{label}</b></div><div className="runtime-line"><span>待同步记录</span><b>{banner.pending} 条</b></div><div className="runtime-line"><span>Android 主控制</span><b>未暴露给网页</b></div></div><button className="setting-button" onClick={()=>setWelcome(true)}>重新打开邀请函 <span>›</span></button><button className="setting-button" onClick={()=>{update(s=>({...defaults,theme:s.theme,runtimeUrl:s.runtimeUrl,webToken:s.webToken}));}}>清空本地历史（保留连接） <span>›</span></button><button className="setting-button danger" onClick={()=>{if(window.confirm("确定清空这个浏览器里的本地记录和钥匙吗？未同步的记录会丢失。")){localStorage.removeItem(STORE);window.location.reload()}}}>清空本地数据 <span>›</span></button></section>;
-}
+ const [key, setKey] = useState(state.webToken);
+ const [url, setUrl] = useState(state.runtimeUrl);
+ const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+ const [installState, setInstallState] = useState(() => window.matchMedia("(display-mode: standalone)").matches ? "已作为 App 打开" : "浏览器模式");
+ const [pushState, setPushState] = useState(() => typeof Notification !== "undefined" && Notification.permission === "granted" ? "检查中" : "未开启");
+ const [pushNote, setPushNote] = useState("");
 
+ useEffect(() => {
+   const onPrompt = (event: Event) => {
+     event.preventDefault();
+     setInstallPrompt(event as InstallPromptEvent);
+     setInstallState("可以安装");
+   };
+   const onInstalled = () => {
+     setInstallPrompt(null);
+     setInstallState("已安装");
+   };
+   window.addEventListener("beforeinstallprompt", onPrompt);
+   window.addEventListener("appinstalled", onInstalled);
+   return () => {
+     window.removeEventListener("beforeinstallprompt", onPrompt);
+     window.removeEventListener("appinstalled", onInstalled);
+   };
+ }, []);
+
+ useEffect(() => {
+   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+     setPushState("此浏览器不支持");
+     return;
+   }
+   navigator.serviceWorker.ready
+     .then(reg => reg.pushManager.getSubscription())
+     .then(sub => setPushState(sub ? "已开启" : (Notification.permission === "denied" ? "权限被拒绝" : "未开启")))
+     .catch(() => setPushState("未开启"));
+ }, []);
+
+ const currentCfg = (): RuntimeConfig | null =>
+   state.webToken.trim() ? { baseUrl: state.runtimeUrl || DEFAULT_RUNTIME_URL, token: state.webToken.trim() } : null;
+
+ const install = async () => {
+   if (window.matchMedia("(display-mode: standalone)").matches) {
+     setInstallState("已作为 App 打开");
+     return;
+   }
+   if (!installPrompt) {
+     setPushNote("如果这里没有安装按钮，请用浏览器菜单里的「添加到主屏幕 / 安装应用」。");
+     return;
+   }
+   await installPrompt.prompt();
+   const choice = await installPrompt.userChoice;
+   setInstallState(choice.outcome === "accepted" ? "正在安装" : "暂未安装");
+   if (choice.outcome === "accepted") setInstallPrompt(null);
+ };
+
+ const enablePush = async () => {
+   const c = currentCfg();
+   if (!c) { setPushNote("先连接 Runtime，再开启通知。"); return; }
+   if (!("serviceWorker" in navigator) || !("PushManager" in window) || typeof Notification === "undefined") {
+     setPushState("此浏览器不支持"); return;
+   }
+   const permission = await Notification.requestPermission();
+   if (permission !== "granted") {
+     setPushState("权限被拒绝");
+     setPushNote("需要在系统或浏览器设置里允许「世界之间」通知。");
+     return;
+   }
+   try {
+     setPushState("正在订阅");
+     const reg = await navigator.serviceWorker.ready;
+     const keyInfo = await runtime.pushPublicKey(c);
+     if (!keyInfo.configured || !keyInfo.public_key) throw new Error("push_not_configured");
+     let sub = await reg.pushManager.getSubscription();
+     if (!sub) {
+       sub = await reg.pushManager.subscribe({
+         userVisibleOnly: true,
+         applicationServerKey: vapidKeyBytes(keyInfo.public_key),
+       });
+     }
+     await runtime.pushSubscribe(c, sub.toJSON());
+     setPushState("已开启");
+     setPushNote("系统推送已绑定到这台设备。");
+   } catch (err) {
+     setPushState("开启失败");
+     setPushNote(err instanceof Error ? err.message : "订阅失败");
+   }
+ };
+
+ const disablePush = async () => {
+   const c = currentCfg();
+   try {
+     const reg = await navigator.serviceWorker.ready;
+     const sub = await reg.pushManager.getSubscription();
+     if (sub && c) await runtime.pushUnsubscribe(c, sub.endpoint);
+     if (sub) await sub.unsubscribe();
+     setPushState("未开启");
+     setPushNote("这台设备已停止接收 Web Push。");
+   } catch {
+     setPushNote("关闭通知失败，请稍后重试。");
+   }
+ };
+
+ const testPush = async () => {
+   const c = currentCfg();
+   if (!c) { setPushNote("先连接 Runtime。"); return; }
+   try {
+     const result = await runtime.pushTest(c);
+     setPushNote(result.queued ? "测试推送已发出。把网页切到后台看看通知栏。" : "还没有可用的推送订阅，请先开启通知。");
+   } catch {
+     setPushNote("测试推送发送失败。");
+   }
+ };
+
+ const label = banner.conn === "online" ? "ONLINE · 已连接" : banner.conn === "syncing" ? "SYNCING · 同步中" : banner.configured ? `LOCAL · ${banner.lastError || "连不上"}` : "LOCAL · 未填写钥匙";
+ return <section className="page active">
+   <PageHead kicker="OUR LITTLE ROOMS" title="更多" en="The Rooms" copy="一扇扇门，通向我们的小世界" />
+   <div className="glass settings-card"><b>✦ 风格衣橱 · Theme Wardrobe</b><small>两套风格，一个世界。换装不会清掉记录。</small><div className="theme-grid"><button className={state.theme==="mist"?"active":""} onClick={()=>update(s=>({...s,theme:"mist"}))}><i className="swatch mist"/><b>冰雾玻璃</b><small>Mist & Glass</small></button><button className={state.theme==="gothic"?"active":""} onClick={()=>update(s=>({...s,theme:"gothic"}))}><i className="swatch gothic"/><b>暗夜童话</b><small>Dark Fairytale</small></button></div></div>
+   <div className="glass settings-card"><b>网页与 Runtime</b><p className="hint">钥匙只保存在这个浏览器里。留空就保持本地模式，记录会排队等待同步。</p><div className="field"><label>私人连接钥匙</label><input type="password" autoComplete="off" placeholder="留空则仅本地" value={key} onChange={e=>setKey(e.target.value)} /></div><div className="field"><label>Runtime 地址</label><input type="url" value={url} onChange={e=>setUrl(e.target.value)} /></div><div className="sheet-actions"><button className="secondary" onClick={()=>{setKey("");update(s=>({...s,webToken:""}))}}>清除钥匙</button><button className="primary" onClick={()=>{update(s=>({...s,webToken:key.trim(),runtimeUrl:url.trim()||DEFAULT_RUNTIME_URL}));reconnect()}}>保存并连接</button></div><div className="runtime-line"><span>连接状态</span><b>{label}</b></div><div className="runtime-line"><span>待同步记录</span><b>{banner.pending} 条</b></div><div className="runtime-line"><span>Android 主控制</span><b>未暴露给网页</b></div></div>
+   <div className="glass settings-card">
+     <b>世界之间 · PWA</b>
+     <small>安装后会像独立 App 一样从桌面打开；系统通知由 Service Worker 接收。</small>
+     <div className="runtime-line"><span>安装状态</span><b>{installState}</b></div>
+     <div className="runtime-line"><span>系统通知</span><b>{pushState}</b></div>
+     <div className="sheet-actions"><button className="secondary" onClick={install}>安装到桌面</button><button className="primary" onClick={enablePush}>开启通知</button></div>
+     <div className="sheet-actions"><button className="secondary" onClick={disablePush}>关闭通知</button><button className="secondary" onClick={testPush}>测试推送</button></div>
+     {pushNote ? <p className="hint">{pushNote}</p> : null}
+   </div>
+   <button className="setting-button" onClick={()=>setWelcome(true)}>重新打开邀请函 <span>›</span></button>
+   <button className="setting-button" onClick={()=>{update(s=>({...defaults,theme:s.theme,runtimeUrl:s.runtimeUrl,webToken:s.webToken}));}}>清空本地历史（保留连接） <span>›</span></button>
+   <button className="setting-button danger" onClick={()=>{if(window.confirm("确定清空这个浏览器里的本地记录和钥匙吗？未同步的记录会丢失。")){localStorage.removeItem(STORE);window.location.reload()}}}>清空本地数据 <span>›</span></button>
+ </section>;
+}
 function StatusEditor({ close, update, send, notify, savedText }: { close:()=>void; update:(fn:(s:AppState)=>AppState)=>void; send: Send; notify:(s:string)=>void; savedText:(w:string)=>string }) {
  const [enabled,setEnabled]=useState<Record<string,boolean>>({}); const [values,setValues]=useState<Record<string,number>>({}); const [picked,setPicked]=useState<Record<string,string[]>>({}); const [text,setText]=useState("");
  const toggleChip=(group:string,value:string)=>setPicked(p=>({...p,[group]:(p[group]||[]).includes(value)?(p[group]||[]).filter(x=>x!==value):[...(p[group]||[]),value]}));
