@@ -37,6 +37,7 @@ const homePortrait = "/jlz-home-portrait.webp";
 const STORE = "world-between-web-v1";
 const CLEANUP_MARKER = "world-between-cleanup-20261002-v1";
 const INSTALL_GUIDE_DISMISSED = "world-between-install-guide-dismissed-v1";
+const ANDROID_SHELL = new URLSearchParams(window.location.search).get("shell") === "android";
 const OUTBOX_CAP = 300;
 const defaults: AppState = { theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
   runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [] };
@@ -117,7 +118,7 @@ export default function BetweenWorlds() {
   }, [state.theme]);
 
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || ANDROID_SHELL) return;
     const standalone = window.matchMedia("(display-mode: standalone)").matches || !!(navigator as Navigator & { standalone?: boolean }).standalone;
     if (standalone || localStorage.getItem(INSTALL_GUIDE_DISMISSED)) return;
     const isMi = /MiuiBrowser/i.test(navigator.userAgent);
@@ -541,7 +542,17 @@ function MorePage({ state, update, setWelcome, banner, reconnect }: { state: App
    <PageHead kicker="OUR LITTLE ROOMS" title="更多" en="The Rooms" copy="一扇扇门，通向我们的小世界" />
    <div className="glass settings-card"><b>✦ 风格衣橱 · Theme Wardrobe</b><small>两套风格，一个世界。换装不会清掉记录。</small><div className="theme-grid"><button className={state.theme==="mist"?"active":""} onClick={()=>update(s=>({...s,theme:"mist"}))}><i className="swatch mist"/><b>冰雾玻璃</b><small>Mist & Glass</small></button><button className={state.theme==="gothic"?"active":""} onClick={()=>update(s=>({...s,theme:"gothic"}))}><i className="swatch gothic"/><b>暗夜童话</b><small>Dark Fairytale</small></button></div></div>
    <div className="glass settings-card"><b>网页与 Runtime</b><p className="hint">钥匙只保存在这个浏览器里。留空就保持本地模式，记录会排队等待同步。</p><div className="field"><label>私人连接钥匙</label><input type="password" autoComplete="off" placeholder="留空则仅本地" value={key} onChange={e=>setKey(e.target.value)} /></div><div className="field"><label>Runtime 地址</label><input type="url" value={url} onChange={e=>setUrl(e.target.value)} /></div><div className="sheet-actions"><button className="secondary" onClick={()=>{setKey("");update(s=>({...s,webToken:""}))}}>清除钥匙</button><button className="primary" onClick={()=>{update(s=>({...s,webToken:key.trim(),runtimeUrl:url.trim()||DEFAULT_RUNTIME_URL}));reconnect()}}>保存并连接</button></div><div className="runtime-line"><span>连接状态</span><b>{label}</b></div><div className="runtime-line"><span>待同步记录</span><b>{banner.pending} 条</b></div><div className="runtime-line"><span>Android 主控制</span><b>未暴露给网页</b></div></div>
-   <div className="glass settings-card">
+   {ANDROID_SHELL ? <div className="glass settings-card">
+     <b>世界之间 · Android</b>
+     <small>当前由原生 Android 外壳承载。网页负责界面，原生层继续负责后台、悬浮、定位、截图与系统通知。</small>
+     <div className="runtime-line"><span>前台界面</span><b>TWA · 正式站</b></div>
+     <div className="runtime-line"><span>后台能力</span><b>原生服务保留</b></div>
+     <div className="sheet-actions">
+       <button className="secondary" onClick={()=>{window.location.href="jlz://native/settings"}}>原生后台设置</button>
+       <button className="primary" onClick={()=>{window.location.href="jlz://native/permissions"}}>权限检查</button>
+     </div>
+     <button className="setting-button" onClick={()=>{window.location.href="jlz://native/diagnostics"}}>打开原生诊断 <span>›</span></button>
+   </div> : <div className="glass settings-card">
      <b>世界之间 · PWA</b>
      <small>安装后会像独立 App 一样从桌面打开；系统通知由 Service Worker 接收。</small>
      <div className="runtime-line"><span>安装状态</span><b>{installState}</b></div>
@@ -549,7 +560,7 @@ function MorePage({ state, update, setWelcome, banner, reconnect }: { state: App
      <div className="sheet-actions"><button className="secondary" onClick={install}>安装到桌面</button><button className="primary" onClick={enablePush}>开启通知</button></div>
      <div className="sheet-actions"><button className="secondary" onClick={disablePush}>关闭通知</button><button className="secondary" onClick={testPush}>测试推送</button></div>
      {pushNote ? <p className="hint">{pushNote}</p> : null}
-   </div>
+   </div>}
    <button className="setting-button" onClick={()=>setWelcome(true)}>重新打开邀请函 <span>›</span></button>
    <button className="setting-button" onClick={()=>{update(s=>({...defaults,theme:s.theme,runtimeUrl:s.runtimeUrl,webToken:s.webToken}));}}>清空本地历史（保留连接） <span>›</span></button>
    <button className="setting-button danger" onClick={()=>{if(window.confirm("确定清空这个浏览器里的本地记录和钥匙吗？未同步的记录会丢失。")){localStorage.removeItem(STORE);window.location.reload()}}}>清空本地数据 <span>›</span></button>

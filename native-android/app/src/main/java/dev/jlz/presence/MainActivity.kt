@@ -24,6 +24,20 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
+        val nativePath = intent?.data
+            ?.takeIf { it.scheme == "jlz" && it.host == "native" }
+            ?.path
+        if (nativePath != null) {
+            when (nativePath) {
+                "/settings" -> PresenceRouteBus.open(PresenceRoute.Settings)
+                "/permissions" -> PresenceRouteBus.open(PresenceRoute.PermissionDoctor)
+                "/diagnostics" -> PresenceRouteBus.open(PresenceRoute.Diagnostics)
+                "/today" -> PresenceRouteBus.open(PresenceRoute.Today)
+                "/study" -> PresenceRouteBus.open(PresenceRoute.Study)
+                else -> PresenceRouteBus.open(PresenceRoute.Home)
+            }
+            return
+        }
         when (intent?.getStringExtra(EXTRA_DESTINATION)) {
             DESTINATION_STUDY -> PresenceRouteBus.open(PresenceRoute.Study)
             DESTINATION_TODAY -> PresenceRouteBus.open(PresenceRoute.Today)
