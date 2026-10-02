@@ -1,0 +1,108 @@
+// Low-privilege Web client for the World Between Runtime.
+// Only ever sends the user-entered Web token (X-Web-Token). Never handles Android/MCP credentials.
+
+export const DEFAULT_RUNTIME_URL = "https://jlz-palm-server.onrender.com";
+export const SPACE_ID = "world-between-primary";
+
+export type RuntimeConfig = { baseUrl: string; token: string };
+export type WritePath =
+  | "/api/web/status"
+  | "/api/web/moment"
+  | "/api/web/life/action"
+  | "/api/web/journal"
+  | "/api/web/message"
+  | "/api/web/presence";
+export type OutboxItem = { event_id: string; path: WritePath; body: Record<string, unknown>; queuedAt: string; tries: number };
+
+export class RuntimeError extends Error {
+  constructor(message: string, public status: number) { super(message); }
+  /** Client errors (other than timeout/rate-limit/auth) will never succeed on retry. */
+  get permanent() { return this.status >= 400 && this.status < 500 && ![401, 403, 408, 425, 429].includes(this.status); }
+}
+
+export const newEventId = () =>
+  `web-${Date.now().toString(36)}-${(globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)).slice(0, 12)}`;
+
+const base = (cfg: RuntimeConfig) => (cfg.baseUrl.trim() || DEFAULT_RUNTIME_URL).replace(/\/+$/, "");
+
+async function request<T>(cfg: RuntimeConfig, path: string, init: { method?: "GET" | "POST"; body?: unknown } = {}): Promise<T> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const res = await fetch(base(cfg) + path, {
+      method: init.method ?? "GET",
+      headers: { "X-Web-Token": cfg.token, ...(init.body ? { "Content-Type": "application/json" } : {}) },
+      body: init.body ? JSON.stringify(init.body) : undefined,
+      signal: ctrl.signal,
+      cache: "no-store",
+    });
+    if (!res.ok) throw new RuntimeError(`Runtime ${res.status}`, res.status);
+    const text = await res.text();
+    return (text ? JSON.parse(text) : {}) as T;
+  } catch (e) {
+    if (e instanceof RuntimeError) throw e;
+    throw new RuntimeError(e instanceof Error ? e.message : "network", 0);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const q = `space_id=${encodeURIComponent(SPACE_ID)}`;
+export const runtime = {
+  health: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, "/api/web/health"),
+  state: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, `/api/web/state?${q}`),
+  messages: (cfg: RuntimeConfig, limit = 80) => request<unknown>(cfg, `/api/web/messages?${q}&limit=${limit}`),
+  write: (cfg: RuntimeConfig, item: OutboxItem) =>
+    request<Record<string, unknown>>(cfg, item.path, { method: "POST", body: { space_id: SPACE_ID, event_id: item.event_id, ...item.body } }),
+};
+
+// ---- defensive normalisers for Runtime payloads ----
+export type RemoteRecord = { id: string; type: string; at: string; body: string };
+export type RemoteMessage = { id: string; text: string; at: string; fromCompanion: boolean };
+
+const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
+const toIso = (v: unknown) => {
+  if (typeof v === "number") return new Date(v < 1e12 ? v * 1000 : v).toISOString();
+  const d = Date.parse(str(v));
+  return Number.isNaN(d) ? new Date().toISOString() : new Date(d).toISOString();
+};
+const asObj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
+
+export function extractRecords(state: unknown): RemoteRecord[] {
+  const s = asObj(asObj(state).state ?? state);
+  const out: RemoteRecord[] = [];
+  for (const key of ["timeline", "records", "moments", "events", "notes", "life", "journal", "statuses"]) {
+    const arr = s[key];
+    if (!Array.isArray(arr)) continue;
+    for (const raw of arr) {
+      const r = asObj(raw);
+      const id = str(r.event_id ?? r.id);
+      if (!id) continue;
+      out.push({
+        id,
+        type: str(r.type ?? r.kind ?? r.category) || key,
+        at: toIso(r.at ?? r.created_at ?? r.timestamp ?? r.client_at),
+        body: str(r.body ?? r.text ?? r.content ?? r.summary ?? r.action ?? r.value) || "（记录）",
+      });
+    }
+  }
+  const seen = new Set<string>();
+  return out.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
+}
+
+export function extractMessages(payload: unknown): RemoteMessage[] {
+  const p = asObj(payload);
+  const arr = Array.isArray(payload) ? payload : Array.isArray(p.messages) ? p.messages : Array.isArray(p.items) ? p.items : [];
+  return arr
+    .map((raw) => {
+      const m = asObj(raw);
+      const role = str(m.role ?? m.sender ?? m.from ?? m.author).toLowerCase();
+      return {
+        id: str(m.event_id ?? m.id),
+        text: str(m.text ?? m.content ?? m.body),
+        at: toIso(m.at ?? m.created_at ?? m.timestamp),
+        fromCompanion: !["user", "web", "me", "yanyin", "human"].includes(role),
+      };
+    })
+    .filter((m) => m.id && m.text);
+}
