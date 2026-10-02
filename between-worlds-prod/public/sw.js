@@ -1,5 +1,5 @@
 const CACHE = "between-worlds-pwa-v1";
-const CORE = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png", "/jlz-welcome-portrait.webp", "/jlz-home-portrait.webp"];
+const CORE = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/jlz-welcome-portrait.webp", "/jlz-home-portrait.webp"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)).then(() => self.skipWaiting()));
