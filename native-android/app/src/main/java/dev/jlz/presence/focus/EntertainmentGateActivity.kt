@@ -136,7 +136,7 @@ class EntertainmentGateActivity : ComponentActivity() {
             packageName: String,
             reason: String,
             isTablet: Boolean
-        ) {
+        ): Boolean = runCatching {
             context.startActivity(
                 Intent(context, EntertainmentGateActivity::class.java)
                     .putExtra(EXTRA_PACKAGE, packageName)
@@ -148,7 +148,8 @@ class EntertainmentGateActivity : ComponentActivity() {
                             Intent.FLAG_ACTIVITY_SINGLE_TOP
                     )
             )
-        }
+            true
+        }.getOrDefault(false)
     }
 }
 
