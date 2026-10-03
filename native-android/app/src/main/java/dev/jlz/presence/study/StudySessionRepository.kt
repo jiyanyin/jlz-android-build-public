@@ -11,6 +11,7 @@ import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.usage.ForegroundUsageStore
 import dev.jlz.presence.usage.ForegroundUsageTracker
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.util.UUID
 
@@ -31,6 +32,28 @@ data class StudySessionState(
         val runningUntil =
             if (paused && pauseStartedAtMs > 0L) pauseStartedAtMs else nowMs
         return (runningUntil - startedAtMs - pausedTotalMs).coerceAtLeast(0L)
+    }
+}
+
+data class StudyStaleRecovery(
+    val recovered: Boolean,
+    val sessionId: String = "",
+    val reason: String = ""
+)
+
+object StudySessionFreshness {
+    const val MAX_ACTIVE_SESSION_MS = 16L * 60L * 60L * 1000L
+    const val FUTURE_TOLERANCE_MS = 5L * 60L * 1000L
+
+    fun staleReason(
+        state: StudySessionState,
+        nowMs: Long = System.currentTimeMillis()
+    ): String? {
+        if (!state.active) return null
+        if (state.startedAtMs <= 0L) return "missing_start"
+        if (state.startedAtMs > nowMs + FUTURE_TOLERANCE_MS) return "future_start"
+        if (nowMs - state.startedAtMs > MAX_ACTIVE_SESSION_MS) return "too_old"
+        return null
     }
 }
 
@@ -62,6 +85,51 @@ class StudySessionRepository(private val context: Context) {
             pauseStartedAtMs = prefs[Keys.pauseStartedAt] ?: 0L,
             pausedTotalMs = prefs[Keys.pausedTotal] ?: 0L,
             targetPackages = prefs[Keys.targetPackages] ?: emptySet()
+        )
+    }
+
+    /**
+     * Clears an orphaned active session without saving bogus duration metrics.
+     *
+     * A Study Session is a deliberate foreground action. If an old process/version
+     * left the active flag behind for more than 16 hours, carrying that wall-clock
+     * gap into today's study total is always worse than discarding the orphan.
+     */
+    suspend fun recoverStaleSession(
+        nowMs: Long = System.currentTimeMillis()
+    ): StudyStaleRecovery {
+        val current = state.first()
+        val reason = StudySessionFreshness.staleReason(current, nowMs)
+            ?: return StudyStaleRecovery(false)
+
+        context.studyDataStore.edit { prefs ->
+            // Re-check the same session so a brand-new start cannot be wiped by
+            // a recovery racing with the user's tap.
+            if (
+                prefs[Keys.active] == true &&
+                prefs[Keys.sessionId].orEmpty() == current.sessionId
+            ) {
+                prefs[Keys.active] = false
+                prefs[Keys.paused] = false
+                prefs[Keys.startedAt] = 0L
+                prefs[Keys.activeSegmentStartedAt] = 0L
+                prefs[Keys.pauseStartedAt] = 0L
+                prefs[Keys.pausedTotal] = 0L
+                prefs[Keys.targetPackages] = emptySet()
+            }
+        }
+
+        lifeStore.recordTimeline(
+            "study",
+            "清理遗留学习 Session",
+            "旧计时已作废 · " + reason,
+            eventId = current.sessionId.ifBlank { UUID.randomUUID().toString() },
+            createdAtMs = nowMs
+        )
+        return StudyStaleRecovery(
+            recovered = true,
+            sessionId = current.sessionId,
+            reason = reason
         )
     }
 
