@@ -75,3 +75,15 @@ test("stale status is ignored", () => {
   }, EMPTY_VOICE_MEMORY);
   assert.equal(card.signal, "activity:work");
 });
+
+test("no-analysis preference chooses a non-analytic affectionate bank", () => {
+  const now = local(18, 10);
+  const card = selectVoiceCard({
+    now,
+    status: {
+      at: now.toISOString(),
+      detail: { "想听我怎样回应": ["先别分析"] },
+    },
+  }, EMPTY_VOICE_MEMORY);
+  assert.equal(card.signal, "style:affection");
+});
