@@ -626,6 +626,16 @@ fun StudyScreen() {
         val recovery = repo.recoverStaleSession()
         if (recovery.recovered) {
             StudyTimerService.stop(context)
+            if (recovery.sessionId.isNotBlank()) {
+                withContext(Dispatchers.IO) {
+                    StudyRuntimeReporter.post(
+                        context,
+                        "abandon",
+                        recovery.sessionId,
+                        org.json.JSONObject().put("reason", recovery.reason)
+                    )
+                }
+            }
             actionNote = "旧的异常计时已经清掉了。重新开始这一轮就好。"
         }
         refreshDay()
