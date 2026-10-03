@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_RUNTIME_URL, extractMessages, extractRecords, newEventId, runtime, RuntimeError, type OutboxItem, type RemoteMessage, type RemoteRecord, type RuntimeConfig, type WritePath } from "./lib/runtime";
 import { EMPTY_VOICE_MEMORY, formatVoiceClock, formatVoiceDate, selectVoiceCard, type VoiceMemory, type VoiceStatus } from "./lib/voiceEngine";
+import { emptyDailyPlan, optimisticTaskMutation, planSections, TASK_CATEGORIES, type DailyPlan, type DailyTask } from "./lib/dailyPlan";
 
 type Theme = "mist" | "gothic";
 type Tab = "home" | "echo" | "timeline" | "calendar" | "more";
@@ -9,7 +10,7 @@ type RecordItem = { id: number | string; type: string; at: string; body: string;
 type Message = { text: string; at: string; event_id?: string; sync?: Sync };
 type ActiveLife = { action: string; session: string; startAt: number } | null;
 type AppState = { theme: Theme; notes: RecordItem[]; messages: Message[]; status: RecordItem | null; life: RecordItem[]; journal: RecordItem[]; activeLife: ActiveLife;
-  runtimeUrl: string; webToken: string; outbox: OutboxItem[]; remoteRecords: RemoteRecord[]; remoteMessages: RemoteMessage[]; seenCompanion: string[]; voiceMemory: VoiceMemory };
+  runtimeUrl: string; webToken: string; outbox: OutboxItem[]; remoteRecords: RemoteRecord[]; remoteMessages: RemoteMessage[]; seenCompanion: string[]; voiceMemory: VoiceMemory; dailyPlan: DailyPlan | null };
 type Conn = "local" | "syncing" | "online";
 type Send = (path: WritePath, body: Record<string, unknown>, eventId?: string) => string;
 type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
@@ -42,7 +43,7 @@ const INSTALL_GUIDE_DISMISSED = "world-between-install-guide-dismissed-v1";
 const ANDROID_SHELL = new URLSearchParams(window.location.search).get("shell") === "android";
 const OUTBOX_CAP = 300;
 const defaults: AppState = { theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
-  runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [], voiceMemory: EMPTY_VOICE_MEMORY };
+  runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [], voiceMemory: EMPTY_VOICE_MEMORY, dailyPlan: null };
 const markSynced = (s: AppState, id: string): AppState => {
   const fix = <T extends { event_id?: string; sync?: Sync }>(arr: T[]) => arr.map((x) => (x.event_id === id ? { ...x, sync: "synced" as Sync } : x));
   return { ...s, notes: fix(s.notes), life: fix(s.life), journal: fix(s.journal), messages: fix(s.messages), status: s.status && s.status.event_id === id ? { ...s.status, sync: "synced" } : s.status };
@@ -72,7 +73,8 @@ export default function BetweenWorlds() {
   const [state, setState] = useState<AppState>(defaults);
   const [tab, setTab] = useState<Tab>(() => window.location.hash === "#echo" ? "echo" : "home");
   const [welcome, setWelcome] = useState(true);
-  const [sheet, setSheet] = useState<"status" | "note" | "life" | null>(null);
+  const [sheet, setSheet] = useState<"status" | "note" | "life" | "task" | null>(null);
+  const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
   const [toast, setToast] = useState("");
   const [now, setNow] = useState<Date | null>(null);
   const [month, setMonth] = useState(() => new Date(2026, 8, 1));
@@ -197,6 +199,13 @@ export default function BetweenWorlds() {
     }
   }, [update, notify]);
 
+  const pullDailyPlan = useCallback(async (date = keyDate(new Date())) => {
+    const c = cfg();
+    if (!c) return;
+    const plan = await runtime.dailyPlan(c, date);
+    update((s) => ({ ...s, dailyPlan: plan }));
+  }, [update]);
+
   const connect = useCallback(async () => {
     const c = cfg();
     if (!c) { setConn("local"); setLastError(""); return; }
@@ -207,6 +216,7 @@ export default function BetweenWorlds() {
       const st = await runtime.state(c);
       update((s) => ({ ...s, remoteRecords: extractRecords(st).slice(0, 300) }));
       await pullMessages();
+      await pullDailyPlan();
       setConn("online");
       setLastError("");
     } catch (e) {
@@ -214,7 +224,7 @@ export default function BetweenWorlds() {
       const status = e instanceof RuntimeError ? e.status : 0;
       setLastError(status === 401 || status === 403 ? "钥匙不正确或已失效" : status ? `Runtime 返回 ${status}` : "暂时连不上 Runtime");
     }
-  }, [flush, pullMessages, update]);
+  }, [flush, pullMessages, pullDailyPlan, update]);
 
   const presence = useCallback(async (stateName: string) => {
     const c = cfg();
@@ -270,14 +280,37 @@ export default function BetweenWorlds() {
     return eventId;
   }, [update, flush]);
 
+  const mutateDailyTask = useCallback((action: string, payload: Partial<DailyTask> & { task_id?: string }) => {
+    const date = keyDate(new Date());
+    const taskPayload = {
+      ...payload,
+      task_id: payload.task_id || newEventId(),
+    };
+    update((s) => ({
+      ...s,
+      dailyPlan: optimisticTaskMutation(
+        s.dailyPlan?.date === date ? s.dailyPlan : emptyDailyPlan(date),
+        date,
+        action,
+        taskPayload,
+      ),
+    }));
+    send("/api/web/daily-plan/task", { date, action, task: taskPayload });
+  }, [send, update]);
+
+  const openTaskEditor = useCallback((task: DailyTask | null = null) => {
+    setEditingTask(task);
+    setSheet("task");
+  }, []);
+
   // (Re)connect when the key or URL changes, on network return, and periodically.
   useEffect(() => { if (loaded) void connect(); }, [loaded, state.webToken, state.runtimeUrl, connect]);
   useEffect(() => {
     if (!loaded) return;
     const onOnline = () => void connect();
-    const onFocus = () => { presence("foreground"); if (conn === "local") void connect(); };
+    const onFocus = () => { presence("foreground"); if (conn === "local") void connect(); else void pullDailyPlan(); };
     const onBlur = () => presence("background");
-    const onVis = () => { presence(document.visibilityState === "visible" ? "foreground" : "background"); if (document.visibilityState === "visible") void connect(); };
+    const onVis = () => { presence(document.visibilityState === "visible" ? "foreground" : "background"); if (document.visibilityState === "visible") { if (conn === "local") void connect(); else void pullDailyPlan(); } };
     window.addEventListener("online", onOnline);
     window.addEventListener("focus", onFocus);
     window.addEventListener("blur", onBlur);
@@ -286,9 +319,10 @@ export default function BetweenWorlds() {
       if (document.visibilityState !== "visible") return;
       presence("foreground");
       if (conn === "local" && cfg()) void connect();
+      else if (conn === "online") void pullDailyPlan();
     }, 60000);
     return () => { window.removeEventListener("online", onOnline); window.removeEventListener("focus", onFocus); window.removeEventListener("blur", onBlur); document.removeEventListener("visibilitychange", onVis); window.clearInterval(beat); };
-  }, [loaded, conn, connect, presence]);
+  }, [loaded, conn, connect, presence, pullDailyPlan]);
   // Poll messages while the page is visible (faster on Echo).
   useEffect(() => {
     if (conn !== "online") return;
@@ -372,7 +406,7 @@ export default function BetweenWorlds() {
 
     <main className="app-shell">
       <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}>✦ 换装</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
-      {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} voice={voiceCard} homePortrait={homePortrait} openSheet={setSheet} setTab={switchTab} banner={banner} />}
+      {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} voice={voiceCard} homePortrait={homePortrait} plan={state.dailyPlan?.date === keyDate(now ?? new Date()) ? state.dailyPlan : emptyDailyPlan(keyDate(now ?? new Date()))} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
       {tab === "echo" && <EchoPage state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
       {tab === "timeline" && <TimelinePage notes={state.notes} remote={state.remoteRecords} />}
       {tab === "calendar" && <CalendarPage month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
@@ -382,11 +416,12 @@ export default function BetweenWorlds() {
       </nav>
     </main>
     <div className={`scrim ${sheet ? "show" : ""}`} onClick={() => setSheet(null)} />
-    <div className={`sheet ${sheet ? "open" : ""}`} role="dialog" aria-modal="true" aria-label={sheet === "status" ? "状态灯" : sheet === "note" ? "随手记" : "此刻我在"}>
-      <div className="sheet-handle" /><div className="sheet-head"><h3>{sheet === "status" ? "状态灯" : sheet === "note" ? "随手记" : "此刻我在"}</h3><button onClick={() => setSheet(null)} aria-label="关闭">×</button></div>
+    <div className={`sheet ${sheet ? "open" : ""}`} role="dialog" aria-modal="true" aria-label={sheet === "status" ? "状态灯" : sheet === "note" ? "随手记" : sheet === "task" ? "今日任务" : "此刻我在"}>
+      <div className="sheet-handle" /><div className="sheet-head"><h3>{sheet === "status" ? "状态灯" : sheet === "note" ? "随手记" : sheet === "task" ? (editingTask ? "改这件事" : "加一件事") : "此刻我在"}</h3><button onClick={() => setSheet(null)} aria-label="关闭">×</button></div>
       {sheet === "status" && <StatusEditor close={() => setSheet(null)} update={update} send={send} notify={notify} savedText={savedText} />}
       {sheet === "note" && <NoteEditor close={() => setSheet(null)} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
       {sheet === "life" && <LifeEditor activeLife={state.activeLife} close={() => setSheet(null)} update={update} send={send} notify={notify} savedText={savedText} />}
+      {sheet === "task" && <TaskEditor task={editingTask} date={keyDate(now ?? new Date())} close={() => setSheet(null)} mutateTask={mutateDailyTask} notify={notify} />}
     </div>
     <div className={`toast ${toast ? "show" : ""}`}>{toast}</div>
   </div>;
