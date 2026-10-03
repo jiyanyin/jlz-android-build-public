@@ -5,6 +5,7 @@ import android.webkit.JavascriptInterface
 import dev.jlz.presence.launcher.LauncherRepository
 import dev.jlz.presence.study.StudyMetricsStore
 import dev.jlz.presence.study.StudySessionRepository
+import dev.jlz.presence.study.StudyTimerService
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -157,6 +158,10 @@ class EntertainmentGateBridge(context: Context) {
         }
 
     private fun effectiveToday(nowMs: Long): Long = runBlocking {
+        val recovery = studyRepository.recoverStaleSession(nowMs)
+        if (recovery.recovered) {
+            StudyTimerService.stop(app)
+        }
         val cal = Calendar.getInstance().apply {
             timeInMillis = nowMs
             set(Calendar.HOUR_OF_DAY, 0)
