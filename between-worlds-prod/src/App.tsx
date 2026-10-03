@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_RUNTIME_URL, extractMessages, extractRecords, newEventId, runtime, RuntimeError, type OutboxItem, type RemoteMessage, type RemoteRecord, type RuntimeConfig, type WritePath } from "./lib/runtime";
+import { EMPTY_VOICE_MEMORY, formatVoiceClock, formatVoiceDate, selectVoiceCard, type VoiceMemory, type VoiceStatus } from "./lib/voiceEngine";
+import { emptyDailyPlan, optimisticTaskMutation, planSections, TASK_CATEGORIES, type DailyPlan, type DailyTask } from "./lib/dailyPlan";
+import { emptyStudySummary, formatStudyClock, formatStudyMinutes, liveStudyTotals, studyDeviceLabel, type StudySummary } from "./lib/studySession";
+import { appHubActions, appHubCategories, appHubHomeItems, emptyAppHubSnapshot, readNativeAppHub, type AppHubItem, type AppHubSnapshot } from "./lib/appHub";
 
 type Theme = "mist" | "gothic";
 type Tab = "home" | "echo" | "timeline" | "calendar" | "more";
@@ -8,7 +12,7 @@ type RecordItem = { id: number | string; type: string; at: string; body: string;
 type Message = { text: string; at: string; event_id?: string; sync?: Sync };
 type ActiveLife = { action: string; session: string; startAt: number } | null;
 type AppState = { theme: Theme; notes: RecordItem[]; messages: Message[]; status: RecordItem | null; life: RecordItem[]; journal: RecordItem[]; activeLife: ActiveLife;
-  runtimeUrl: string; webToken: string; outbox: OutboxItem[]; remoteRecords: RemoteRecord[]; remoteMessages: RemoteMessage[]; seenCompanion: string[] };
+  runtimeUrl: string; webToken: string; outbox: OutboxItem[]; remoteRecords: RemoteRecord[]; remoteMessages: RemoteMessage[]; seenCompanion: string[]; voiceMemory: VoiceMemory; dailyPlan: DailyPlan | null; studySummary: StudySummary | null };
 type Conn = "local" | "syncing" | "online";
 type Send = (path: WritePath, body: Record<string, unknown>, eventId?: string) => string;
 type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
@@ -34,13 +38,15 @@ const vapidKeyBytes = (value: string) => {
 
 const welcomePortrait = "/jlz-welcome-portrait.webp";
 const homePortrait = "/jlz-home-portrait.webp";
+const chatAvatar = "/jlz-chat-avatar.webp";
 const STORE = "world-between-web-v1";
 const CLEANUP_MARKER = "world-between-cleanup-20261002-v1";
 const INSTALL_GUIDE_DISMISSED = "world-between-install-guide-dismissed-v1";
 const ANDROID_SHELL = new URLSearchParams(window.location.search).get("shell") === "android";
+const ENTRY_MODE = new URLSearchParams(window.location.search).get("entry");
 const OUTBOX_CAP = 300;
 const defaults: AppState = { theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
-  runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [] };
+  runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [], voiceMemory: EMPTY_VOICE_MEMORY, dailyPlan: null, studySummary: null };
 const markSynced = (s: AppState, id: string): AppState => {
   const fix = <T extends { event_id?: string; sync?: Sync }>(arr: T[]) => arr.map((x) => (x.event_id === id ? { ...x, sync: "synced" as Sync } : x));
   return { ...s, notes: fix(s.notes), life: fix(s.life), journal: fix(s.journal), messages: fix(s.messages), status: s.status && s.status.event_id === id ? { ...s.status, sync: "synced" } : s.status };
@@ -69,8 +75,11 @@ const GROUPS: Record<string, [string, boolean][]> = {
 export default function BetweenWorlds() {
   const [state, setState] = useState<AppState>(defaults);
   const [tab, setTab] = useState<Tab>(() => window.location.hash === "#echo" ? "echo" : "home");
-  const [welcome, setWelcome] = useState(true);
-  const [sheet, setSheet] = useState<"status" | "note" | "life" | null>(null);
+  const [welcome, setWelcome] = useState(() => ENTRY_MODE !== "unlock");
+  const [unlockHello, setUnlockHello] = useState(() => ENTRY_MODE === "unlock");
+  const [sheet, setSheet] = useState<"status" | "note" | "life" | "task" | "apps" | null>(null);
+  const [appHub, setAppHub] = useState<AppHubSnapshot>(() => emptyAppHubSnapshot());
+  const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
   const [toast, setToast] = useState("");
   const [now, setNow] = useState<Date | null>(null);
   const [month, setMonth] = useState(() => new Date(2026, 8, 1));
@@ -87,6 +96,9 @@ export default function BetweenWorlds() {
   useEffect(() => {
     try {
       const current = { ...defaults, ...JSON.parse(localStorage.getItem(STORE) || "{}") } as AppState;
+      // Study state is a live Runtime reflection. Never revive a stale active
+      // timer from yesterday's localStorage snapshot before Runtime confirms it.
+      current.studySummary = null;
       if (!localStorage.getItem(CLEANUP_MARKER)) {
         const cleaned: AppState = {
           ...defaults,
@@ -108,9 +120,20 @@ export default function BetweenWorlds() {
     }
     setLoaded(true);
     setNow(new Date());
-    const timer = window.setInterval(() => setNow(new Date()), 30000);
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => {
+    if (!unlockHello) return;
+    const timer = window.setTimeout(() => {
+      setUnlockHello(false);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("entry");
+      history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }, 8_000);
+    return () => window.clearTimeout(timer);
+  }, [unlockHello]);
+
   useEffect(() => {
     document.body.dataset.theme = state.theme;
     const meta = document.querySelector('meta[name="theme-color"]');
@@ -141,6 +164,20 @@ export default function BetweenWorlds() {
     setState(next);
   }, []);
   const notify = useCallback((message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); }, []);
+  const refreshAppHub = useCallback(() => {
+    setAppHub(readNativeAppHub());
+  }, []);
+  useEffect(() => {
+    if (!loaded) return;
+    refreshAppHub();
+    const refresh = () => refreshAppHub();
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [loaded, refreshAppHub]);
   const switchTab = (next: Tab) => {
     setTab(next);
     if (next === "echo") history.replaceState(null, "", "#echo");
@@ -195,6 +232,20 @@ export default function BetweenWorlds() {
     }
   }, [update, notify]);
 
+  const pullDailyPlan = useCallback(async (date = keyDate(new Date())) => {
+    const c = cfg();
+    if (!c) return;
+    const plan = await runtime.dailyPlan(c, date);
+    update((s) => ({ ...s, dailyPlan: plan }));
+  }, [update]);
+
+  const pullStudySummary = useCallback(async (date = keyDate(new Date())) => {
+    const c = cfg();
+    if (!c) return;
+    const studySummary = await runtime.studySummary(c, date);
+    update((s) => ({ ...s, studySummary }));
+  }, [update]);
+
   const connect = useCallback(async () => {
     const c = cfg();
     if (!c) { setConn("local"); setLastError(""); return; }
@@ -205,6 +256,8 @@ export default function BetweenWorlds() {
       const st = await runtime.state(c);
       update((s) => ({ ...s, remoteRecords: extractRecords(st).slice(0, 300) }));
       await pullMessages();
+      await pullDailyPlan();
+      await pullStudySummary();
       setConn("online");
       setLastError("");
     } catch (e) {
@@ -212,7 +265,7 @@ export default function BetweenWorlds() {
       const status = e instanceof RuntimeError ? e.status : 0;
       setLastError(status === 401 || status === 403 ? "钥匙不正确或已失效" : status ? `Runtime 返回 ${status}` : "暂时连不上 Runtime");
     }
-  }, [flush, pullMessages, update]);
+  }, [flush, pullMessages, pullDailyPlan, pullStudySummary, update]);
 
   const presence = useCallback(async (stateName: string) => {
     const c = cfg();
@@ -268,14 +321,37 @@ export default function BetweenWorlds() {
     return eventId;
   }, [update, flush]);
 
+  const mutateDailyTask = useCallback((action: string, payload: Partial<DailyTask> & { task_id?: string }) => {
+    const date = keyDate(new Date());
+    const taskPayload = {
+      ...payload,
+      task_id: payload.task_id || newEventId(),
+    };
+    update((s) => ({
+      ...s,
+      dailyPlan: optimisticTaskMutation(
+        s.dailyPlan?.date === date ? s.dailyPlan : emptyDailyPlan(date),
+        date,
+        action,
+        taskPayload,
+      ),
+    }));
+    send("/api/web/daily-plan/task", { date, action, task: taskPayload });
+  }, [send, update]);
+
+  const openTaskEditor = useCallback((task: DailyTask | null = null) => {
+    setEditingTask(task);
+    setSheet("task");
+  }, []);
+
   // (Re)connect when the key or URL changes, on network return, and periodically.
   useEffect(() => { if (loaded) void connect(); }, [loaded, state.webToken, state.runtimeUrl, connect]);
   useEffect(() => {
     if (!loaded) return;
     const onOnline = () => void connect();
-    const onFocus = () => { presence("foreground"); if (conn === "local") void connect(); };
+    const onFocus = () => { presence("foreground"); if (conn === "local") void connect(); else { void pullDailyPlan(); void pullStudySummary(); } };
     const onBlur = () => presence("background");
-    const onVis = () => { presence(document.visibilityState === "visible" ? "foreground" : "background"); if (document.visibilityState === "visible") void connect(); };
+    const onVis = () => { presence(document.visibilityState === "visible" ? "foreground" : "background"); if (document.visibilityState === "visible") { if (conn === "local") void connect(); else { void pullDailyPlan(); void pullStudySummary(); } } };
     window.addEventListener("online", onOnline);
     window.addEventListener("focus", onFocus);
     window.addEventListener("blur", onBlur);
@@ -284,9 +360,10 @@ export default function BetweenWorlds() {
       if (document.visibilityState !== "visible") return;
       presence("foreground");
       if (conn === "local" && cfg()) void connect();
+      else if (conn === "online") { void pullDailyPlan(); void pullStudySummary(); }
     }, 60000);
     return () => { window.removeEventListener("online", onOnline); window.removeEventListener("focus", onFocus); window.removeEventListener("blur", onBlur); document.removeEventListener("visibilitychange", onVis); window.clearInterval(beat); };
-  }, [loaded, conn, connect, presence]);
+  }, [loaded, conn, connect, presence, pullDailyPlan, pullStudySummary]);
   // Poll messages while the page is visible (faster on Echo).
   useEffect(() => {
     if (conn !== "online") return;
@@ -296,18 +373,75 @@ export default function BetweenWorlds() {
     return () => window.clearInterval(id);
   }, [conn, tab, pullMessages]);
 
+  useEffect(() => {
+    if (conn !== "online" || !state.studySummary?.active) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") pullStudySummary().catch(() => setConn("local"));
+    }, 15000);
+    return () => window.clearInterval(id);
+  }, [conn, state.studySummary?.active, pullStudySummary]);
+
   const savedText = (what: string) => (conn === "online" ? `${what}已同步给纪临洲` : `${what}已存本机，连接后自动同步`);
 
-  const timeText = now?.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }) ?? "16:00";
-  const hour = now?.getHours() ?? 16;
-  const greeting = `${hour < 5 ? "夜深了" : hour < 11 ? "早上好" : hour < 14 ? "中午好" : hour < 18 ? "下午好" : "晚上好"}，音音。`;
-  const dateLabel = now ? new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(now).toUpperCase() : "WEDNESDAY · SEPTEMBER 30";
+  const voiceStatus: VoiceStatus | null = state.status ? {
+    at: state.status.at,
+    axes: state.status.axes && typeof state.status.axes === "object" ? state.status.axes as Record<string, number> : undefined,
+    detail: state.status.detail && typeof state.status.detail === "object" ? state.status.detail as Record<string, string[]> : undefined,
+  } : null;
+  const voiceCard = selectVoiceCard({
+    now: now ?? new Date(),
+    activeLife: state.activeLife,
+    status: voiceStatus,
+  }, state.voiceMemory);
+  useEffect(() => {
+    if (!loaded || !now || voiceCard.nextMemory === state.voiceMemory) return;
+    update((s) => ({ ...s, voiceMemory: voiceCard.nextMemory }));
+  }, [loaded, now, state.voiceMemory, update, voiceCard.nextMemory]);
+  const timeText = now ? formatVoiceClock(now) : "16:00:00";
+  const dateLabel = now ? formatVoiceDate(now) : "WEDNESDAY, SEPTEMBER 30";
 
   const addRecord = (rec: RecordItem, buckets: ("notes" | "life" | "journal")[] = ["notes"]) => update((s) => {
     const next = { ...s };
     for (const bucket of buckets) next[bucket] = [rec, ...s[bucket]].slice(0, 120);
     return next;
   });
+
+  const openNativeStudy = () => {
+    if (ANDROID_SHELL) {
+      window.location.href = "jlz://native/study";
+      return;
+    }
+    notify("学习计时控制在「世界之间」Android App 里。");
+  };
+
+  const launchHubApp = (item: AppHubItem) => {
+    if (!appHubActions.available()) {
+      notify("这个入口只在「世界之间」Android App 里能直接打开。");
+      return;
+    }
+    const ok = appHubActions.launch(item.package_name);
+    if (!ok) notify(`没能打开 ${item.label}。我会把它留在抽屉里，方便继续排查。`);
+  };
+
+  const openBanduread = () => {
+    if (appHubActions.available()) {
+      if (!appHubActions.openBanduread()) notify("伴读没有成功打开。");
+      return;
+    }
+    window.location.href = "https://banduread-study.sujiaojiao99.chatgpt.site/";
+  };
+
+  const updateAppPin = (item: AppHubItem, pinned: boolean) => {
+    if (!appHubActions.setPinned(item.package_name, pinned)) {
+      notify("这个 App 现在没改成功。");
+      return;
+    }
+    refreshAppHub();
+  };
+
+  const moveAppPin = (item: AppHubItem, direction: number) => {
+    if (appHubActions.movePinned(item.package_name, direction)) refreshAppHub();
+  };
 
   const configured = !!state.webToken.trim();
   const banner = { conn, configured, pending: state.outbox.length, lastError };
@@ -336,7 +470,7 @@ export default function BetweenWorlds() {
   return <div className="bw-root">
     {installGuide && <div className="install-guide-backdrop" role="dialog" aria-modal="true" aria-label="安装世界之间">
       <div className="install-guide-card">
-        <img src="/icon-192.png" alt="世界之间图标" />
+        <img src="/icon-512.webp" alt="世界之间图标" />
         <span className="install-guide-kicker">BETWEEN WORLDS · APP</span>
         <h3>把「世界之间」带到桌面</h3>
         <p>{isMiBrowser ? "当前小米浏览器只能创建网址快捷方式，而且不支持我们的后台 Web Push。用 Chrome 安装后，会以独立 App 打开，并能接收系统通知。" : canPromptInstall ? "Chrome 已确认这个站点可以安装。点下面按钮会直接唤起系统安装框。" : "Chrome 还在检查安装资格；满足条件后这张卡片会自动变成可安装状态。"}</p>
@@ -358,8 +492,8 @@ export default function BetweenWorlds() {
 
     <main className="app-shell">
       <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}>✦ 换装</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
-      {tab === "home" && <HomePage dateLabel={dateLabel} greeting={greeting} homePortrait={homePortrait} openSheet={setSheet} setTab={switchTab} banner={banner} />}
-      {tab === "echo" && <EchoPage state={state} conn={conn} update={update} send={send} notify={notify} homePortrait={homePortrait} />}
+      {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} voice={voiceCard} homePortrait={homePortrait} plan={state.dailyPlan?.date === keyDate(now ?? new Date()) ? state.dailyPlan : emptyDailyPlan(keyDate(now ?? new Date()))} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} unlockHello={unlockHello} appHub={appHub} launchApp={launchHubApp} openBanduread={openBanduread} openApps={() => setSheet("apps")} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
+      {tab === "echo" && <EchoPage state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
       {tab === "timeline" && <TimelinePage notes={state.notes} remote={state.remoteRecords} />}
       {tab === "calendar" && <CalendarPage month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
       {tab === "more" && <MorePage state={state} update={update} setWelcome={setWelcome} banner={banner} reconnect={() => void connect()} />}
@@ -368,11 +502,13 @@ export default function BetweenWorlds() {
       </nav>
     </main>
     <div className={`scrim ${sheet ? "show" : ""}`} onClick={() => setSheet(null)} />
-    <div className={`sheet ${sheet ? "open" : ""}`} role="dialog" aria-modal="true" aria-label={sheet === "status" ? "状态灯" : sheet === "note" ? "随手记" : "此刻我在"}>
-      <div className="sheet-handle" /><div className="sheet-head"><h3>{sheet === "status" ? "状态灯" : sheet === "note" ? "随手记" : "此刻我在"}</h3><button onClick={() => setSheet(null)} aria-label="关闭">×</button></div>
+    <div className={`sheet ${sheet ? "open" : ""}`} role="dialog" aria-modal="true" aria-label={sheet === "status" ? "状态灯" : sheet === "note" ? "随手记" : sheet === "task" ? "今日任务" : sheet === "apps" ? "App 抽屉" : "此刻我在"}>
+      <div className="sheet-handle" /><div className="sheet-head"><h3>{sheet === "status" ? "状态灯" : sheet === "note" ? "随手记" : sheet === "task" ? (editingTask ? "改这件事" : "加一件事") : sheet === "apps" ? "想去哪里" : "此刻我在"}</h3><button onClick={() => setSheet(null)} aria-label="关闭">×</button></div>
       {sheet === "status" && <StatusEditor close={() => setSheet(null)} update={update} send={send} notify={notify} savedText={savedText} />}
       {sheet === "note" && <NoteEditor close={() => setSheet(null)} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
       {sheet === "life" && <LifeEditor activeLife={state.activeLife} close={() => setSheet(null)} update={update} send={send} notify={notify} savedText={savedText} />}
+      {sheet === "task" && <TaskEditor task={editingTask} date={keyDate(now ?? new Date())} close={() => setSheet(null)} mutateTask={mutateDailyTask} notify={notify} />}
+      {sheet === "apps" && <AppDrawerSheet snapshot={appHub} launchApp={launchHubApp} setPinned={updateAppPin} movePinned={moveAppPin} openBanduread={openBanduread} />}
     </div>
     <div className={`toast ${toast ? "show" : ""}`}>{toast}</div>
   </div>;
@@ -387,19 +523,159 @@ function bannerText(b: Banner) {
 }
 const syncLabel = (sync?: Sync) => (sync === "synced" ? "已同步" : "本地 · 待同步");
 
-function HomePage({ dateLabel, greeting, homePortrait, openSheet, setTab, banner }: { dateLabel: string; greeting: string; homePortrait: string; openSheet: (s: "status" | "note" | "life") => void; setTab: (t: Tab) => void; banner: Banner }) {
+function HomePage({
+  dateLabel, timeText, voice, homePortrait, plan, study, nowMs, unlockHello, appHub, launchApp, openBanduread, openApps, openStudy, openSheet, openTask, mutateTask, setTab, banner,
+}: {
+  dateLabel: string;
+  timeText: string;
+  voice: ReturnType<typeof selectVoiceCard>;
+  homePortrait: string;
+  plan: DailyPlan;
+  study: StudySummary;
+  nowMs: number;
+  unlockHello: boolean;
+  appHub: AppHubSnapshot;
+  launchApp: (item: AppHubItem) => void;
+  openBanduread: () => void;
+  openApps: () => void;
+  openStudy: () => void;
+  openSheet: (s: "status" | "note" | "life") => void;
+  openTask: (task?: DailyTask | null) => void;
+  mutateTask: (action: string, task: Partial<DailyTask> & { task_id?: string }) => void;
+  setTab: (t: Tab) => void;
+  banner: Banner;
+}) {
   const b = bannerText(banner);
-  return <section className="page active"><div className="brand-block"><div className="cn">世界之间</div><div className="en">Between Worlds</div></div>
-    <article className="hero"><img src={homePortrait} alt="纪临洲" /><div className="hero-fade" /><div className="hero-copy"><div className="micro">{dateLabel}</div><h2>{greeting}</h2><p>今天也来得正好。<br />我把所有温柔都留给你。</p><em>For you, in all worlds.</em></div></article>
+  const sections = planSections(plan);
+  const homeApps = appHubHomeItems(appHub, 3);
+  const studyLive = liveStudyTotals(study, nowMs);
+  const studyCurrent = study.current;
+  const studyStatus = study.active
+    ? study.paused ? "这一轮暂停着" : "正在学，别散"
+    : study.completed_sessions ? "今天已经开过工" : "今天还没开始";
+  const studyDetail = studyCurrent
+    ? `${studyDeviceLabel(studyCurrent.device_id)} · ${studyCurrent.module || studyCurrent.subject || "学习 Session"}`
+    : `今天完成 ${study.completed_sessions} 轮`;
+  const current = plan.tasks.find((task) => task.task_id === plan.current_task_id) ?? null;
+  const statusLabel: Record<DailyTask["status"], string> = {
+    todo: "待开始", in_progress: "进行中", done: "完成", postponed: "已延期", incomplete: "未完成",
+  };
+  const renderTask = (task: DailyTask) => <div className="daily-task-row" key={task.task_id}>
+    <button className={`task-check ${task.status === "done" ? "done" : ""}`} aria-label={task.status === "done" ? "重新打开任务" : "完成任务"} onClick={() => mutateTask(task.status === "done" ? "reopen" : "complete", { task_id: task.task_id })}>{task.status === "done" ? "✓" : ""}</button>
+    <button className="task-body" onClick={() => openTask(task)}>
+      <span className="task-title-line"><b>{task.title}</b>{task.user_pinned && <i>PIN</i>}{task.must_do && <i>MUST</i>}</span>
+      <small>{task.category} · {statusLabel[task.status]}{task.estimated_minutes ? ` · 约 ${task.estimated_minutes} 分钟` : ""}</small>
+      {task.next_action && <em>{task.next_action}</em>}
+    </button>
+  </div>;
+
+  return <section className="page active">
+    <div className="brand-block"><div className="cn">世界之间</div><div className="en">Between Worlds</div></div>
+    <article className="hero"><img src={homePortrait} alt="纪临洲" /><div className="hero-fade" /><div className="hero-copy"><div className="micro">{dateLabel}</div><div className="hero-clock">{timeText}</div><div className="hero-context">{voice.contextLabel}</div><h2>{voice.headline}</h2><p>{voice.body}</p><em>For you, in all worlds.</em></div></article>
     <div className="runtime-banner"><div><b>{b.title}</b><span>{b.sub}</span></div><span className="badge">{b.badge}</span></div>
+
+    <SectionHead title="先从这里走" english="APP HUB" />
+    <div className="app-hub-card glass">
+      <div className="app-hub-copy"><span>{unlockHello ? "UNLOCKED · 先看我一眼" : "START HERE · 少一点乱跑"}</span><b>{unlockHello ? "解锁了。先决定你现在要去哪。" : "学习放前面，其他的都还在。"}</b><small>{appHub.native ? "这些入口只读取本机应用列表，不会把你的 App 清单上传给 Runtime。" : "在 Android 版「世界之间」里，这里会显示你真正安装的应用。"}</small></div>
+      <div className="app-hub-grid">
+        <button className="hub-tile study" onClick={openBanduread}><span className="hub-mark">伴</span><b>伴读</b><small>刷题 / 复盘</small></button>
+        {homeApps.map((item) => <button className={`hub-tile ${item.category === "学习" ? "study" : ""}`} key={item.package_name} onClick={() => launchApp(item)}><span className="hub-mark">{item.label.slice(0, 1)}</span><b>{item.label}</b><small>{item.category}</small></button>)}
+        <button className="hub-tile more" onClick={openApps}><span className="hub-mark">＋</span><b>全部</b><small>App 抽屉</small></button>
+      </div>
+    </div>
+
+    <SectionHead title="今天听我的" english="DAILY PLAN" />
+    <div className="daily-plan glass">
+      <div className="daily-plan-top">
+        <div><span>TODAY · {plan.date}</span><b>{plan.tasks.length ? `${plan.tasks.filter((task) => task.status === "done").length} / ${plan.tasks.length} 已完成` : "今天还没排任务"}</b></div>
+        <button onClick={() => openTask(null)}>＋</button>
+      </div>
+      {plan.current_step ? <div className="current-step">
+        <span>NOW · 当前第一步</span>
+        <strong>{plan.current_step.next_action}</strong>
+        <small>{plan.current_step.title}{plan.current_step.estimated_minutes ? ` · 约 ${plan.current_step.estimated_minutes} 分钟` : ""}</small>
+        <div className="current-step-actions">
+          {current?.status === "in_progress"
+            ? <button onClick={() => mutateTask("complete", { task_id: current.task_id })}>做完了</button>
+            : current && <button onClick={() => mutateTask("start", { task_id: current.task_id })}>现在开始</button>}
+          {current && <button className="secondary-mini" onClick={() => openTask(current)}>调整</button>}
+        </div>
+      </div> : <button className="empty-plan" onClick={() => openTask(null)}><b>给今天放第一件事。</b><small>别在脑子里堆着。写下来，我替你排顺序。</small></button>}
+      {!!sections.main.length && <div className="daily-main-list">{sections.main.map(renderTask)}</div>}
+      {!!sections.other.length && <details className="task-fold"><summary>另外 {sections.other.length} 件 · 展开</summary>{sections.other.map(renderTask)}</details>}
+      {!!sections.completed.length && <details className="task-fold completed"><summary>已完成 {sections.completed.length} 件</summary>{sections.completed.map(renderTask)}</details>}
+      {!!sections.postponed.length && <details className="task-fold"><summary>已延期 {sections.postponed.length} 件</summary>{sections.postponed.map(renderTask)}</details>}
+    </div>
+
+    <SectionHead title="陪你学一会儿" english="STUDY SESSION" />
+    <div className={`study-session-card glass ${study.active ? "active" : ""} ${study.paused ? "paused" : ""}`}>
+      <div className="study-card-orbit" aria-hidden="true"><span /><i /></div>
+      <div className="study-card-head">
+        <div><span>FOCUS · TODAY</span><b>{studyStatus}</b></div>
+        <span className="study-live-pill">{study.active ? study.paused ? "PAUSED" : "LIVE" : "READY"}</span>
+      </div>
+      <div className="study-clock-block">
+        <small>今日累计</small>
+        <strong>{formatStudyClock(studyLive.todayMs)}</strong>
+        <em>{formatStudyMinutes(studyLive.todayMs)} · {study.completed_sessions} 轮完成</em>
+      </div>
+      <div className="study-session-strip">
+        <div><span>本轮</span><b>{formatStudyClock(studyLive.currentMs)}</b></div>
+        <div><span>状态</span><b>{studyDetail}</b></div>
+        <div><span>伴读</span><b>{studyCurrent?.answered_count ? `${studyCurrent.answered_count} 题 · 对 ${studyCurrent.correct_count}` : "等你开题"}</b></div>
+      </div>
+      <div className="study-card-actions">
+        <button className="study-primary" onClick={openStudy}>{study.active ? study.paused ? "去继续这一轮" : "回到学习计时" : "开始一轮学习"}</button>
+        <span>开始、暂停、继续和结束都由原生计时保存。离开这个页面也不会丢。</span>
+      </div>
+    </div>
+
     <SectionHead title="今日的私藏信笺" english="JUST FOR TODAY" /><div className="action-grid"><button className="action-card" onClick={() => openSheet("status")}><span className="ico">♡</span><b>状态灯</b><small>把这一刻的你告诉我</small></button><button className="action-card rose" onClick={() => openSheet("note")}><span className="ico">✎</span><b>随手记</b><small>写一封小小的信</small></button><button className="action-card wide" onClick={() => openSheet("life")}><span className="ico">◌</span><b>此刻我在</b><small>把小猫现在在做什么告诉我</small></button></div>
     <SectionHead title="我们的房间" english="THE ROOMS" /><div className="room-grid"><button className="room-card" onClick={() => setTab("timeline")}><span>01 / OUR STORY</span><b>你我之间</b><small>拾起每一页日常</small></button><button className="room-card" onClick={() => setTab("echo")}><span>02 / YOUR VOICE</span><b>回响</b><small>写给彼此的悄悄话</small></button><button className="room-card full" onClick={() => setTab("calendar")}><span>03 / TIME & MEMORY</span><b>共历</b><small>把平凡日子收藏起来</small></button></div>
   </section>;
 }
+function AppDrawerSheet({
+  snapshot, launchApp, setPinned, movePinned, openBanduread,
+}: {
+  snapshot: AppHubSnapshot;
+  launchApp: (item: AppHubItem) => void;
+  setPinned: (item: AppHubItem, pinned: boolean) => void;
+  movePinned: (item: AppHubItem, direction: number) => void;
+  openBanduread: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const normalized = query.trim().toLowerCase();
+  const filtered: AppHubSnapshot = normalized ? {
+    ...snapshot,
+    apps: snapshot.apps.filter((item) =>
+      item.label.toLowerCase().includes(normalized) ||
+      item.package_name.toLowerCase().includes(normalized) ||
+      item.category.toLowerCase().includes(normalized)),
+  } : snapshot;
+  const groups = appHubCategories(filtered);
+  return <div className="app-drawer">
+    <p className="sheet-desc">伴读永远放在最前面。其他 App 你可以固定到首页、调整顺序；娱乐和购物仍然能打开，只是不替它们抢第一眼。</p>
+    <button className="drawer-banduread" onClick={openBanduread}><span className="drawer-icon">伴</span><span><b>伴读</b><small>固定学习入口 · 网页</small></span><i>打开 ↗</i></button>
+    <div className="app-search"><span>⌕</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="找一个 App" /></div>
+    {!snapshot.native && <div className="preview-tip">当前不是 Android WebShell，所以读不到本机 App。打开「世界之间」APK 后这里会自动出现完整抽屉。</div>}
+    {groups.map(([category, items]) => <section className="drawer-group" key={category}>
+      <div className="drawer-group-head"><b>{category}</b><span>{items.length}</span></div>
+      {items.map((item) => <div className={`drawer-app ${item.pinned ? "pinned" : ""}`} key={item.package_name}>
+        <button className="drawer-open" onClick={() => launchApp(item)}><span className="drawer-icon">{item.label.slice(0, 1)}</span><span><b>{item.label}</b><small>{item.pinned ? "首页入口" : item.package_name}</small></span></button>
+        <div className="drawer-controls">
+          {item.pinned && <><button aria-label="前移" onClick={() => movePinned(item, -1)}>↑</button><button aria-label="后移" onClick={() => movePinned(item, 1)}>↓</button></>}
+          <button className={item.pinned ? "pin-on" : ""} onClick={() => setPinned(item, !item.pinned)}>{item.pinned ? "已固定" : "＋首页"}</button>
+        </div>
+      </div>)}
+    </section>)}
+    {snapshot.native && !groups.length && <div className="preview-tip">没有找到匹配的 App。</div>}
+  </div>;
+}
+
 function SectionHead({ title, english }: { title: string; english: string }) { return <div className="section-head"><b>{title}</b><span>{english}</span></div>; }
 function PageHead({ kicker, title, en, copy }: { kicker: string; title: string; en: string; copy: string }) { return <div className="page-head"><div><span>{kicker}</span><h2>{title} <em>{en}</em></h2><p>{copy}</p></div></div>; }
 
-function EchoPage({ state, conn, update, send, notify, homePortrait }: { state: AppState; conn: Conn; update: (fn: (s: AppState) => AppState) => void; send: Send; notify: (s: string) => void; homePortrait: string }) {
+function EchoPage({ state, conn, update, send, notify, chatAvatar }: { state: AppState; conn: Conn; update: (fn: (s: AppState) => AppState) => void; send: Send; notify: (s: string) => void; chatAvatar: string }) {
   const [text, setText] = useState("");
   const submit = () => { const value = text.trim(); if (!value) return; const id = newEventId(); update((s) => ({ ...s, messages: [...s.messages, { text: value, at: new Date().toISOString(), event_id: id, sync: "queued" as Sync }].slice(-80) })); send("/api/web/message", { text: value }, id); setText(""); if (conn !== "online") notify("已存本机，连接后自动发送"); };
   const remoteIds = new Set(state.remoteMessages.map((m) => m.id));
@@ -407,8 +683,21 @@ function EchoPage({ state, conn, update, send, notify, homePortrait }: { state: 
     ...state.remoteMessages.map((m) => ({ key: m.id, text: m.text, at: m.at, me: !m.fromCompanion, label: "Runtime" })),
     ...state.messages.filter((m) => !m.event_id || !remoteIds.has(m.event_id)).map((m, i) => ({ key: m.event_id ?? `${m.at}-${i}`, text: m.text, at: m.at, me: true, label: m.sync === "synced" ? "已发送" : "本地 · 待发送" })),
   ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-  return <section className="page active"><PageHead kicker="YOUR PRIVATE CONVERSATION" title="回响" en="Echo" copy="给你的回声，永远写在纸的另一面" /><div className="echo-person glass"><img src={homePortrait} alt="纪临洲" /><span><b>纪临洲</b><small>{conn === "online" ? "已连接 · 消息实时同步" : conn === "syncing" ? "正在同步……" : "未连接 · 消息先存本机"}</small></span></div>{conn !== "online" && <div className="preview-tip">现在还没连上 Runtime。你写下的话会先排队保存在此浏览器，连上后自动送达。</div>}<div className="message-list">{list.length === 0 && <div className="message">音音，今天如果什么都不想做，就来坐一会儿。<time>纪临洲</time></div>}{list.map((m) => <div className={`message ${m.me ? "me" : ""}`} key={m.key}>{m.text}<time>{new Date(m.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} · {m.label}</time></div>)}</div><div className="composer"><textarea maxLength={1200} placeholder="写点什么……" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }} /><button onClick={submit} aria-label="发送消息">↑</button></div></section>;
+  return <section className="page active">
+    <PageHead kicker="YOUR PRIVATE CONVERSATION" title="回响" en="Echo" copy="给你的回声，永远写在纸的另一面" />
+    <div className="echo-person glass"><img src={chatAvatar} alt="纪临洲" /><span><b>纪临洲</b><small>{conn === "online" ? "已连接 · 消息实时同步" : conn === "syncing" ? "正在同步……" : "未连接 · 消息先存本机"}</small></span></div>
+    {conn !== "online" && <div className="preview-tip">现在还没连上 Runtime。你写下的话会先排队保存在此浏览器，连上后自动送达。</div>}
+    <div className="message-list">
+      {list.length === 0 && <div className="message-row companion"><img className="message-avatar" src={chatAvatar} alt="" /><div className="message">音音，今天如果什么都不想做，就来坐一会儿。<time>纪临洲</time></div></div>}
+      {list.map((m) => <div className={`message-row ${m.me ? "me" : "companion"}`} key={m.key}>
+        {!m.me && <img className="message-avatar" src={chatAvatar} alt="" />}
+        <div className={`message ${m.me ? "me" : ""}`}>{m.text}<time>{new Date(m.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} · {m.label}</time></div>
+      </div>)}
+    </div>
+    <div className="composer"><textarea maxLength={1200} placeholder="写点什么……" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }} /><button onClick={submit} aria-label="发送消息">↑</button></div>
+  </section>;
 }
+
 function TimelinePage({ notes, remote }: { notes: RecordItem[]; remote: RemoteRecord[] }) {
   const remoteIds = new Set(remote.map((r) => r.id));
   const items = [
@@ -567,6 +856,66 @@ function MorePage({ state, update, setWelcome, banner, reconnect }: { state: App
    <button className="setting-button danger" onClick={()=>{if(window.confirm("确定清空这个浏览器里的本地记录和钥匙吗？未同步的记录会丢失。")){localStorage.removeItem(STORE);window.location.reload()}}}>清空本地数据 <span>›</span></button>
  </section>;
 }
+function TaskEditor({
+ task, date, close, mutateTask, notify,
+}: {
+ task: DailyTask | null;
+ date: string;
+ close: () => void;
+ mutateTask: (action: string, task: Partial<DailyTask> & { task_id?: string }) => void;
+ notify: (s: string) => void;
+}) {
+ const [title, setTitle] = useState(task?.title ?? "");
+ const [category, setCategory] = useState(task?.category ?? "考试/学习");
+ const [priority, setPriority] = useState<DailyTask["priority"]>(task?.priority ?? "normal");
+ const [nextAction, setNextAction] = useState(task?.next_action ?? "");
+ const [minutes, setMinutes] = useState(task?.estimated_minutes ? String(task.estimated_minutes) : "");
+ const [dueTime, setDueTime] = useState(() => {
+   const raw = task?.due_at ?? "";
+   const match = raw.match(/T(\d{2}:\d{2})/);
+   return match?.[1] ?? "";
+ });
+ const [pinned, setPinned] = useState(!!task?.user_pinned);
+ const save = () => {
+   const value = title.trim();
+   if (!value) { notify("先写清楚这件事是什么。"); return; }
+   const parsedMinutes = Math.max(0, Math.min(1440, Number(minutes) || 0));
+   mutateTask("upsert", {
+     task_id: task?.task_id || newEventId(),
+     title: value,
+     category,
+     priority,
+     status: task?.status ?? "todo",
+     must_do: pinned,
+     user_pinned: pinned,
+     owner: task?.owner ?? "user",
+     estimated_minutes: parsedMinutes,
+     due_at: dueTime ? `${date}T${dueTime}:00` : "",
+     next_action: nextAction.trim(),
+     source: task?.source || "world_between_web",
+     sort_order: task?.sort_order ?? 100,
+   });
+   close();
+   notify(task ? "任务已经改好。" : "今天多了一件事。");
+ };
+ return <>
+   <p className="sheet-desc">把任务写清楚。首页只替你保留最重要的三件，其他的会折起来，不准把一天铺成满墙待办。</p>
+   <div className="field"><label>这件事是什么</label><input maxLength={180} placeholder="例如：图推专项复盘 3 题" value={title} onChange={e=>setTitle(e.target.value)} /></div>
+   <div className="field"><label>下一步具体做什么</label><input maxLength={240} placeholder="例如：先打开伴读，复盘第 1 题错因" value={nextAction} onChange={e=>setNextAction(e.target.value)} /></div>
+   <div className="task-editor-grid">
+     <div className="field"><label>分类</label><select value={category} onChange={e=>setCategory(e.target.value)}>{TASK_CATEGORIES.map(item=><option value={item} key={item}>{item}</option>)}</select></div>
+     <div className="field"><label>优先级</label><select value={priority} onChange={e=>setPriority(e.target.value as DailyTask["priority"])}><option value="high">高</option><option value="normal">普通</option><option value="low">低</option></select></div>
+     <div className="field"><label>预计分钟</label><input type="number" min="0" max="1440" inputMode="numeric" value={minutes} onChange={e=>setMinutes(e.target.value)} /></div>
+     <div className="field"><label>希望几点前</label><input type="time" value={dueTime} onChange={e=>setDueTime(e.target.value)} /></div>
+   </div>
+   <label className="task-pin-toggle"><input type="checkbox" checked={pinned} onChange={e=>setPinned(e.target.checked)} /><span><b>今天必须做 · 固定</b><small>勾上以后，官端不能悄悄把它删掉。</small></span></label>
+   <div className="sheet-actions">
+     {task ? <button className="secondary task-delete" onClick={()=>{ if (window.confirm("把这件事从今天删掉？")) { mutateTask("delete", { task_id: task.task_id }); close(); notify("这件事已经删掉。"); } }}>删除</button> : <button className="secondary" onClick={close}>取消</button>}
+     <button className="primary" onClick={save}>{task ? "保存修改" : "放进今天"}</button>
+   </div>
+ </>;
+}
+
 function StatusEditor({ close, update, send, notify, savedText }: { close:()=>void; update:(fn:(s:AppState)=>AppState)=>void; send: Send; notify:(s:string)=>void; savedText:(w:string)=>string }) {
  const [enabled,setEnabled]=useState<Record<string,boolean>>({}); const [values,setValues]=useState<Record<string,number>>({}); const [picked,setPicked]=useState<Record<string,string[]>>({}); const [text,setText]=useState("");
  const toggleChip=(group:string,value:string)=>setPicked(p=>({...p,[group]:(p[group]||[]).includes(value)?(p[group]||[]).filter(x=>x!==value):[...(p[group]||[]),value]}));

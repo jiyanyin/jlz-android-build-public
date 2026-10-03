@@ -12,8 +12,6 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import dev.jlz.presence.MainActivity
 import dev.jlz.presence.overlay.FloatingPresenceService
-import dev.jlz.presence.runtime.RuntimeApiClient
-import dev.jlz.presence.runtime.RuntimeSettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,7 +20,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 
 /**
  * Delivery only: the persisted StudySessionRepository owns the real time/state.
@@ -69,16 +66,33 @@ class StudyTimerService : Service() {
                     val state = repo.state.first()
                     if (state.active) {
                         val event = when (action) {
-                            ACTION_PAUSE -> if (!state.paused) { repo.pause(); "pause" } else null
-                            ACTION_RESUME -> if (state.paused) { repo.resume(); "resume" } else null
+                            ACTION_PAUSE -> if (!state.paused) {
+                                repo.pause()
+                                Triple("pause", state.sessionId, org.json.JSONObject())
+                            } else null
+                            ACTION_RESUME -> if (state.paused) {
+                                repo.resume()
+                                Triple("resume", state.sessionId, org.json.JSONObject())
+                            } else null
                             ACTION_FINISH -> {
-                                repo.finish()
+                                val metrics = repo.finish()
                                 FloatingPresenceService.stopStudyIfActive(applicationContext)
-                                "finish"
+                                Triple(
+                                    "finish",
+                                    metrics.sessionId,
+                                    StudyRuntimeReporter.finishPayload(metrics)
+                                )
                             }
                             else -> null
                         }
-                        if (event != null) postStudyEvent(event)
+                        if (event != null) {
+                            StudyRuntimeReporter.post(
+                                applicationContext,
+                                event.first,
+                                event.second,
+                                event.third
+                            )
+                        }
                     }
                     val current = repo.state.first()
                     if (!current.active) {
@@ -106,19 +120,6 @@ class StudyTimerService : Service() {
             }
         }
         return START_STICKY
-    }
-
-    private fun postStudyEvent(action: String) {
-        scope.launch(Dispatchers.IO) {
-            runCatching {
-                val settings = RuntimeSettingsRepository(applicationContext).load()
-                if (settings.baseUrl.isNotBlank() && settings.token.isNotBlank()) {
-                    RuntimeApiClient(settings).postStudyEvent(
-                        action, JSONObject().put("source", "study_notification")
-                    )
-                }
-            }
-        }
     }
 
     private fun buildNotification(state: StudySessionState, now: Long): Notification {

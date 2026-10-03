@@ -9,16 +9,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Typeface
+import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.IconCompat
+import dev.jlz.presence.R
 import dev.jlz.presence.WebShellActivity
 import java.util.UUID
 
@@ -282,38 +280,27 @@ class NotificationAdapter(private val context: Context) {
     }
 
     private fun createAvatarBitmap(): Bitmap {
-        val size = 128
-        return Bitmap.createBitmap(
-            size,
-            size,
-            Bitmap.Config.ARGB_8888
-        ).also { bitmap ->
-            val canvas = Canvas(bitmap)
-            val background = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.rgb(23, 20, 27)
+        val source = BitmapFactory.decodeResource(
+            context.resources,
+            R.drawable.jlz_chat_avatar
+        ) ?: error("jlz_chat_avatar_decode_failed")
+        return if (source.width == AVATAR_SIZE && source.height == AVATAR_SIZE) {
+            source
+        } else {
+            Bitmap.createScaledBitmap(
+                source,
+                AVATAR_SIZE,
+                AVATAR_SIZE,
+                true
+            ).also {
+                if (it !== source) source.recycle()
             }
-            canvas.drawCircle(
-                size / 2f,
-                size / 2f,
-                size / 2f,
-                background
-            )
-
-            val letters = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.rgb(212, 176, 106)
-                textAlign = Paint.Align.CENTER
-                textSize = 38f
-                typeface = Typeface.DEFAULT_BOLD
-            }
-            val y =
-                size / 2f -
-                    (letters.descent() + letters.ascent()) / 2f
-            canvas.drawText("JLZ", size / 2f, y, letters)
         }
     }
 
     companion object {
         const val CHANNEL_ID = "jlz_presence_messages"
+        private const val AVATAR_SIZE = 128
         private val idLock = Any()
     }
 }

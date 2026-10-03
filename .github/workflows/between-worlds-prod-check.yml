@@ -1,0 +1,36 @@
+name: Between Worlds Prod Check
+
+on:
+  pull_request:
+    paths:
+      - "between-worlds-prod/**"
+      - ".github/workflows/between-worlds-prod-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: between-worlds-prod
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Voice engine contract tests
+        run: node --experimental-strip-types --test tests/voiceEngine.test.ts
+      - name: DailyPlan client tests
+        run: node --experimental-strip-types --test tests/dailyPlan.test.ts
+      - name: Study Session client tests
+        run: node --experimental-strip-types --test tests/studySession.test.ts
+      - name: App Hub client tests
+        run: node --experimental-strip-types --test tests/appHub.test.ts
+      - name: Typecheck and build
+        run: npm run build

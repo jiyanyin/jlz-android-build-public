@@ -11,6 +11,9 @@ import dev.jlz.presence.ui.PresenceApp
 import dev.jlz.presence.ui.theme.IceCrystalTheme
 
 class MainActivity : ComponentActivity() {
+    fun shouldReturnToWebShell(): Boolean =
+        intent?.getBooleanExtra(EXTRA_RETURN_TO_WEB_SHELL, false) == true
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleIntent(intent)
@@ -60,5 +63,6 @@ class MainActivity : ComponentActivity() {
         const val DESTINATION_QUICK_CAPTURE = "quick_capture"
         const val DESTINATION_PERMISSIONS = "permissions"
         const val DESTINATION_CHAT = "chat"
+        const val EXTRA_RETURN_TO_WEB_SHELL = "return_to_web_shell"
     }
 }

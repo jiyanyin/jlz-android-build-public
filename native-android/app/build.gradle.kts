@@ -12,9 +12,9 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026100304
-        versionName = "0.4.0-webshell.4"
-        // slim.3 settings hotfix build anchor
+        versionCode = 2026100308
+        versionName = "0.4.0-webshell.8"
+        // Stage G HyperOS gate RC2 build anchor
     }
 
     buildTypes {

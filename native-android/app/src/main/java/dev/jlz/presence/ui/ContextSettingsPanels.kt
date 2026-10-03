@@ -45,6 +45,11 @@ import dev.jlz.presence.overlay.QAvatarScale
 import dev.jlz.presence.place.PlaceWeatherCoordinator
 import dev.jlz.presence.place.PlaceAnchorRepository
 import dev.jlz.presence.security.LocalUnlockSecretStore
+import dev.jlz.presence.unlock.UnlockSoftGatePreferences
+import dev.jlz.presence.focus.EntertainmentGateRepository
+import dev.jlz.presence.focus.EntertainmentGateV2Policy
+import dev.jlz.presence.focus.EntertainmentIntentChoice
+import dev.jlz.presence.focus.EntertainmentTier
 import dev.jlz.presence.runtime.NativePhoneSnapshot
 import dev.jlz.presence.runtime.NativeRuntimeService
 import dev.jlz.presence.runtime.RuntimeSettingsRepository
@@ -511,6 +516,146 @@ fun AutomaticCaptureSettingsPanel() {
                     if (coordinator.setEnabled(value)) enabled = value
                 })
             }
+        }
+    }
+}
+
+
+@Composable
+fun EntertainmentGateSettingsPanel() {
+    val context = LocalContext.current
+    val repo = remember { EntertainmentGateRepository(context.applicationContext) }
+    var enabled by remember { mutableStateOf(repo.enabled()) }
+    val isTablet = remember {
+        context.resources.configuration.smallestScreenWidthDp >= 600
+    }
+    val feedPurpose = remember(isTablet) {
+        EntertainmentGateV2Policy.releasePlan(
+            isTablet,
+            EntertainmentTier.FEED,
+            EntertainmentIntentChoice.PURPOSE
+        ).minutes
+    }
+    val feedBreak = remember(isTablet) {
+        EntertainmentGateV2Policy.releasePlan(
+            isTablet,
+            EntertainmentTier.FEED,
+            EntertainmentIntentChoice.BREAK
+        ).minutes
+    }
+    val direct = remember(isTablet) {
+        EntertainmentGateV2Policy.releasePlan(
+            isTablet,
+            EntertainmentTier.FEED,
+            EntertainmentIntentChoice.DIRECT
+        ).minutes
+    }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("娱乐来电门禁", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "打开小红书、抖音、淘宝、拼多多等娱乐/购物 App 时，先出现一次「纪临洲来电」。接通后说明目的，再按这一轮的理由限时放行。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(if (enabled) "Gate V2 已开启" else "Gate V2 已暂停")
+                    Text(
+                        if (isTablet) "平板规则会比手机稍松。"
+                        else "手机按重灾区规则执行。",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = {
+                        repo.setEnabled(it)
+                        enabled = it
+                    }
+                )
+            }
+            Text(
+                "Feed：明确目的 ${feedPurpose} 分钟 · 休息 ${feedBreak} 分钟 · 直接进去 ${direct} 分钟",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                "「先做一小步」需要先累计 3 分钟有效学习；放行还剩 1 分钟时提醒，到点重新接一次电话。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                "这不是永久锁：你可以选择不进，也可以直接承认“我就是想进去”，只是会拿到更短的一轮。",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+}
+
+
+@Composable
+fun UnlockSoftGateSettingsPanel() {
+    val context = LocalContext.current
+    val prefs = remember { UnlockSoftGatePreferences(context.applicationContext) }
+    var enabled by remember { mutableStateOf(prefs.enabled()) }
+    var accessibilityReady by remember { mutableStateOf(prefs.accessibilityEnabled()) }
+    var note by remember { mutableStateOf("") }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("解锁后先看我", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "每次真正解锁后，只把「世界之间」带到前台一次。不是系统桌面，不循环拉回；你按返回或上滑回桌面就能直接离开。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(if (enabled) "软启动已开启" else "软启动已关闭")
+                    Text(
+                        if (accessibilityReady) "无障碍服务已就绪。"
+                        else "还需要开启「世界之间」无障碍服务，解锁事件才能稳定触发。",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = {
+                        prefs.setEnabled(it)
+                        enabled = it
+                        note = if (it) "下一次解锁开始生效。" else "已暂停解锁软启动。"
+                    }
+                )
+            }
+            if (!accessibilityReady) {
+                Button(onClick = {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }
+                }) { Text("打开无障碍设置") }
+            }
+            Button(onClick = {
+                accessibilityReady = prefs.accessibilityEnabled()
+                note = if (accessibilityReady) "无障碍已经连上。" else "暂时还没连上无障碍服务。"
+            }) { Text("重新检查") }
+            Text(
+                "电话、相机、紧急界面和闹钟会被安全跳过，不抢前台。",
+                style = MaterialTheme.typography.bodySmall
+            )
+            if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

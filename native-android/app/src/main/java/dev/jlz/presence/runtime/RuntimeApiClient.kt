@@ -219,7 +219,9 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         intentId: String? = null,
         notify: Boolean = false,
         messageId: String? = null,
-        createdAtMs: Long? = null
+        createdAtMs: Long? = null,
+        replyToTitle: String? = null,
+        replyToText: String? = null
     ): InboxMessage {
         val body = JSONObject()
             .put("device_id", settings.deviceId)
@@ -231,6 +233,8 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         createdAtMs?.let { body.put("created_at_ms", it) }
         eventId?.let { body.put("event_id", it) }
         intentId?.let { body.put("intent_id", it) }
+        replyToTitle?.let { body.put("reply_to_title", it.take(160)) }
+        replyToText?.let { body.put("reply_to_text", it.take(1200)) }
 
         val response = postJson("/api/inbox/message", body)
         // A HTTP response or a locally generated fallback ID is not a delivery receipt.

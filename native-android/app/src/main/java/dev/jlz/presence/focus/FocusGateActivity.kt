@@ -5,9 +5,8 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,8 +21,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import dev.jlz.presence.R
 import dev.jlz.presence.WebShellActivity
 import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.notification.NotificationReplyReceiver
@@ -59,12 +62,12 @@ class FocusGateActivity : ComponentActivity() {
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
-                        Box(
-                            Modifier.size(82.dp).background(Color(0xFF231F28), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("JLZ", color = Color(0xFFD4B06A))
-                        }
+                        Image(
+                            painter = painterResource(R.drawable.jlz_chat_avatar),
+                            contentDescription = "纪临洲",
+                            modifier = Modifier.size(82.dp).clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
 
                         Text(
                             "先不去 " + appLabel,

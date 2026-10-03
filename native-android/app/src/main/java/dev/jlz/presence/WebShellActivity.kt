@@ -13,6 +13,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import dev.jlz.presence.launcher.AppHubBridge
 
 class WebShellActivity : ComponentActivity() {
     private lateinit var webView: WebView
@@ -33,6 +34,7 @@ class WebShellActivity : ComponentActivity() {
             settings.allowFileAccess = false
             settings.allowContentAccess = false
             webChromeClient = WebChromeClient()
+            addJavascriptInterface(AppHubBridge(this@WebShellActivity), "WorldBetweenAppHub")
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(
                     view: WebView?,
@@ -101,6 +103,7 @@ class WebShellActivity : ComponentActivity() {
                 Intent(this, MainActivity::class.java)
                     .setAction(Intent.ACTION_VIEW)
                     .setData(uri)
+                    .putExtra(MainActivity.EXTRA_RETURN_TO_WEB_SHELL, true)
             )
             return true
         }

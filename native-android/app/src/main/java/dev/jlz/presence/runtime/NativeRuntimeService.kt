@@ -823,10 +823,19 @@ class NativeRuntimeService : Service() {
 
             "study_event" -> {
                 when (command.payload.optString("event")) {
-                    "start" -> studyRepository.start()
-                    "pause" -> studyRepository.pause()
-                    "resume" -> studyRepository.resume()
-                    "finish", "end" -> {
+                    "start", "study_start", "study_started" -> {
+                        studyRepository.start()
+                        dev.jlz.presence.study.StudyTimerService.sync(applicationContext)
+                    }
+                    "pause", "study_pause", "study_paused" -> {
+                        studyRepository.pause()
+                        dev.jlz.presence.study.StudyTimerService.sync(applicationContext)
+                    }
+                    "resume", "continue", "study_resume", "study_resumed" -> {
+                        studyRepository.resume()
+                        dev.jlz.presence.study.StudyTimerService.sync(applicationContext)
+                    }
+                    "finish", "end", "study_finish", "study_finished" -> {
                         studyRepository.finish()
                         FloatingPresenceService.stopStudyIfActive(applicationContext)
                         dev.jlz.presence.study.StudyTimerService.stop(applicationContext)

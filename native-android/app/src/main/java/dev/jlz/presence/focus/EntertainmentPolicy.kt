@@ -1,19 +1,11 @@
 package dev.jlz.presence.focus
 
 enum class EntertainmentTier { FEED, SHOPPING }
-enum class EntertainmentStage { ENTER, NUDGE, FIRM, LOCK }
 
 data class EntertainmentProfile(
     val packageName: String,
     val appName: String,
     val tier: EntertainmentTier
-)
-
-data class EntertainmentThresholds(
-    val nudgeMs: Long,
-    val firmMs: Long,
-    val lockMs: Long,
-    val lockMinutes: Int
 )
 
 object EntertainmentPolicy {
@@ -34,15 +26,9 @@ object EntertainmentPolicy {
     fun profile(packageName: String?): EntertainmentProfile? =
         packageName?.let(profiles::get)
 
-    fun thresholds(isTablet: Boolean, tier: EntertainmentTier): EntertainmentThresholds =
-        when {
-            !isTablet && tier == EntertainmentTier.FEED ->
-                EntertainmentThresholds(5 * 60_000L, 8 * 60_000L, 12 * 60_000L, 8)
-            !isTablet && tier == EntertainmentTier.SHOPPING ->
-                EntertainmentThresholds(7 * 60_000L, 12 * 60_000L, 18 * 60_000L, 5)
-            isTablet && tier == EntertainmentTier.FEED ->
-                EntertainmentThresholds(8 * 60_000L, 15 * 60_000L, 25 * 60_000L, 5)
-            else ->
-                EntertainmentThresholds(10 * 60_000L, 20 * 60_000L, 30 * 60_000L, 5)
-        }
+    fun profiles(): List<EntertainmentProfile> =
+        profiles.values.sortedWith(
+            compareBy<EntertainmentProfile> { it.tier.name }
+                .thenBy { it.appName }
+        )
 }
