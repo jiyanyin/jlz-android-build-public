@@ -25,6 +25,7 @@ test("normalizes Runtime DailyPlan payload", () => {
     },
   }, "2026-10-03");
   assert.equal(plan.tasks[0].task_id, "a");
+  assert.equal(plan.tasks[0].date, "2026-10-03");
   assert.equal(plan.current_step?.next_action, "先做第一题");
   assert.equal(plan.tasks[0].user_pinned, true);
 });
