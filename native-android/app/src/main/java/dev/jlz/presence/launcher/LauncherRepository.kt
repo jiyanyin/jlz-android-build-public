@@ -68,9 +68,11 @@ class LauncherRepository(private val context: Context) {
     fun setPinned(pkg: String, value: Boolean) {
         if (pkg.isBlank() || pkg == context.packageName) return
         val pinned = pinnedSet().toMutableSet()
+        val hidden = hiddenSet().toMutableSet()
         val order = pinnedPackagesInOrder().toMutableList()
         if (value) {
             pinned.add(pkg)
+            hidden.remove(pkg)
             if (pkg !in order) order.add(pkg)
         } else {
             pinned.remove(pkg)
@@ -78,6 +80,7 @@ class LauncherRepository(private val context: Context) {
         }
         prefs.edit()
             .putStringSet(KEY_PINNED, pinned)
+            .putStringSet(KEY_HIDDEN, hidden)
             .putString(KEY_PINNED_ORDER, order.filter { it in pinned }.joinToString(","))
             .apply()
     }
