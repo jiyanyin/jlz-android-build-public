@@ -32,6 +32,11 @@
         android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:usesCleartextTraffic="false">
         <meta-data android:name="asset_statements" android:resource="@string/asset_statements" />
         <activity android:name=".focus.FocusGateActivity" android:exported="false" android:excludeFromRecents="true" />
+        <activity
+            android:name=".focus.EntertainmentGateActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.JLZPresence" />
         <activity android:name=".callback.PresenceCallbackActivity" android:exported="false"
             android:excludeFromRecents="true" android:showWhenLocked="true" android:turnScreenOn="true" />
         <activity
