@@ -159,7 +159,14 @@ fun AppDrawerScreen() {
     val context = LocalContext.current
     val launcherRepo = remember { LauncherRepository(context) }
     var refresh by remember { mutableStateOf(0) }
-    val apps = remember(refresh) { launcherRepo.loadLaunchableApps() }
+    val apps = remember(refresh) {
+        launcherRepo.loadLaunchableApps().sortedWith(
+            compareByDescending<LauncherAppInfo> { it.pinned }
+                .thenBy { it.homeRank }
+                .thenBy { it.category }
+                .thenBy { it.label }
+        )
+    }
     var selected by remember { mutableStateOf<LauncherAppInfo?>(null) }
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -208,9 +215,19 @@ fun AppDrawerScreen() {
                     TextButton(onClick = {
                         launcherRepo.setPinned(app.packageName, !app.pinned); selected = null; refresh++
                     }) { Text(if (app.pinned) "取消首页固定" else "固定到首页") }
+                    if (app.pinned) {
+                        Row {
+                            TextButton(onClick = {
+                                launcherRepo.movePinned(app.packageName, -1); selected = null; refresh++
+                            }) { Text("向前") }
+                            TextButton(onClick = {
+                                launcherRepo.movePinned(app.packageName, 1); selected = null; refresh++
+                            }) { Text("向后") }
+                        }
+                    }
                     TextButton(onClick = {
                         launcherRepo.setHidden(app.packageName, !app.hidden); selected = null; refresh++
-                    }) { Text(if (app.hidden) "从首页恢复显示" else "从首页隐藏（如小红书）") }
+                    }) { Text(if (app.hidden) "从首页恢复显示" else "从首页隐藏") }
                 }
             },
             confirmButton = { TextButton(onClick = { selected = null }) { Text("关闭") } }
