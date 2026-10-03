@@ -26,6 +26,7 @@ class EntertainmentGateV2Coordinator(
     private val lastGateAtMs = mutableMapOf<String, Long>()
     private val scheduledSessionIds = mutableSetOf<String>()
     private val warningSessionIds = mutableSetOf<String>()
+    private val pendingGatePackages = mutableSetOf<String>()
     private val callbacks = mutableListOf<Runnable>()
 
     fun observe(
@@ -68,6 +69,7 @@ class EntertainmentGateV2Coordinator(
         callbacks.clear()
         scheduledSessionIds.clear()
         warningSessionIds.clear()
+        pendingGatePackages.clear()
     }
 
     private fun scheduleReleaseTimers(
@@ -136,14 +138,31 @@ class EntertainmentGateV2Coordinator(
     ) {
         val last = lastGateAtMs[profile.packageName] ?: 0L
         if (nowMs - last < EntertainmentGateV2Policy.GATE_COOLDOWN_MS) return
-        lastGateAtMs[profile.packageName] = nowMs
+        if (!pendingGatePackages.add(profile.packageName)) return
 
+        // HyperOS can finish the HOME transition after a synchronously-started
+        // Activity, effectively covering the gate with the launcher. Let HOME
+        // settle first, then launch directly from the bound AccessibilityService.
         service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
-        EntertainmentGateActivity.show(
-            app,
-            packageName = profile.packageName,
-            reason = reason,
-            isTablet = isTablet
+        val present = Runnable {
+            pendingGatePackages.remove(profile.packageName)
+            if (!repository.enabled()) return@Runnable
+            if (repository.activeRelease(profile.packageName) != null) return@Runnable
+
+            val launched = EntertainmentGateActivity.show(
+                service,
+                packageName = profile.packageName,
+                reason = reason,
+                isTablet = isTablet
+            )
+            if (launched) {
+                lastGateAtMs[profile.packageName] = System.currentTimeMillis()
+            }
+        }
+        callbacks += present
+        handler.postDelayed(
+            present,
+            EntertainmentGateV2Policy.GATE_PRESENT_DELAY_MS
         )
     }
 }
