@@ -8,6 +8,7 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.provider.Settings.Secure
 import androidx.core.content.ContextCompat
+import dev.jlz.presence.unlock.UnlockSoftGatePreferences
 
 data class PermissionItem(
     val key: String,
@@ -26,6 +27,20 @@ class PermissionDoctor(private val context: Context) {
         items += PermissionItem("accessibility", "\u65e0\u969c\u788d\u670d\u52a1", "\u773c\u775b",
             if (accEnabled) PermissionItem.Status.OK else PermissionItem.Status.MISSING,
             Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+
+        val softGateEnabled = UnlockSoftGatePreferences(context).enabled()
+        items += PermissionItem(
+            "unlock_soft_gate",
+            "解锁后先看我",
+            "软门禁",
+            when {
+                !softGateEnabled -> PermissionItem.Status.LIMITED
+                accEnabled -> PermissionItem.Status.OK
+                else -> PermissionItem.Status.MISSING
+            },
+            Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
 
         val nlEnabled = run {
             val flat = Secure.getString(context.contentResolver, "enabled_notification_listeners") ?: ""
@@ -78,7 +93,6 @@ class PermissionDoctor(private val context: Context) {
         items += PermissionItem("location", "\u4f4d\u7f6e\u4fe1\u606f", "\u540c\u884c",
             if (locFine) PermissionItem.Status.OK else PermissionItem.Status.MISSING)
 
-        items += PermissionItem("home_role", "\u9ed8\u8ba4\u684c\u9762", "\u684c\u9762", PermissionItem.Status.NOT_APPLICABLE)
         return items
     }
 }
