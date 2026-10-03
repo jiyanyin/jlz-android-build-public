@@ -92,6 +92,9 @@ export default function BetweenWorlds() {
   useEffect(() => {
     try {
       const current = { ...defaults, ...JSON.parse(localStorage.getItem(STORE) || "{}") } as AppState;
+      // Study state is a live Runtime reflection. Never revive a stale active
+      // timer from yesterday's localStorage snapshot before Runtime confirms it.
+      current.studySummary = null;
       if (!localStorage.getItem(CLEANUP_MARKER)) {
         const cleaned: AppState = {
           ...defaults,
