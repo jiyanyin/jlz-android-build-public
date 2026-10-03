@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_RUNTIME_URL, extractMessages, extractRecords, newEventId, runtime, RuntimeError, type OutboxItem, type RemoteMessage, type RemoteRecord, type RuntimeConfig, type WritePath } from "./lib/runtime";
 import { EMPTY_VOICE_MEMORY, formatVoiceClock, formatVoiceDate, selectVoiceCard, type VoiceMemory, type VoiceStatus } from "./lib/voiceEngine";
 import { emptyDailyPlan, optimisticTaskMutation, planSections, TASK_CATEGORIES, type DailyPlan, type DailyTask } from "./lib/dailyPlan";
+import { emptyStudySummary, formatStudyClock, formatStudyMinutes, liveStudyTotals, studyDeviceLabel, type StudySummary } from "./lib/studySession";
 
 type Theme = "mist" | "gothic";
 type Tab = "home" | "echo" | "timeline" | "calendar" | "more";
@@ -10,7 +11,7 @@ type RecordItem = { id: number | string; type: string; at: string; body: string;
 type Message = { text: string; at: string; event_id?: string; sync?: Sync };
 type ActiveLife = { action: string; session: string; startAt: number } | null;
 type AppState = { theme: Theme; notes: RecordItem[]; messages: Message[]; status: RecordItem | null; life: RecordItem[]; journal: RecordItem[]; activeLife: ActiveLife;
-  runtimeUrl: string; webToken: string; outbox: OutboxItem[]; remoteRecords: RemoteRecord[]; remoteMessages: RemoteMessage[]; seenCompanion: string[]; voiceMemory: VoiceMemory; dailyPlan: DailyPlan | null };
+  runtimeUrl: string; webToken: string; outbox: OutboxItem[]; remoteRecords: RemoteRecord[]; remoteMessages: RemoteMessage[]; seenCompanion: string[]; voiceMemory: VoiceMemory; dailyPlan: DailyPlan | null; studySummary: StudySummary | null };
 type Conn = "local" | "syncing" | "online";
 type Send = (path: WritePath, body: Record<string, unknown>, eventId?: string) => string;
 type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
@@ -43,7 +44,7 @@ const INSTALL_GUIDE_DISMISSED = "world-between-install-guide-dismissed-v1";
 const ANDROID_SHELL = new URLSearchParams(window.location.search).get("shell") === "android";
 const OUTBOX_CAP = 300;
 const defaults: AppState = { theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
-  runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [], voiceMemory: EMPTY_VOICE_MEMORY, dailyPlan: null };
+  runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [], voiceMemory: EMPTY_VOICE_MEMORY, dailyPlan: null, studySummary: null };
 const markSynced = (s: AppState, id: string): AppState => {
   const fix = <T extends { event_id?: string; sync?: Sync }>(arr: T[]) => arr.map((x) => (x.event_id === id ? { ...x, sync: "synced" as Sync } : x));
   return { ...s, notes: fix(s.notes), life: fix(s.life), journal: fix(s.journal), messages: fix(s.messages), status: s.status && s.status.event_id === id ? { ...s.status, sync: "synced" } : s.status };
@@ -206,6 +207,13 @@ export default function BetweenWorlds() {
     update((s) => ({ ...s, dailyPlan: plan }));
   }, [update]);
 
+  const pullStudySummary = useCallback(async (date = keyDate(new Date())) => {
+    const c = cfg();
+    if (!c) return;
+    const studySummary = await runtime.studySummary(c, date);
+    update((s) => ({ ...s, studySummary }));
+  }, [update]);
+
   const connect = useCallback(async () => {
     const c = cfg();
     if (!c) { setConn("local"); setLastError(""); return; }
@@ -217,6 +225,7 @@ export default function BetweenWorlds() {
       update((s) => ({ ...s, remoteRecords: extractRecords(st).slice(0, 300) }));
       await pullMessages();
       await pullDailyPlan();
+      await pullStudySummary();
       setConn("online");
       setLastError("");
     } catch (e) {
@@ -224,7 +233,7 @@ export default function BetweenWorlds() {
       const status = e instanceof RuntimeError ? e.status : 0;
       setLastError(status === 401 || status === 403 ? "钥匙不正确或已失效" : status ? `Runtime 返回 ${status}` : "暂时连不上 Runtime");
     }
-  }, [flush, pullMessages, pullDailyPlan, update]);
+  }, [flush, pullMessages, pullDailyPlan, pullStudySummary, update]);
 
   const presence = useCallback(async (stateName: string) => {
     const c = cfg();
@@ -308,9 +317,9 @@ export default function BetweenWorlds() {
   useEffect(() => {
     if (!loaded) return;
     const onOnline = () => void connect();
-    const onFocus = () => { presence("foreground"); if (conn === "local") void connect(); else void pullDailyPlan(); };
+    const onFocus = () => { presence("foreground"); if (conn === "local") void connect(); else { void pullDailyPlan(); void pullStudySummary(); } };
     const onBlur = () => presence("background");
-    const onVis = () => { presence(document.visibilityState === "visible" ? "foreground" : "background"); if (document.visibilityState === "visible") { if (conn === "local") void connect(); else void pullDailyPlan(); } };
+    const onVis = () => { presence(document.visibilityState === "visible" ? "foreground" : "background"); if (document.visibilityState === "visible") { if (conn === "local") void connect(); else { void pullDailyPlan(); void pullStudySummary(); } } };
     window.addEventListener("online", onOnline);
     window.addEventListener("focus", onFocus);
     window.addEventListener("blur", onBlur);
@@ -319,10 +328,10 @@ export default function BetweenWorlds() {
       if (document.visibilityState !== "visible") return;
       presence("foreground");
       if (conn === "local" && cfg()) void connect();
-      else if (conn === "online") void pullDailyPlan();
+      else if (conn === "online") { void pullDailyPlan(); void pullStudySummary(); }
     }, 60000);
     return () => { window.removeEventListener("online", onOnline); window.removeEventListener("focus", onFocus); window.removeEventListener("blur", onBlur); document.removeEventListener("visibilitychange", onVis); window.clearInterval(beat); };
-  }, [loaded, conn, connect, presence, pullDailyPlan]);
+  }, [loaded, conn, connect, presence, pullDailyPlan, pullStudySummary]);
   // Poll messages while the page is visible (faster on Echo).
   useEffect(() => {
     if (conn !== "online") return;
@@ -331,6 +340,14 @@ export default function BetweenWorlds() {
     }, tab === "echo" ? 8000 : 25000);
     return () => window.clearInterval(id);
   }, [conn, tab, pullMessages]);
+
+  useEffect(() => {
+    if (conn !== "online" || !state.studySummary?.active) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") pullStudySummary().catch(() => setConn("local"));
+    }, 15000);
+    return () => window.clearInterval(id);
+  }, [conn, state.studySummary?.active, pullStudySummary]);
 
   const savedText = (what: string) => (conn === "online" ? `${what}已同步给纪临洲` : `${what}已存本机，连接后自动同步`);
 
@@ -356,6 +373,14 @@ export default function BetweenWorlds() {
     for (const bucket of buckets) next[bucket] = [rec, ...s[bucket]].slice(0, 120);
     return next;
   });
+
+  const openNativeStudy = () => {
+    if (ANDROID_SHELL) {
+      window.location.href = "jlz://native/study";
+      return;
+    }
+    notify("学习计时控制在「世界之间」Android App 里。");
+  };
 
   const configured = !!state.webToken.trim();
   const banner = { conn, configured, pending: state.outbox.length, lastError };
@@ -406,7 +431,7 @@ export default function BetweenWorlds() {
 
     <main className="app-shell">
       <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}>✦ 换装</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
-      {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} voice={voiceCard} homePortrait={homePortrait} plan={state.dailyPlan?.date === keyDate(now ?? new Date()) ? state.dailyPlan : emptyDailyPlan(keyDate(now ?? new Date()))} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
+      {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} voice={voiceCard} homePortrait={homePortrait} plan={state.dailyPlan?.date === keyDate(now ?? new Date()) ? state.dailyPlan : emptyDailyPlan(keyDate(now ?? new Date()))} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
       {tab === "echo" && <EchoPage state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
       {tab === "timeline" && <TimelinePage notes={state.notes} remote={state.remoteRecords} />}
       {tab === "calendar" && <CalendarPage month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
