@@ -14,6 +14,7 @@ data class EntertainmentReleasePlan(
 
 object EntertainmentGateV2Policy {
     const val GATE_COOLDOWN_MS = 4_000L
+    const val GATE_PRESENT_DELAY_MS = 320L
     const val WARNING_BEFORE_MS = 60_000L
     const val SMALL_STEP_REQUIRED_MS = 3 * 60_000L
 
