@@ -24,7 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import dev.jlz.presence.MainActivity
+import dev.jlz.presence.WebShellActivity
 import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.notification.NotificationReplyReceiver
 import dev.jlz.presence.notification.PendingReplyStore
@@ -112,11 +112,14 @@ class FocusGateActivity : ComponentActivity() {
                                     }
 
                                     startActivity(
-                                        Intent(this@FocusGateActivity, MainActivity::class.java)
-                                            .putExtra(
-                                                MainActivity.EXTRA_DESTINATION,
-                                                MainActivity.DESTINATION_CHAT
-                                            )
+                                        Intent(
+                                            Intent.ACTION_VIEW,
+                                            android.net.Uri.parse(
+                                                "https://between-worlds-prod.onrender.com/?shell=android#echo"
+                                            ),
+                                            this@FocusGateActivity,
+                                            WebShellActivity::class.java
+                                        )
                                             .putExtra(
                                                 NotificationReplyReceiver.EXTRA_EVENT_ID,
                                                 requestId
