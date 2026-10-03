@@ -7,6 +7,15 @@ import org.junit.Test
 
 class EntertainmentGateV2PolicyTest {
     @Test
+    fun gateWaitsForHomeTransitionToSettle() {
+        assertTrue(EntertainmentGateV2Policy.GATE_PRESENT_DELAY_MS >= 250L)
+        assertTrue(
+            EntertainmentGateV2Policy.GATE_PRESENT_DELAY_MS <
+                EntertainmentGateV2Policy.GATE_COOLDOWN_MS
+        )
+    }
+
+    @Test
     fun phoneFeedUsesShortIntentionalWindows() {
         assertEquals(
             5,
