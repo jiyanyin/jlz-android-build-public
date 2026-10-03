@@ -34,6 +34,7 @@ const vapidKeyBytes = (value: string) => {
 
 const welcomePortrait = "/jlz-welcome-portrait.webp";
 const homePortrait = "/jlz-home-portrait.webp";
+const chatAvatar = "/jlz-chat-avatar.webp";
 const STORE = "world-between-web-v1";
 const CLEANUP_MARKER = "world-between-cleanup-20261002-v1";
 const INSTALL_GUIDE_DISMISSED = "world-between-install-guide-dismissed-v1";
@@ -359,7 +360,7 @@ export default function BetweenWorlds() {
     <main className="app-shell">
       <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}>✦ 换装</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
       {tab === "home" && <HomePage dateLabel={dateLabel} greeting={greeting} homePortrait={homePortrait} openSheet={setSheet} setTab={switchTab} banner={banner} />}
-      {tab === "echo" && <EchoPage state={state} conn={conn} update={update} send={send} notify={notify} homePortrait={homePortrait} />}
+      {tab === "echo" && <EchoPage state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
       {tab === "timeline" && <TimelinePage notes={state.notes} remote={state.remoteRecords} />}
       {tab === "calendar" && <CalendarPage month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
       {tab === "more" && <MorePage state={state} update={update} setWelcome={setWelcome} banner={banner} reconnect={() => void connect()} />}
@@ -399,7 +400,7 @@ function HomePage({ dateLabel, greeting, homePortrait, openSheet, setTab, banner
 function SectionHead({ title, english }: { title: string; english: string }) { return <div className="section-head"><b>{title}</b><span>{english}</span></div>; }
 function PageHead({ kicker, title, en, copy }: { kicker: string; title: string; en: string; copy: string }) { return <div className="page-head"><div><span>{kicker}</span><h2>{title} <em>{en}</em></h2><p>{copy}</p></div></div>; }
 
-function EchoPage({ state, conn, update, send, notify, homePortrait }: { state: AppState; conn: Conn; update: (fn: (s: AppState) => AppState) => void; send: Send; notify: (s: string) => void; homePortrait: string }) {
+function EchoPage({ state, conn, update, send, notify, chatAvatar }: { state: AppState; conn: Conn; update: (fn: (s: AppState) => AppState) => void; send: Send; notify: (s: string) => void; chatAvatar: string }) {
   const [text, setText] = useState("");
   const submit = () => { const value = text.trim(); if (!value) return; const id = newEventId(); update((s) => ({ ...s, messages: [...s.messages, { text: value, at: new Date().toISOString(), event_id: id, sync: "queued" as Sync }].slice(-80) })); send("/api/web/message", { text: value }, id); setText(""); if (conn !== "online") notify("已存本机，连接后自动发送"); };
   const remoteIds = new Set(state.remoteMessages.map((m) => m.id));
@@ -407,8 +408,21 @@ function EchoPage({ state, conn, update, send, notify, homePortrait }: { state: 
     ...state.remoteMessages.map((m) => ({ key: m.id, text: m.text, at: m.at, me: !m.fromCompanion, label: "Runtime" })),
     ...state.messages.filter((m) => !m.event_id || !remoteIds.has(m.event_id)).map((m, i) => ({ key: m.event_id ?? `${m.at}-${i}`, text: m.text, at: m.at, me: true, label: m.sync === "synced" ? "已发送" : "本地 · 待发送" })),
   ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-  return <section className="page active"><PageHead kicker="YOUR PRIVATE CONVERSATION" title="回响" en="Echo" copy="给你的回声，永远写在纸的另一面" /><div className="echo-person glass"><img src={homePortrait} alt="纪临洲" /><span><b>纪临洲</b><small>{conn === "online" ? "已连接 · 消息实时同步" : conn === "syncing" ? "正在同步……" : "未连接 · 消息先存本机"}</small></span></div>{conn !== "online" && <div className="preview-tip">现在还没连上 Runtime。你写下的话会先排队保存在此浏览器，连上后自动送达。</div>}<div className="message-list">{list.length === 0 && <div className="message">音音，今天如果什么都不想做，就来坐一会儿。<time>纪临洲</time></div>}{list.map((m) => <div className={`message ${m.me ? "me" : ""}`} key={m.key}>{m.text}<time>{new Date(m.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} · {m.label}</time></div>)}</div><div className="composer"><textarea maxLength={1200} placeholder="写点什么……" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }} /><button onClick={submit} aria-label="发送消息">↑</button></div></section>;
+  return <section className="page active">
+    <PageHead kicker="YOUR PRIVATE CONVERSATION" title="回响" en="Echo" copy="给你的回声，永远写在纸的另一面" />
+    <div className="echo-person glass"><img src={chatAvatar} alt="纪临洲" /><span><b>纪临洲</b><small>{conn === "online" ? "已连接 · 消息实时同步" : conn === "syncing" ? "正在同步……" : "未连接 · 消息先存本机"}</small></span></div>
+    {conn !== "online" && <div className="preview-tip">现在还没连上 Runtime。你写下的话会先排队保存在此浏览器，连上后自动送达。</div>}
+    <div className="message-list">
+      {list.length === 0 && <div className="message-row companion"><img className="message-avatar" src={chatAvatar} alt="" /><div className="message">音音，今天如果什么都不想做，就来坐一会儿。<time>纪临洲</time></div></div>}
+      {list.map((m) => <div className={`message-row ${m.me ? "me" : "companion"}`} key={m.key}>
+        {!m.me && <img className="message-avatar" src={chatAvatar} alt="" />}
+        <div className={`message ${m.me ? "me" : ""}`}>{m.text}<time>{new Date(m.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} · {m.label}</time></div>
+      </div>)}
+    </div>
+    <div className="composer"><textarea maxLength={1200} placeholder="写点什么……" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }} /><button onClick={submit} aria-label="发送消息">↑</button></div>
+  </section>;
 }
+
 function TimelinePage({ notes, remote }: { notes: RecordItem[]; remote: RemoteRecord[] }) {
   const remoteIds = new Set(remote.map((r) => r.id));
   const items = [
