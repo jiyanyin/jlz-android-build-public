@@ -4,14 +4,18 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import dev.jlz.presence.R
 import dev.jlz.presence.MainActivity
 import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.ui.components.IceButton
@@ -29,9 +33,12 @@ class PresenceCallbackActivity : ComponentActivity() {
             IceCrystalTheme {
                 Surface(Modifier.fillMaxSize(), color = Color(0xFF090B1B)) {
                     Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        Box(Modifier.size(88.dp).background(VioletGlow.copy(alpha = 0.3f), CircleShape), contentAlignment = Alignment.Center) {
-                            Text("JLZ", color = TextPrimary)
-                        }
+                        Image(
+                            painter = painterResource(R.drawable.jlz_chat_avatar),
+                            contentDescription = "纪临洲",
+                            modifier = Modifier.size(88.dp).clip(CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
                         Text("\u7eaa\u4e34\u6d32\u6b63\u5728\u627e\u4f60", color = TextPrimary, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 22.dp))
                         if (topic.isNotBlank()) Text(topic, color = VioletGlow, modifier = Modifier.padding(top = 12.dp))
                         Text(reason, color = TextSecondary, modifier = Modifier.padding(top = 10.dp, bottom = 28.dp))
