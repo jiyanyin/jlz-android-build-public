@@ -32,7 +32,13 @@ import dev.jlz.presence.ui.components.IceButton
 import dev.jlz.presence.ui.components.IceGlassCard
 import dev.jlz.presence.ui.components.SectionHeader
 import dev.jlz.presence.ui.theme.*
-import dev.jlz.presence.study.StudyPatrol
+import dev.jlz.presence.study.StudyDayMetrics
+import dev.jlz.presence.study.StudyMetricsStore
+import dev.jlz.presence.study.StudyRuntimeReporter
+import dev.jlz.presence.study.StudySessionRepository
+import dev.jlz.presence.study.StudySessionState
+import dev.jlz.presence.study.StudyShortcuts
+import dev.jlz.presence.study.StudyTimerService
 import dev.jlz.presence.trip.TripController
 import dev.jlz.presence.usage.UnifiedPhoneTimeline
 import dev.jlz.presence.usage.UnifiedTimelineItem
@@ -40,6 +46,7 @@ import dev.jlz.presence.usage.TimelineSegment
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 
 @Composable
 fun PresenceApp() {
@@ -560,41 +567,258 @@ fun TimelineScreen() {
 @Composable
 fun StudyScreen() {
     val context = LocalContext.current
-    val patrol by StudyPatrol.state.collectAsState()
+    val repo = remember { StudySessionRepository(context) }
+    val metricsStore = remember { StudyMetricsStore(context) }
+    val session by repo.state.collectAsState(initial = StudySessionState())
+    val scope = rememberCoroutineScope()
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(1000L) } }
-    fun mmss(ms: Long): String {
-        val s = (ms / 1000L).coerceAtLeast(0L)
-        return "%02d:%02d".format(s / 60L, s % 60L)
+    var dayMetrics by remember { mutableStateOf(StudyDayMetrics(0L, 0L, 0)) }
+    var actionNote by remember { mutableStateOf("") }
+
+    fun dayBounds(atMs: Long): Pair<Long, Long> {
+        val cal = java.util.Calendar.getInstance().apply {
+            timeInMillis = atMs
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val startAt = cal.timeInMillis
+        cal.add(java.util.Calendar.DAY_OF_MONTH, 1)
+        return startAt to cal.timeInMillis
     }
-    Column(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("学习", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
-        Spacer(Modifier.height(32.dp))
-        when {
-            patrol.active -> {
-                Text("专注中 剩余 ${mmss(patrol.endsAtMs - now)}", style = MaterialTheme.typography.headlineLarge, color = VioletGlow)
-                Spacer(Modifier.height(16.dp))
-                Text("每 5 分钟本地巡检 · 异常 ${patrol.anomalyCount} 次", color = TextSecondary)
-                Spacer(Modifier.height(40.dp))
-                IceButton("提前结束并回 Home", onClick = { StudyPatrol.stopEarly(context) }, primary = true)
-            }
-            now < patrol.cooldownUntilMs -> {
-                Text("休息一下", style = MaterialTheme.typography.headlineLarge, color = TextSecondary)
-                Spacer(Modifier.height(16.dp))
-                Text("冷却中 ${mmss(patrol.cooldownUntilMs - now)}", color = TextTertiary)
-                Spacer(Modifier.height(40.dp))
-                IceButton("冷却中…", onClick = { }, primary = false)
-            }
-            else -> {
-                Text("25 分钟专注", style = MaterialTheme.typography.headlineLarge, color = VioletGlow)
-                Spacer(Modifier.height(16.dp))
-                Text("本地巡检，正常状态不上传大图；结束回 Home，不强制关闭应用。", color = TextSecondary)
-                Spacer(Modifier.height(40.dp))
-                IceButton("开始 25 分钟", onClick = { StudyPatrol.start(context) }, primary = true)
+
+    suspend fun refreshDay() {
+        val (startAt, endAt) = dayBounds(System.currentTimeMillis())
+        dayMetrics = withContext(Dispatchers.IO) {
+            metricsStore.dayMetrics(startAt, endAt)
+        }
+    }
+
+    fun hhmmss(ms: Long): String {
+        val seconds = (ms / 1000L).coerceAtLeast(0L)
+        return "%02d:%02d:%02d".format(
+            seconds / 3600L,
+            (seconds / 60L) % 60L,
+            seconds % 60L
+        )
+    }
+
+    LaunchedEffect(Unit) {
+        refreshDay()
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(1000L)
+        }
+    }
+
+    val currentMs = session.effectiveElapsedMs(now)
+    val todayMs = dayMetrics.effectiveStudyMs + currentMs
+    val stateLabel = when {
+        !session.active -> "等你开始"
+        session.paused -> "这一轮暂停着"
+        else -> "正在学习"
+    }
+    val stateColor = when {
+        !session.active -> TextSecondary
+        session.paused -> RoseGlow
+        else -> VioletGlow
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().systemBarsPadding(),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("陪你学习", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
+                    Text("Study Session", style = MaterialTheme.typography.labelMedium, color = TextTertiary)
+                }
+                Text(
+                    "返回",
+                    color = BlueGlow,
+                    modifier = Modifier
+                        .clickable { PresenceRouteBus.open(PresenceRoute.Home) }
+                        .padding(8.dp)
+                )
             }
         }
-        Spacer(Modifier.height(16.dp))
-        IceButton("返回 Home", onClick = { PresenceRouteBus.open(PresenceRoute.Home) })
+
+        item {
+            IceGlassCard {
+                Text("TODAY · FOCUS", color = TextTertiary, style = MaterialTheme.typography.labelSmall)
+                Spacer(Modifier.height(8.dp))
+                Text(stateLabel, color = stateColor, style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(18.dp))
+                Text(
+                    hhmmss(todayMs),
+                    color = TextPrimary,
+                    style = MaterialTheme.typography.headlineLarge
+                )
+                Text(
+                    "今日累计 · 已完成 ${dayMetrics.completedSessions} 轮",
+                    color = TextSecondary,
+                    style = MaterialTheme.typography.labelMedium
+                )
+                Spacer(Modifier.height(20.dp))
+                HorizontalDivider(color = GlassBorder)
+                Spacer(Modifier.height(14.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column {
+                        Text("本轮", color = TextTertiary, style = MaterialTheme.typography.labelSmall)
+                        Text(hhmmss(currentMs), color = TextPrimary, style = MaterialTheme.typography.titleMedium)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("计时规则", color = TextTertiary, style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            if (session.paused) "暂停时间不计入" else "只累计未暂停时间",
+                            color = TextSecondary,
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            IceGlassCard {
+                when {
+                    !session.active -> {
+                        Text("现在开始", color = TextPrimary, style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "不限定 25 分钟。你开始，我计时；你暂停，我就停；回来继续接着算。",
+                            color = TextSecondary,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        IceButton(
+                            "开始这一轮",
+                            onClick = {
+                                scope.launch {
+                                    val sessionId = repo.start()
+                                    StudyTimerService.sync(context)
+                                    StudyRuntimeReporter.post(context, "start", sessionId)
+                                    actionNote = "已经开始。我盯着时间。"
+                                }
+                            },
+                            primary = true
+                        )
+                    }
+                    session.paused -> {
+                        Text("暂停中", color = RoseGlow, style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Text("休息时间不会算进学习。回来就继续，不重开一轮。", color = TextSecondary)
+                        Spacer(Modifier.height(16.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            IceButton(
+                                "继续",
+                                onClick = {
+                                    val sessionId = session.sessionId
+                                    scope.launch {
+                                        repo.resume()
+                                        StudyTimerService.sync(context)
+                                        StudyRuntimeReporter.post(context, "resume", sessionId)
+                                        actionNote = "接上了。继续。"
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                primary = true
+                            )
+                            IceButton(
+                                "结束",
+                                onClick = {
+                                    scope.launch {
+                                        val metrics = repo.finish()
+                                        StudyTimerService.stop(context)
+                                        StudyRuntimeReporter.post(
+                                            context, "finish", metrics.sessionId,
+                                            StudyRuntimeReporter.finishPayload(metrics)
+                                        )
+                                        refreshDay()
+                                        actionNote = "这一轮收好了。"
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    else -> {
+                        Text("这一轮正在走", color = VioletGlow, style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.height(6.dp))
+                        Text("通知栏也有实时计时，切去伴读或粉笔不会丢 Session。", color = TextSecondary)
+                        Spacer(Modifier.height(16.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            IceButton(
+                                "暂停",
+                                onClick = {
+                                    val sessionId = session.sessionId
+                                    scope.launch {
+                                        repo.pause()
+                                        StudyRuntimeReporter.post(context, "pause", sessionId)
+                                        actionNote = "暂停。现在不算时间。"
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                            IceButton(
+                                "结束这一轮",
+                                onClick = {
+                                    scope.launch {
+                                        val metrics = repo.finish()
+                                        StudyTimerService.stop(context)
+                                        StudyRuntimeReporter.post(
+                                            context, "finish", metrics.sessionId,
+                                            StudyRuntimeReporter.finishPayload(metrics)
+                                        )
+                                        refreshDay()
+                                        actionNote = "这一轮收好了。"
+                                    }
+                                },
+                                modifier = Modifier.weight(1f),
+                                primary = true
+                            )
+                        }
+                    }
+                }
+                if (actionNote.isNotBlank()) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(actionNote, color = TextTertiary, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+
+        item {
+            SectionHeader("去学习")
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                IceButton(
+                    "伴读",
+                    onClick = { actionNote = StudyShortcuts.openBanduread(context) },
+                    modifier = Modifier.weight(1f),
+                    primary = true
+                )
+                IceButton(
+                    "粉笔",
+                    onClick = { actionNote = StudyShortcuts.openFenbi(context) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        item {
+            Text(
+                "Session 状态保存在本机；开始、暂停、继续和结束会同步给 Runtime。首页看到的是同一套计时，不靠网页一直开着。",
+                color = TextTertiary,
+                style = MaterialTheme.typography.labelSmall
+            )
+        }
     }
 }
 
