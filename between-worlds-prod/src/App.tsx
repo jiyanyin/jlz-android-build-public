@@ -462,13 +462,16 @@ function bannerText(b: Banner) {
 const syncLabel = (sync?: Sync) => (sync === "synced" ? "已同步" : "本地 · 待同步");
 
 function HomePage({
-  dateLabel, timeText, voice, homePortrait, plan, openSheet, openTask, mutateTask, setTab, banner,
+  dateLabel, timeText, voice, homePortrait, plan, study, nowMs, openStudy, openSheet, openTask, mutateTask, setTab, banner,
 }: {
   dateLabel: string;
   timeText: string;
   voice: ReturnType<typeof selectVoiceCard>;
   homePortrait: string;
   plan: DailyPlan;
+  study: StudySummary;
+  nowMs: number;
+  openStudy: () => void;
   openSheet: (s: "status" | "note" | "life") => void;
   openTask: (task?: DailyTask | null) => void;
   mutateTask: (action: string, task: Partial<DailyTask> & { task_id?: string }) => void;
@@ -477,6 +480,14 @@ function HomePage({
 }) {
   const b = bannerText(banner);
   const sections = planSections(plan);
+  const studyLive = liveStudyTotals(study, nowMs);
+  const studyCurrent = study.current;
+  const studyStatus = study.active
+    ? study.paused ? "这一轮暂停着" : "正在学，别散"
+    : study.completed_sessions ? "今天已经开过工" : "今天还没开始";
+  const studyDetail = studyCurrent
+    ? `${studyDeviceLabel(studyCurrent.device_id)} · ${studyCurrent.module || studyCurrent.subject || "学习 Session"}`
+    : `今天完成 ${study.completed_sessions} 轮`;
   const current = plan.tasks.find((task) => task.task_id === plan.current_task_id) ?? null;
   const statusLabel: Record<DailyTask["status"], string> = {
     todo: "待开始", in_progress: "进行中", done: "完成", postponed: "已延期", incomplete: "未完成",
@@ -516,6 +527,29 @@ function HomePage({
       {!!sections.other.length && <details className="task-fold"><summary>另外 {sections.other.length} 件 · 展开</summary>{sections.other.map(renderTask)}</details>}
       {!!sections.completed.length && <details className="task-fold completed"><summary>已完成 {sections.completed.length} 件</summary>{sections.completed.map(renderTask)}</details>}
       {!!sections.postponed.length && <details className="task-fold"><summary>已延期 {sections.postponed.length} 件</summary>{sections.postponed.map(renderTask)}</details>}
+    </div>
+
+    <SectionHead title="陪你学一会儿" english="STUDY SESSION" />
+    <div className={`study-session-card glass ${study.active ? "active" : ""} ${study.paused ? "paused" : ""}`}>
+      <div className="study-card-orbit" aria-hidden="true"><span /><i /></div>
+      <div className="study-card-head">
+        <div><span>FOCUS · TODAY</span><b>{studyStatus}</b></div>
+        <span className="study-live-pill">{study.active ? study.paused ? "PAUSED" : "LIVE" : "READY"}</span>
+      </div>
+      <div className="study-clock-block">
+        <small>今日累计</small>
+        <strong>{formatStudyClock(studyLive.todayMs)}</strong>
+        <em>{formatStudyMinutes(studyLive.todayMs)} · {study.completed_sessions} 轮完成</em>
+      </div>
+      <div className="study-session-strip">
+        <div><span>本轮</span><b>{formatStudyClock(studyLive.currentMs)}</b></div>
+        <div><span>状态</span><b>{studyDetail}</b></div>
+        <div><span>伴读</span><b>{studyCurrent?.answered_count ? `${studyCurrent.answered_count} 题 · 对 ${studyCurrent.correct_count}` : "等你开题"}</b></div>
+      </div>
+      <div className="study-card-actions">
+        <button className="study-primary" onClick={openStudy}>{study.active ? study.paused ? "去继续这一轮" : "回到学习计时" : "开始一轮学习"}</button>
+        <span>开始、暂停、继续和结束都由原生计时保存。离开这个页面也不会丢。</span>
+      </div>
     </div>
 
     <SectionHead title="今日的私藏信笺" english="JUST FOR TODAY" /><div className="action-grid"><button className="action-card" onClick={() => openSheet("status")}><span className="ico">♡</span><b>状态灯</b><small>把这一刻的你告诉我</small></button><button className="action-card rose" onClick={() => openSheet("note")}><span className="ico">✎</span><b>随手记</b><small>写一封小小的信</small></button><button className="action-card wide" onClick={() => openSheet("life")}><span className="ico">◌</span><b>此刻我在</b><small>把小猫现在在做什么告诉我</small></button></div>
