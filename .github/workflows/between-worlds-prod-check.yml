@@ -28,5 +28,7 @@ jobs:
         run: node --experimental-strip-types --test tests/voiceEngine.test.ts
       - name: DailyPlan client tests
         run: node --experimental-strip-types --test tests/dailyPlan.test.ts
+      - name: Study Session client tests
+        run: node --experimental-strip-types --test tests/studySession.test.ts
       - name: Typecheck and build
         run: npm run build
