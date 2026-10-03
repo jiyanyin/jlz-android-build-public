@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.Color
 val BgDeep = Color(0xFF090B1B)
 val BgBlue = Color(0xFF101A36)
 val VioletGlow = Color(0xFF8D7BFF)
+val RoseGlow = Color(0xFFD7A0B8)
 val BlueGlow = Color(0xFF78B8FF)
 val GlassFill = Color(0x1ACAD2FF)
 val GlassFillPressed = Color(0x2ECAD2FF)
