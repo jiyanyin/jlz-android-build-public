@@ -43,6 +43,7 @@ const STORE = "world-between-web-v1";
 const CLEANUP_MARKER = "world-between-cleanup-20261002-v1";
 const INSTALL_GUIDE_DISMISSED = "world-between-install-guide-dismissed-v1";
 const ANDROID_SHELL = new URLSearchParams(window.location.search).get("shell") === "android";
+const ENTRY_MODE = new URLSearchParams(window.location.search).get("entry");
 const OUTBOX_CAP = 300;
 const defaults: AppState = { theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
   runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [], voiceMemory: EMPTY_VOICE_MEMORY, dailyPlan: null, studySummary: null };
@@ -74,7 +75,8 @@ const GROUPS: Record<string, [string, boolean][]> = {
 export default function BetweenWorlds() {
   const [state, setState] = useState<AppState>(defaults);
   const [tab, setTab] = useState<Tab>(() => window.location.hash === "#echo" ? "echo" : "home");
-  const [welcome, setWelcome] = useState(true);
+  const [welcome, setWelcome] = useState(() => ENTRY_MODE !== "unlock");
+  const [unlockHello, setUnlockHello] = useState(() => ENTRY_MODE === "unlock");
   const [sheet, setSheet] = useState<"status" | "note" | "life" | "task" | "apps" | null>(null);
   const [appHub, setAppHub] = useState<AppHubSnapshot>(() => emptyAppHubSnapshot());
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
@@ -121,6 +123,12 @@ export default function BetweenWorlds() {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+  useEffect(() => {
+    if (!unlockHello) return;
+    const timer = window.setTimeout(() => setUnlockHello(false), 8_000);
+    return () => window.clearTimeout(timer);
+  }, [unlockHello]);
+
   useEffect(() => {
     document.body.dataset.theme = state.theme;
     const meta = document.querySelector('meta[name="theme-color"]');
@@ -479,7 +487,7 @@ export default function BetweenWorlds() {
 
     <main className="app-shell">
       <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}>✦ 换装</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
-      {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} voice={voiceCard} homePortrait={homePortrait} plan={state.dailyPlan?.date === keyDate(now ?? new Date()) ? state.dailyPlan : emptyDailyPlan(keyDate(now ?? new Date()))} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} appHub={appHub} launchApp={launchHubApp} openBanduread={openBanduread} openApps={() => setSheet("apps")} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
+      {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} voice={voiceCard} homePortrait={homePortrait} plan={state.dailyPlan?.date === keyDate(now ?? new Date()) ? state.dailyPlan : emptyDailyPlan(keyDate(now ?? new Date()))} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} unlockHello={unlockHello} appHub={appHub} launchApp={launchHubApp} openBanduread={openBanduread} openApps={() => setSheet("apps")} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
       {tab === "echo" && <EchoPage state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
       {tab === "timeline" && <TimelinePage notes={state.notes} remote={state.remoteRecords} />}
       {tab === "calendar" && <CalendarPage month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
@@ -511,7 +519,7 @@ function bannerText(b: Banner) {
 const syncLabel = (sync?: Sync) => (sync === "synced" ? "已同步" : "本地 · 待同步");
 
 function HomePage({
-  dateLabel, timeText, voice, homePortrait, plan, study, nowMs, appHub, launchApp, openBanduread, openApps, openStudy, openSheet, openTask, mutateTask, setTab, banner,
+  dateLabel, timeText, voice, homePortrait, plan, study, nowMs, unlockHello, appHub, launchApp, openBanduread, openApps, openStudy, openSheet, openTask, mutateTask, setTab, banner,
 }: {
   dateLabel: string;
   timeText: string;
@@ -520,6 +528,7 @@ function HomePage({
   plan: DailyPlan;
   study: StudySummary;
   nowMs: number;
+  unlockHello: boolean;
   appHub: AppHubSnapshot;
   launchApp: (item: AppHubItem) => void;
   openBanduread: () => void;
@@ -562,7 +571,7 @@ function HomePage({
 
     <SectionHead title="先从这里走" english="APP HUB" />
     <div className="app-hub-card glass">
-      <div className="app-hub-copy"><span>START HERE · 少一点乱跑</span><b>学习放前面，其他的都还在。</b><small>{appHub.native ? "这些入口只读取本机应用列表，不会把你的 App 清单上传给 Runtime。" : "在 Android 版「世界之间」里，这里会显示你真正安装的应用。"}</small></div>
+      <div className="app-hub-copy"><span>{unlockHello ? "UNLOCKED · 先看我一眼" : "START HERE · 少一点乱跑"}</span><b>{unlockHello ? "解锁了。先决定你现在要去哪。" : "学习放前面，其他的都还在。"}</b><small>{appHub.native ? "这些入口只读取本机应用列表，不会把你的 App 清单上传给 Runtime。" : "在 Android 版「世界之间」里，这里会显示你真正安装的应用。"}</small></div>
       <div className="app-hub-grid">
         <button className="hub-tile study" onClick={openBanduread}><span className="hub-mark">伴</span><b>伴读</b><small>刷题 / 复盘</small></button>
         {homeApps.map((item) => <button className={`hub-tile ${item.category === "学习" ? "study" : ""}`} key={item.package_name} onClick={() => launchApp(item)}><span className="hub-mark">{item.label.slice(0, 1)}</span><b>{item.label}</b><small>{item.category}</small></button>)}
