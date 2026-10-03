@@ -4,6 +4,7 @@ import { EMPTY_VOICE_MEMORY, formatVoiceClock, formatVoiceDate, selectVoiceCard,
 import { emptyDailyPlan, optimisticTaskMutation, planSections, TASK_CATEGORIES, type DailyPlan, type DailyTask } from "./lib/dailyPlan";
 import { emptyStudySummary, formatStudyClock, formatStudyMinutes, liveStudyTotals, studyDeviceLabel, type StudySummary } from "./lib/studySession";
 import { appHubActions, appHubCategories, appHubHomeItems, emptyAppHubSnapshot, readNativeAppHub, type AppHubItem, type AppHubSnapshot } from "./lib/appHub";
+import { declineGate, gateBridgeAvailable, gateResponse, grantGate, readGateSnapshot, startGateSmallStep, type EntertainmentGateSnapshot, type GateChoice } from "./lib/entertainmentGate";
 
 type Theme = "mist" | "gothic";
 type Tab = "home" | "echo" | "timeline" | "calendar" | "more";
@@ -44,6 +45,8 @@ const CLEANUP_MARKER = "world-between-cleanup-20261002-v1";
 const INSTALL_GUIDE_DISMISSED = "world-between-install-guide-dismissed-v1";
 const ANDROID_SHELL = new URLSearchParams(window.location.search).get("shell") === "android";
 const ENTRY_MODE = new URLSearchParams(window.location.search).get("entry");
+const GATE_PACKAGE = new URLSearchParams(window.location.search).get("gate_pkg") || "";
+const GATE_REASON = new URLSearchParams(window.location.search).get("gate_reason") || "entry";
 const OUTBOX_CAP = 300;
 const defaults: AppState = { theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
   runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [], voiceMemory: EMPTY_VOICE_MEMORY, dailyPlan: null, studySummary: null };
@@ -75,7 +78,7 @@ const GROUPS: Record<string, [string, boolean][]> = {
 export default function BetweenWorlds() {
   const [state, setState] = useState<AppState>(defaults);
   const [tab, setTab] = useState<Tab>(() => window.location.hash === "#echo" ? "echo" : "home");
-  const [welcome, setWelcome] = useState(() => ENTRY_MODE !== "unlock");
+  const [welcome, setWelcome] = useState(() => !ENTRY_MODE);
   const [unlockHello, setUnlockHello] = useState(() => ENTRY_MODE === "unlock");
   const [sheet, setSheet] = useState<"status" | "note" | "life" | "task" | "apps" | null>(null);
   const [appHub, setAppHub] = useState<AppHubSnapshot>(() => emptyAppHubSnapshot());
@@ -133,6 +136,12 @@ export default function BetweenWorlds() {
     }, 8_000);
     return () => window.clearTimeout(timer);
   }, [unlockHello]);
+
+  useEffect(() => {
+    if (!welcome) return;
+    const timer = window.setTimeout(() => setWelcome(false), 1_800);
+    return () => window.clearTimeout(timer);
+  }, [welcome]);
 
   useEffect(() => {
     document.body.dataset.theme = state.theme;
@@ -467,6 +476,14 @@ export default function BetweenWorlds() {
     notify("这个浏览器还没有给出安装资格。请用 Chrome / Edge 打开正式站安装。");
   };
 
+  if (ENTRY_MODE === "gate" && GATE_PACKAGE) {
+    return <EntertainmentGateWebPage
+      packageName={GATE_PACKAGE}
+      reason={GATE_REASON}
+      avatar={chatAvatar}
+    />;
+  }
+
   return <div className="bw-root">
     {installGuide && <div className="install-guide-backdrop" role="dialog" aria-modal="true" aria-label="安装世界之间">
       <div className="install-guide-card">
@@ -511,6 +528,146 @@ export default function BetweenWorlds() {
       {sheet === "apps" && <AppDrawerSheet snapshot={appHub} launchApp={launchHubApp} setPinned={updateAppPin} movePinned={moveAppPin} openBanduread={openBanduread} />}
     </div>
     <div className={`toast ${toast ? "show" : ""}`}>{toast}</div>
+  </div>;
+}
+
+function EntertainmentGateWebPage({
+  packageName,
+  reason,
+  avatar,
+}: {
+  packageName: string;
+  reason: string;
+  avatar: string;
+}) {
+  const [snapshot, setSnapshot] = useState<EntertainmentGateSnapshot>(() =>
+    readGateSnapshot(packageName, reason)
+  );
+  const [phase, setPhase] = useState<"incoming" | "connected">("incoming");
+  const [choice, setChoice] = useState<GateChoice | null>(null);
+  const [response, setResponse] = useState("");
+  const [error, setError] = useState("");
+
+  const refresh = useCallback(() => {
+    setSnapshot(readGateSnapshot(packageName, reason));
+  }, [packageName, reason]);
+
+  useEffect(() => {
+    refresh();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refresh]);
+
+  const goHome = (stage: string) => {
+    declineGate(packageName, stage);
+    window.location.replace("/?shell=android&entry=home");
+  };
+
+  const choose = (next: GateChoice) => {
+    if (next === "small_step") {
+      if (!startGateSmallStep(packageName)) {
+        setError("这一步没有记下来。先别动，我再修。");
+        return;
+      }
+      window.location.href = "jlz://native/study";
+      return;
+    }
+    setChoice(next);
+    setResponse(gateResponse(packageName, next));
+    setError("");
+  };
+
+  const grant = (next: GateChoice) => {
+    const result = grantGate(packageName, next);
+    if (!result.ok) {
+      setError("放行记录成功前我不把你丢进去。再点一次，或者先退出。");
+    }
+  };
+
+  const purposeSubtitle = snapshot.tier === "shopping"
+    ? "查东西 / 买东西 / 处理一件事"
+    : "找一条内容 / 查一个东西";
+
+  if (!gateBridgeAvailable() || !snapshot.ok) {
+    return <div className="gate-web-root">
+      <div className="gate-web-center">
+        <div className="gate-web-kicker">WORLD BETWEEN · GATE</div>
+        <img className="gate-web-avatar small" src={avatar} alt="纪临洲" />
+        <h1>我已经把你拦下来了。</h1>
+        <p>来电控制暂时没连上原生端。先别让页面反复闪，我留你在世界之间。</p>
+        <button className="gate-web-primary" onClick={() => goHome("bridge_unavailable")}>回到世界之间</button>
+      </div>
+    </div>;
+  }
+
+  if (phase === "incoming") {
+    return <div className="gate-web-root incoming">
+      <div className="gate-web-stars" />
+      <div className="gate-web-center">
+        <div className="gate-web-kicker">INCOMING · WORLD BETWEEN</div>
+        <div className="gate-web-avatar-ring">
+          <span className="gate-web-pulse" />
+          <img className="gate-web-avatar" src={avatar} alt="纪临洲" />
+        </div>
+        <h1>纪临洲</h1>
+        <div className="gate-web-sub">正在找你 · {snapshot.app_name}</div>
+        <div className="gate-web-speech">{snapshot.incoming_text}</div>
+        <div className="gate-web-actions">
+          <button className="gate-web-ghost" onClick={() => goHome("declined_before_connect")}>稍后</button>
+          <button className="gate-web-primary" onClick={() => setPhase("connected")}>接通</button>
+        </div>
+      </div>
+    </div>;
+  }
+
+  const pending = snapshot.small_step_pending;
+  const done = pending && snapshot.small_step_done;
+
+  return <div className="gate-web-root connected">
+    <div className="gate-web-stars" />
+    <div className="gate-web-center connected-card">
+      <img className="gate-web-avatar small" src={avatar} alt="纪临洲" />
+      <div className="gate-web-kicker">CONNECTED · 纪临洲</div>
+      <h1>{pending ? "先把刚才那一步算清楚。" : "说。你来这里干什么。"}</h1>
+
+      {pending ? <>
+        <div className="gate-web-speech">
+          {snapshot.small_step_text || "我在看你刚才那几分钟。"}
+        </div>
+        {done
+          ? <button className="gate-web-primary wide" onClick={() => grant("small_step")}>
+              做到了 · 放行 {snapshot.small_step_minutes} 分钟
+            </button>
+          : <>
+              <button className="gate-web-primary wide" onClick={() => { window.location.href = "jlz://native/study"; }}>
+                回去做完这三分钟
+              </button>
+              <button className="gate-web-text" onClick={refresh}>我做了 · 重新检查</button>
+            </>
+        }
+      </> : choice ? <>
+        <div className="gate-web-speech">{response}</div>
+        <button className="gate-web-primary wide" onClick={() => grant(choice)}>
+          进去 · {choice === "purpose" ? snapshot.purpose_minutes : choice === "break" ? snapshot.break_minutes : snapshot.direct_minutes} 分钟
+        </button>
+        <button className="gate-web-text" onClick={() => { setChoice(null); setResponse(""); }}>我换个答案</button>
+      </> : <div className="gate-web-choices">
+        <button onClick={() => choose("purpose")}><b>我有明确目的</b><span>{purposeSubtitle} · {snapshot.purpose_minutes} 分钟</span></button>
+        <button onClick={() => choose("break")}><b>我就是想休息一下</b><span>给一小段时间，到点我来找你 · {snapshot.break_minutes} 分钟</span></button>
+        <button onClick={() => choose("small_step")}><b>先做一小步再进去</b><span>先累计 3 分钟有效学习</span></button>
+        <button onClick={() => choose("direct")}><b>我现在就是想进去</b><span>不编理由 · 最短放行 {snapshot.direct_minutes} 分钟</span></button>
+      </div>}
+
+      {error && <div className="gate-web-error">{error}</div>}
+      <button className="gate-web-text muted" onClick={() => goHome("declined_after_connect")}>算了，这次不进</button>
+    </div>
   </div>;
 }
 
