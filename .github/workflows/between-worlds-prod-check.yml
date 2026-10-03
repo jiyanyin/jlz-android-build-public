@@ -34,5 +34,7 @@ jobs:
         run: node --experimental-strip-types --test tests/appHub.test.ts
       - name: Entertainment Gate WebShell tests
         run: node --experimental-strip-types --test tests/entertainmentGate.test.ts
+      - name: Native Study WebShell tests
+        run: node --experimental-strip-types --test tests/nativeStudy.test.ts
       - name: Typecheck and build
         run: npm run build
