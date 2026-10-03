@@ -33,6 +33,7 @@ class EntertainmentGateV2Coordinator(
         eventType: Int,
         nowMs: Long = System.currentTimeMillis()
     ) {
+        if (!repository.enabled()) return
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && !packageName.isNullOrBlank()) {
             foregroundPackage = packageName
         }
