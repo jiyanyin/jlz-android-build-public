@@ -60,7 +60,12 @@ class NotificationReplyReceiver : BroadcastReceiver() {
         val receiptAtMs = System.currentTimeMillis()
         val pendingReply = runCatching {
             PendingReplyStore(appContext).keep(
-                reply, eventId, intentId, receiptAtMs
+                text = reply,
+                parentEventId = eventId,
+                intentId = intentId,
+                observedAtMs = receiptAtMs,
+                replyToTitle = originalTitle,
+                replyToText = originalMessage
             )
         }.getOrElse {
             ReplyDeliveryTrace.write(
