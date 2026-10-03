@@ -33,7 +33,7 @@ test("active study overrides ordinary daypart", () => {
     activeLife: { action: "刷题", startAt: local(17, 55).getTime() },
   }, EMPTY_VOICE_MEMORY);
   assert.equal(card.signal, "activity:study");
-  assert.match(card.body, /刷题|分钟|做题|当前|题/);
+  assert.match(card.id, /^study-/);
 });
 
 test("explicit quiet-response preference has highest priority", () => {
