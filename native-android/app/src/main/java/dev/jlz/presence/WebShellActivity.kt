@@ -15,15 +15,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import dev.jlz.presence.launcher.AppHubBridge
 import dev.jlz.presence.focus.EntertainmentGateBridge
+import dev.jlz.presence.study.StudySessionBridge
 
 class WebShellActivity : ComponentActivity() {
     private lateinit var webView: WebView
+    private lateinit var studyBridge: StudySessionBridge
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         CookieManager.getInstance().setAcceptCookie(true)
+
+        studyBridge = StudySessionBridge(this)
 
         webView = WebView(this).apply {
             setBackgroundColor(Color.rgb(238, 240, 252))
@@ -40,6 +44,7 @@ class WebShellActivity : ComponentActivity() {
                 EntertainmentGateBridge(this@WebShellActivity),
                 "WorldBetweenGate"
             )
+            addJavascriptInterface(studyBridge, "WorldBetweenStudy")
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(
                     view: WebView?,
@@ -96,6 +101,7 @@ class WebShellActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (::studyBridge.isInitialized) studyBridge.close()
         webView.stopLoading()
         webView.webChromeClient = null
         webView.destroy()
