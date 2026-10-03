@@ -10,6 +10,12 @@ data class StudyActiveSegment(
     val endedAtMs: Long
 )
 
+data class StudyDayMetrics(
+    val effectiveStudyMs: Long,
+    val unpausedMs: Long,
+    val completedSessions: Int
+)
+
 data class StudySessionMetrics(
     val sessionId: String,
     val startedAtMs: Long,
@@ -113,6 +119,30 @@ class StudyMetricsStore(context: Context) :
             },
             SQLiteDatabase.CONFLICT_REPLACE
         )
+    }
+
+    @Synchronized
+    fun dayMetrics(startAtMs: Long, endAtMs: Long): StudyDayMetrics {
+        readableDatabase.rawQuery(
+            """
+            SELECT
+              COALESCE(SUM(effective_study_ms), 0),
+              COALESCE(SUM(unpaused_ms), 0),
+              COUNT(*)
+            FROM study_sessions
+            WHERE ended_at_ms >= ? AND ended_at_ms < ?
+            """.trimIndent(),
+            arrayOf(startAtMs.toString(), endAtMs.toString())
+        ).use { cursor ->
+            if (cursor.moveToFirst()) {
+                return StudyDayMetrics(
+                    effectiveStudyMs = cursor.getLong(0),
+                    unpausedMs = cursor.getLong(1),
+                    completedSessions = cursor.getInt(2)
+                )
+            }
+        }
+        return StudyDayMetrics(0L, 0L, 0)
     }
 
     companion object {
