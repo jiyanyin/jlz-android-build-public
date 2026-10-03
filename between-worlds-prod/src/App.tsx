@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_RUNTIME_URL, extractMessages, extractRecords, newEventId, runtime, RuntimeError, type OutboxItem, type RemoteMessage, type RemoteRecord, type RuntimeConfig, type WritePath } from "./lib/runtime";
+import { EMPTY_VOICE_MEMORY, formatVoiceClock, formatVoiceDate, selectVoiceCard, type VoiceMemory, type VoiceStatus } from "./lib/voiceEngine";
 
 type Theme = "mist" | "gothic";
 type Tab = "home" | "echo" | "timeline" | "calendar" | "more";
@@ -8,7 +9,7 @@ type RecordItem = { id: number | string; type: string; at: string; body: string;
 type Message = { text: string; at: string; event_id?: string; sync?: Sync };
 type ActiveLife = { action: string; session: string; startAt: number } | null;
 type AppState = { theme: Theme; notes: RecordItem[]; messages: Message[]; status: RecordItem | null; life: RecordItem[]; journal: RecordItem[]; activeLife: ActiveLife;
-  runtimeUrl: string; webToken: string; outbox: OutboxItem[]; remoteRecords: RemoteRecord[]; remoteMessages: RemoteMessage[]; seenCompanion: string[] };
+  runtimeUrl: string; webToken: string; outbox: OutboxItem[]; remoteRecords: RemoteRecord[]; remoteMessages: RemoteMessage[]; seenCompanion: string[]; voiceMemory: VoiceMemory };
 type Conn = "local" | "syncing" | "online";
 type Send = (path: WritePath, body: Record<string, unknown>, eventId?: string) => string;
 type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
@@ -41,7 +42,7 @@ const INSTALL_GUIDE_DISMISSED = "world-between-install-guide-dismissed-v1";
 const ANDROID_SHELL = new URLSearchParams(window.location.search).get("shell") === "android";
 const OUTBOX_CAP = 300;
 const defaults: AppState = { theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
-  runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [] };
+  runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [], voiceMemory: EMPTY_VOICE_MEMORY };
 const markSynced = (s: AppState, id: string): AppState => {
   const fix = <T extends { event_id?: string; sync?: Sync }>(arr: T[]) => arr.map((x) => (x.event_id === id ? { ...x, sync: "synced" as Sync } : x));
   return { ...s, notes: fix(s.notes), life: fix(s.life), journal: fix(s.journal), messages: fix(s.messages), status: s.status && s.status.event_id === id ? { ...s.status, sync: "synced" } : s.status };
@@ -109,7 +110,7 @@ export default function BetweenWorlds() {
     }
     setLoaded(true);
     setNow(new Date());
-    const timer = window.setInterval(() => setNow(new Date()), 30000);
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
   useEffect(() => {
@@ -299,10 +300,22 @@ export default function BetweenWorlds() {
 
   const savedText = (what: string) => (conn === "online" ? `${what}已同步给纪临洲` : `${what}已存本机，连接后自动同步`);
 
-  const timeText = now?.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }) ?? "16:00";
-  const hour = now?.getHours() ?? 16;
-  const greeting = `${hour < 5 ? "夜深了" : hour < 11 ? "早上好" : hour < 14 ? "中午好" : hour < 18 ? "下午好" : "晚上好"}，音音。`;
-  const dateLabel = now ? new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(now).toUpperCase() : "WEDNESDAY · SEPTEMBER 30";
+  const voiceStatus: VoiceStatus | null = state.status ? {
+    at: state.status.at,
+    axes: state.status.axes && typeof state.status.axes === "object" ? state.status.axes as Record<string, number> : undefined,
+    detail: state.status.detail && typeof state.status.detail === "object" ? state.status.detail as Record<string, string[]> : undefined,
+  } : null;
+  const voiceCard = selectVoiceCard({
+    now: now ?? new Date(),
+    activeLife: state.activeLife,
+    status: voiceStatus,
+  }, state.voiceMemory);
+  useEffect(() => {
+    if (!loaded || !now || voiceCard.nextMemory === state.voiceMemory) return;
+    update((s) => ({ ...s, voiceMemory: voiceCard.nextMemory }));
+  }, [loaded, now, state.voiceMemory, update, voiceCard.nextMemory]);
+  const timeText = now ? formatVoiceClock(now) : "16:00:00";
+  const dateLabel = now ? formatVoiceDate(now) : "WEDNESDAY, SEPTEMBER 30";
 
   const addRecord = (rec: RecordItem, buckets: ("notes" | "life" | "journal")[] = ["notes"]) => update((s) => {
     const next = { ...s };
@@ -359,7 +372,7 @@ export default function BetweenWorlds() {
 
     <main className="app-shell">
       <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}>✦ 换装</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
-      {tab === "home" && <HomePage dateLabel={dateLabel} greeting={greeting} homePortrait={homePortrait} openSheet={setSheet} setTab={switchTab} banner={banner} />}
+      {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} voice={voiceCard} homePortrait={homePortrait} openSheet={setSheet} setTab={switchTab} banner={banner} />}
       {tab === "echo" && <EchoPage state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
       {tab === "timeline" && <TimelinePage notes={state.notes} remote={state.remoteRecords} />}
       {tab === "calendar" && <CalendarPage month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
@@ -388,10 +401,10 @@ function bannerText(b: Banner) {
 }
 const syncLabel = (sync?: Sync) => (sync === "synced" ? "已同步" : "本地 · 待同步");
 
-function HomePage({ dateLabel, greeting, homePortrait, openSheet, setTab, banner }: { dateLabel: string; greeting: string; homePortrait: string; openSheet: (s: "status" | "note" | "life") => void; setTab: (t: Tab) => void; banner: Banner }) {
+function HomePage({ dateLabel, timeText, voice, homePortrait, openSheet, setTab, banner }: { dateLabel: string; timeText: string; voice: ReturnType<typeof selectVoiceCard>; homePortrait: string; openSheet: (s: "status" | "note" | "life") => void; setTab: (t: Tab) => void; banner: Banner }) {
   const b = bannerText(banner);
   return <section className="page active"><div className="brand-block"><div className="cn">世界之间</div><div className="en">Between Worlds</div></div>
-    <article className="hero"><img src={homePortrait} alt="纪临洲" /><div className="hero-fade" /><div className="hero-copy"><div className="micro">{dateLabel}</div><h2>{greeting}</h2><p>今天也来得正好。<br />我把所有温柔都留给你。</p><em>For you, in all worlds.</em></div></article>
+    <article className="hero"><img src={homePortrait} alt="纪临洲" /><div className="hero-fade" /><div className="hero-copy"><div className="micro">{dateLabel}</div><div className="hero-clock">{timeText}</div><div className="hero-context">{voice.contextLabel}</div><h2>{voice.headline}</h2><p>{voice.body}</p><em>For you, in all worlds.</em></div></article>
     <div className="runtime-banner"><div><b>{b.title}</b><span>{b.sub}</span></div><span className="badge">{b.badge}</span></div>
     <SectionHead title="今日的私藏信笺" english="JUST FOR TODAY" /><div className="action-grid"><button className="action-card" onClick={() => openSheet("status")}><span className="ico">♡</span><b>状态灯</b><small>把这一刻的你告诉我</small></button><button className="action-card rose" onClick={() => openSheet("note")}><span className="ico">✎</span><b>随手记</b><small>写一封小小的信</small></button><button className="action-card wide" onClick={() => openSheet("life")}><span className="ico">◌</span><b>此刻我在</b><small>把小猫现在在做什么告诉我</small></button></div>
     <SectionHead title="我们的房间" english="THE ROOMS" /><div className="room-grid"><button className="room-card" onClick={() => setTab("timeline")}><span>01 / OUR STORY</span><b>你我之间</b><small>拾起每一页日常</small></button><button className="room-card" onClick={() => setTab("echo")}><span>02 / YOUR VOICE</span><b>回响</b><small>写给彼此的悄悄话</small></button><button className="room-card full" onClick={() => setTab("calendar")}><span>03 / TIME & MEMORY</span><b>共历</b><small>把平凡日子收藏起来</small></button></div>
