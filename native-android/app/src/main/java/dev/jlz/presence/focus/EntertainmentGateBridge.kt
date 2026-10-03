@@ -5,6 +5,7 @@ import android.webkit.JavascriptInterface
 import dev.jlz.presence.launcher.LauncherRepository
 import dev.jlz.presence.study.StudyMetricsStore
 import dev.jlz.presence.study.StudySessionRepository
+import dev.jlz.presence.study.StudyRuntimeReporter
 import dev.jlz.presence.study.StudyTimerService
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -161,6 +162,15 @@ class EntertainmentGateBridge(context: Context) {
         val recovery = studyRepository.recoverStaleSession(nowMs)
         if (recovery.recovered) {
             StudyTimerService.stop(app)
+            if (recovery.sessionId.isNotBlank()) {
+                StudyRuntimeReporter.post(
+                    app,
+                    "abandon",
+                    recovery.sessionId,
+                    org.json.JSONObject().put("reason", recovery.reason),
+                    nowMs
+                )
+            }
         }
         val cal = Calendar.getInstance().apply {
             timeInMillis = nowMs
