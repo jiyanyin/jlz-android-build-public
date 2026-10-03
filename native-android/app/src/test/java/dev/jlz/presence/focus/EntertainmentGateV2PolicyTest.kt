@@ -72,6 +72,12 @@ class EntertainmentGateV2PolicyTest {
     }
 
     @Test
+    fun gateSentenceMatrixHasAtLeastFiveHundredDistinctLines() {
+        val count = EntertainmentGateCopy.candidateCountForTest()
+        assertTrue("candidate count was $count", count >= 500)
+    }
+
+    @Test
     fun warningOnlyAppearsInsideLastMinute() {
         val now = 1_000_000L
         assertFalse(EntertainmentGateV2Policy.shouldWarn(now + 61_000L, now))
