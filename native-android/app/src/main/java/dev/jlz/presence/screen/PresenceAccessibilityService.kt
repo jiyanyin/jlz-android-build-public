@@ -14,6 +14,7 @@ import dev.jlz.presence.overlay.FloatingPresenceMode
 import dev.jlz.presence.overlay.FloatingPresenceService
 import dev.jlz.presence.usage.ForegroundUsageTracker
 import dev.jlz.presence.usage.AttentionRhythmTracker
+import dev.jlz.presence.unlock.UnlockSoftGateCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,6 +30,7 @@ class PresenceAccessibilityService : AccessibilityService() {
     private lateinit var focusRepository: FocusRepository
     private lateinit var automaticCapture: AutomaticCaptureCoordinator
     private lateinit var entertainmentGuard: EntertainmentGuard
+    private lateinit var unlockSoftGate: UnlockSoftGateCoordinator
     private val lastGateAtMs = mutableMapOf<String, Long>()
     private val observationCache = AccessibilityObservationCache()
     @Volatile private var contentChangePending = false
@@ -57,6 +59,8 @@ class PresenceAccessibilityService : AccessibilityService() {
         focusRepository = FocusRepository(applicationContext)
         automaticCapture = AutomaticCaptureCoordinator(applicationContext)
         entertainmentGuard = EntertainmentGuard(applicationContext)
+        unlockSoftGate = UnlockSoftGateCoordinator(this)
+        unlockSoftGate.start()
         scope.launch {
             focusRepository.state.collectLatest { state -> focusState = state }
         }
@@ -67,6 +71,9 @@ class PresenceAccessibilityService : AccessibilityService() {
         val eventType = event?.eventType ?: return
         val now = System.currentTimeMillis()
         AccessibilityActionGateway.observeEventSource(event)
+        if (::unlockSoftGate.isInitialized && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            unlockSoftGate.observeForeground(packageName)
+        }
         if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             AccessibilityActionGateway.observeWindow(packageName, event.className?.toString())
             if (::automaticCapture.isInitialized) {
@@ -154,6 +161,7 @@ class PresenceAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         ForegroundUsageTracker.unbind()
         if (::automaticCapture.isInitialized) automaticCapture.close()
+        if (::unlockSoftGate.isInitialized) unlockSoftGate.close()
         AccessibilityActionGateway.unbind(this)
         AccessibilityScreenshotGateway.unbind(this)
         ScreenObservationBus.setConnected(false)
