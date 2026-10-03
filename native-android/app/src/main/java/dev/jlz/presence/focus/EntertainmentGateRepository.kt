@@ -31,7 +31,14 @@ class EntertainmentGateRepository(context: Context) {
     fun enabled(): Boolean = prefs.getBoolean(KEY_ENABLED, true)
 
     fun setEnabled(value: Boolean) {
-        prefs.edit().putBoolean(KEY_ENABLED, value).apply()
+        val editor = prefs.edit().putBoolean(KEY_ENABLED, value)
+        if (!value) {
+            EntertainmentPolicy.profiles().forEach { profile ->
+                editor.remove(RELEASE_PREFIX + profile.packageName)
+                editor.remove(STEP_PREFIX + profile.packageName)
+            }
+        }
+        editor.apply()
         lifeStore.recordTimeline(
             "entertainment_gate",
             if (value) "娱乐门禁已开启" else "娱乐门禁已暂停",
