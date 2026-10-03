@@ -26,5 +26,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Voice engine contract tests
         run: node --experimental-strip-types --test tests/voiceEngine.test.ts
+      - name: DailyPlan client tests
+        run: node --experimental-strip-types --test tests/dailyPlan.test.ts
       - name: Typecheck and build
         run: npm run build
