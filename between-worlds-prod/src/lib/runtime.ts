@@ -1,4 +1,5 @@
 import { normalizeDailyPlan, type DailyPlan } from "./dailyPlan";
+import { normalizeStudySummary, type StudySummary } from "./studySession";
 // Low-privilege Web client for the World Between Runtime.
 // Only ever sends the user-entered Web token (X-Web-Token). Never handles Android/MCP credentials.
 
@@ -57,6 +58,11 @@ export const runtime = {
   dailyPlan: async (cfg: RuntimeConfig, date: string): Promise<DailyPlan> =>
     normalizeDailyPlan(
       await request<unknown>(cfg, `/api/web/daily-plan?${q}&date=${encodeURIComponent(date)}`),
+      date,
+    ),
+  studySummary: async (cfg: RuntimeConfig, date: string): Promise<StudySummary> =>
+    normalizeStudySummary(
+      await request<unknown>(cfg, `/api/web/study/summary?date=${encodeURIComponent(date)}`),
       date,
     ),
   pushPublicKey: (cfg: RuntimeConfig) =>
