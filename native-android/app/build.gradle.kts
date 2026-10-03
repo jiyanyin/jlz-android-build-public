@@ -12,9 +12,9 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026100305
-        versionName = "0.4.0-webshell.5"
-        // Stage E App Hub build anchor
+        versionCode = 2026100306
+        versionName = "0.4.0-webshell.6"
+        // Stage F Unlock Soft Gate build anchor
     }
 
     buildTypes {
