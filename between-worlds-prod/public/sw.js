@@ -1,4 +1,4 @@
-const CACHE = "between-worlds-pwa-v5";
+const CACHE = "between-worlds-pwa-v6";
 const CORE = ["/", "/manifest.json", "/icon-192.png", "/icon-512.png", "/jlz-welcome-portrait.webp", "/jlz-home-portrait.webp"];
 
 self.addEventListener("install", event => {
@@ -39,16 +39,15 @@ self.addEventListener("fetch", event => {
   }
 
   event.respondWith(
-    caches.match(request).then(cached => {
-      if (cached) return cached;
-      return fetch(request).then(response => {
+    fetch(request)
+      .then(response => {
         if (response && response.ok) {
           const copy = response.clone();
           caches.open(CACHE).then(cache => cache.put(request, copy));
         }
         return response;
-      });
-    })
+      })
+      .catch(() => caches.match(request))
   );
 });
 
