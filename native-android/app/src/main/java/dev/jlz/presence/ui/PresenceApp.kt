@@ -895,6 +895,7 @@ fun SettingsScreen() {
         item { CalendarSettingsPanel() }
         item { IncomingCallSettingsPanel() }
         item { AutomaticCaptureSettingsPanel() }
+        item { UnlockSoftGateSettingsPanel() }
         item { DeviceUnlockSettingsPanel() }
         item { Spacer(Modifier.height(24.dp)) }
     }
@@ -916,6 +917,7 @@ fun PermissionDoctorScreen() {
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item { RuntimeIdentityPanel() }
+            item { UnlockSoftGateSettingsPanel() }
             item { DeviceUnlockSettingsPanel() }
             items(items) { item ->
                 IceGlassCard {
