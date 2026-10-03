@@ -11,6 +11,7 @@ export type DailyTaskStatus = "todo" | "in_progress" | "done" | "postponed" | "i
 export type DailyTaskPriority = "high" | "normal" | "low";
 export type DailyTask = {
   task_id: string;
+  date: string;
   title: string;
   category: string;
   priority: DailyTaskPriority;
@@ -70,11 +71,13 @@ export const emptyDailyPlan = (date: string): DailyPlan => ({
 export const normalizeDailyPlan = (payload: unknown, fallbackDate: string): DailyPlan => {
   const root = asObj(payload);
   const rawPlan = asObj(root.plan ?? root.daily_plan ?? payload);
+  const planDate = str(rawPlan.date) || fallbackDate;
   const rawTasks = Array.isArray(rawPlan.tasks) ? rawPlan.tasks : [];
   const tasks: DailyTask[] = rawTasks.map((raw) => {
     const task = asObj(raw);
     return {
       task_id: str(task.task_id ?? task.id),
+      date: str(task.date) || planDate,
       title: str(task.title),
       category: str(task.category) || "杂事",
       priority: priority(task.priority),
@@ -96,7 +99,7 @@ export const normalizeDailyPlan = (payload: unknown, fallbackDate: string): Dail
   return {
     version: str(rawPlan.version) || "daily-plan-1",
     space_id: str(rawPlan.space_id) || "world-between-primary",
-    date: str(rawPlan.date) || fallbackDate,
+    date: planDate,
     tasks,
     current_task_id: str(rawPlan.current_task_id),
     current_step: str(currentRaw.task_id) ? {
@@ -158,6 +161,7 @@ export const optimisticTaskMutation = (
 
   const base: DailyTask = existing ?? {
     task_id: payload.task_id!,
+    date,
     title: payload.title!,
     category: "杂事",
     priority: "normal",
@@ -174,7 +178,7 @@ export const optimisticTaskMutation = (
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
-  const task: DailyTask = { ...base, ...payload, updated_at: new Date().toISOString() };
+  const task: DailyTask = { ...base, ...payload, date, updated_at: new Date().toISOString() };
   if (action === "complete") task.status = "done";
   if (action === "start") task.status = "in_progress";
   if (action === "reopen") task.status = "todo";
