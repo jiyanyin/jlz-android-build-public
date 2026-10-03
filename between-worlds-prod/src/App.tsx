@@ -436,11 +436,63 @@ function bannerText(b: Banner) {
 }
 const syncLabel = (sync?: Sync) => (sync === "synced" ? "已同步" : "本地 · 待同步");
 
-function HomePage({ dateLabel, timeText, voice, homePortrait, openSheet, setTab, banner }: { dateLabel: string; timeText: string; voice: ReturnType<typeof selectVoiceCard>; homePortrait: string; openSheet: (s: "status" | "note" | "life") => void; setTab: (t: Tab) => void; banner: Banner }) {
+function HomePage({
+  dateLabel, timeText, voice, homePortrait, plan, openSheet, openTask, mutateTask, setTab, banner,
+}: {
+  dateLabel: string;
+  timeText: string;
+  voice: ReturnType<typeof selectVoiceCard>;
+  homePortrait: string;
+  plan: DailyPlan;
+  openSheet: (s: "status" | "note" | "life") => void;
+  openTask: (task?: DailyTask | null) => void;
+  mutateTask: (action: string, task: Partial<DailyTask> & { task_id?: string }) => void;
+  setTab: (t: Tab) => void;
+  banner: Banner;
+}) {
   const b = bannerText(banner);
-  return <section className="page active"><div className="brand-block"><div className="cn">世界之间</div><div className="en">Between Worlds</div></div>
+  const sections = planSections(plan);
+  const current = plan.tasks.find((task) => task.task_id === plan.current_task_id) ?? null;
+  const statusLabel: Record<DailyTask["status"], string> = {
+    todo: "待开始", in_progress: "进行中", done: "完成", postponed: "已延期", incomplete: "未完成",
+  };
+  const renderTask = (task: DailyTask) => <div className="daily-task-row" key={task.task_id}>
+    <button className={`task-check ${task.status === "done" ? "done" : ""}`} aria-label={task.status === "done" ? "重新打开任务" : "完成任务"} onClick={() => mutateTask(task.status === "done" ? "reopen" : "complete", { task_id: task.task_id })}>{task.status === "done" ? "✓" : ""}</button>
+    <button className="task-body" onClick={() => openTask(task)}>
+      <span className="task-title-line"><b>{task.title}</b>{task.user_pinned && <i>PIN</i>}{task.must_do && <i>MUST</i>}</span>
+      <small>{task.category} · {statusLabel[task.status]}{task.estimated_minutes ? ` · 约 ${task.estimated_minutes} 分钟` : ""}</small>
+      {task.next_action && <em>{task.next_action}</em>}
+    </button>
+  </div>;
+
+  return <section className="page active">
+    <div className="brand-block"><div className="cn">世界之间</div><div className="en">Between Worlds</div></div>
     <article className="hero"><img src={homePortrait} alt="纪临洲" /><div className="hero-fade" /><div className="hero-copy"><div className="micro">{dateLabel}</div><div className="hero-clock">{timeText}</div><div className="hero-context">{voice.contextLabel}</div><h2>{voice.headline}</h2><p>{voice.body}</p><em>For you, in all worlds.</em></div></article>
     <div className="runtime-banner"><div><b>{b.title}</b><span>{b.sub}</span></div><span className="badge">{b.badge}</span></div>
+
+    <SectionHead title="今天听我的" english="DAILY PLAN" />
+    <div className="daily-plan glass">
+      <div className="daily-plan-top">
+        <div><span>TODAY · {plan.date}</span><b>{plan.tasks.length ? `${plan.tasks.filter((task) => task.status === "done").length} / ${plan.tasks.length} 已完成` : "今天还没排任务"}</b></div>
+        <button onClick={() => openTask(null)}>＋</button>
+      </div>
+      {plan.current_step ? <div className="current-step">
+        <span>NOW · 当前第一步</span>
+        <strong>{plan.current_step.next_action}</strong>
+        <small>{plan.current_step.title}{plan.current_step.estimated_minutes ? ` · 约 ${plan.current_step.estimated_minutes} 分钟` : ""}</small>
+        <div className="current-step-actions">
+          {current?.status === "in_progress"
+            ? <button onClick={() => mutateTask("complete", { task_id: current.task_id })}>做完了</button>
+            : current && <button onClick={() => mutateTask("start", { task_id: current.task_id })}>现在开始</button>}
+          {current && <button className="secondary-mini" onClick={() => openTask(current)}>调整</button>}
+        </div>
+      </div> : <button className="empty-plan" onClick={() => openTask(null)}><b>给今天放第一件事。</b><small>别在脑子里堆着。写下来，我替你排顺序。</small></button>}
+      {!!sections.main.length && <div className="daily-main-list">{sections.main.map(renderTask)}</div>}
+      {!!sections.other.length && <details className="task-fold"><summary>另外 {sections.other.length} 件 · 展开</summary>{sections.other.map(renderTask)}</details>}
+      {!!sections.completed.length && <details className="task-fold completed"><summary>已完成 {sections.completed.length} 件</summary>{sections.completed.map(renderTask)}</details>}
+      {!!sections.postponed.length && <details className="task-fold"><summary>已延期 {sections.postponed.length} 件</summary>{sections.postponed.map(renderTask)}</details>}
+    </div>
+
     <SectionHead title="今日的私藏信笺" english="JUST FOR TODAY" /><div className="action-grid"><button className="action-card" onClick={() => openSheet("status")}><span className="ico">♡</span><b>状态灯</b><small>把这一刻的你告诉我</small></button><button className="action-card rose" onClick={() => openSheet("note")}><span className="ico">✎</span><b>随手记</b><small>写一封小小的信</small></button><button className="action-card wide" onClick={() => openSheet("life")}><span className="ico">◌</span><b>此刻我在</b><small>把小猫现在在做什么告诉我</small></button></div>
     <SectionHead title="我们的房间" english="THE ROOMS" /><div className="room-grid"><button className="room-card" onClick={() => setTab("timeline")}><span>01 / OUR STORY</span><b>你我之间</b><small>拾起每一页日常</small></button><button className="room-card" onClick={() => setTab("echo")}><span>02 / YOUR VOICE</span><b>回响</b><small>写给彼此的悄悄话</small></button><button className="room-card full" onClick={() => setTab("calendar")}><span>03 / TIME & MEMORY</span><b>共历</b><small>把平凡日子收藏起来</small></button></div>
   </section>;
