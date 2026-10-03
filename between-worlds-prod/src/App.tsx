@@ -39,6 +39,7 @@ const CLEANUP_MARKER = "world-between-cleanup-20261002-v1";
 const INSTALL_GUIDE_DISMISSED = "world-between-install-guide-dismissed-v1";
 const ANDROID_SHELL = new URLSearchParams(window.location.search).get("shell") === "android";
 const OUTBOX_CAP = 300;
+const APP_BUILD = "echo-fix-20261003-1149";
 const defaults: AppState = { theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
   runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [] };
 const markSynced = (s: AppState, id: string): AppState => {
@@ -255,6 +256,9 @@ export default function BetweenWorlds() {
       icon_192_content_type: icon192Probe.contentType,
       icon_512_status: icon512Probe.status,
       icon_512_content_type: icon512Probe.contentType,
+      app_build: APP_BUILD,
+      echo_remote_count: stateRef.current.remoteMessages.length,
+      echo_companion_count: stateRef.current.remoteMessages.filter((m) => m.fromCompanion).length,
     };
     const item: OutboxItem = { event_id: newEventId(), path: "/api/web/presence", queuedAt: new Date().toISOString(), tries: 0,
       body: { state: stateName, visible: document.visibilityState === "visible", focused: document.hasFocus(), tab: tabRef.current, client_at: new Date().toISOString(), pwa_diag: pwaDiag } };
