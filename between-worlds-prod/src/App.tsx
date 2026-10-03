@@ -337,7 +337,7 @@ export default function BetweenWorlds() {
   return <div className="bw-root">
     {installGuide && <div className="install-guide-backdrop" role="dialog" aria-modal="true" aria-label="安装世界之间">
       <div className="install-guide-card">
-        <img src="/icon-192.png" alt="世界之间图标" />
+        <img src="/icon-512.webp" alt="世界之间图标" />
         <span className="install-guide-kicker">BETWEEN WORLDS · APP</span>
         <h3>把「世界之间」带到桌面</h3>
         <p>{isMiBrowser ? "当前小米浏览器只能创建网址快捷方式，而且不支持我们的后台 Web Push。用 Chrome 安装后，会以独立 App 打开，并能接收系统通知。" : canPromptInstall ? "Chrome 已确认这个站点可以安装。点下面按钮会直接唤起系统安装框。" : "Chrome 还在检查安装资格；满足条件后这张卡片会自动变成可安装状态。"}</p>
