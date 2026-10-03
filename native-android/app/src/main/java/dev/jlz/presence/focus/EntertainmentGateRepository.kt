@@ -28,6 +28,17 @@ class EntertainmentGateRepository(context: Context) {
     private val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val lifeStore = LocalLifeStore(app)
 
+    fun enabled(): Boolean = prefs.getBoolean(KEY_ENABLED, true)
+
+    fun setEnabled(value: Boolean) {
+        prefs.edit().putBoolean(KEY_ENABLED, value).apply()
+        lifeStore.recordTimeline(
+            "entertainment_gate",
+            if (value) "娱乐门禁已开启" else "娱乐门禁已暂停",
+            "Entertainment Gate V2"
+        )
+    }
+
     fun release(packageName: String): EntertainmentRelease? {
         val raw = prefs.getString(RELEASE_PREFIX + packageName, null) ?: return null
         return decodeRelease(packageName, raw)
@@ -181,6 +192,7 @@ class EntertainmentGateRepository(context: Context) {
 
     companion object {
         private const val PREFS = "jlz_entertainment_gate_v2"
+        private const val KEY_ENABLED = "enabled_v2"
         private const val RELEASE_PREFIX = "release::"
         private const val STEP_PREFIX = "step::"
     }
