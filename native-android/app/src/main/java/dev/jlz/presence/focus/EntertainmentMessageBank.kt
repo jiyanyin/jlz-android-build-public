@@ -1,6 +1,6 @@
 package dev.jlz.presence.focus
 
-import kotlin.math.abs
+import kotlin.math.absoluteValue
 
 object EntertainmentMessageBank {
     private val phoneOpeners = listOf(
@@ -144,8 +144,8 @@ object EntertainmentMessageBank {
         recent: Set<String>
     ): String {
         val all = candidates(appName, isTablet, stage)
-        if (all.isEmpty()) return "看见你打开$appName了。别忘了时间。"
-        val start = abs(seed.hashCode()) % all.size
+        if (all.isEmpty()) return "看见你打开${appName}了。别忘了时间。"
+        val start = seed.hashCode().toLong().absoluteValue.rem(all.size.toLong()).toInt()
         for (offset in all.indices) {
             val candidate = all[(start + offset) % all.size]
             if (candidate !in recent) return candidate
