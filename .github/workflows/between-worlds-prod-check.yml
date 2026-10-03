@@ -24,5 +24,7 @@ jobs:
           node-version: "22"
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+      - name: Voice engine contract tests
+        run: node --experimental-strip-types --test tests/voiceEngine.test.ts
       - name: Typecheck and build
         run: npm run build
