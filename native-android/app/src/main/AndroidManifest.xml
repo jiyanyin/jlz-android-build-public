@@ -53,6 +53,7 @@
                     android:host="between-worlds-prod.onrender.com" />
             </intent-filter>
         </activity>
+        <!-- MainActivity is a native control surface only; WebShellActivity remains the app launcher. -->
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
