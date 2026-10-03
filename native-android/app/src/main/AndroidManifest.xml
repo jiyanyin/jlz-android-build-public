@@ -35,15 +35,13 @@
         <activity android:name=".callback.PresenceCallbackActivity" android:exported="false"
             android:excludeFromRecents="true" android:showWhenLocked="true" android:turnScreenOn="true" />
         <activity
-            android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
+            android:name=".WebShellActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar">
-            <meta-data
-                android:name="android.support.customtabs.trusted.DEFAULT_URL"
-                android:value="@string/twa_start_url" />
+            android:theme="@style/Theme.JLZPresence">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
             <intent-filter android:autoVerify="true">
