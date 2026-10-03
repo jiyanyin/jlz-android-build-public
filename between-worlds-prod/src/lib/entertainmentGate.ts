@@ -57,6 +57,34 @@ const numberValue = (value: unknown, fallback = 0) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
+export const normalizeGateSnapshot = (
+  payload: unknown,
+  packageName: string
+): EntertainmentGateSnapshot => {
+  const raw = payload && typeof payload === "object"
+    ? payload as Record<string, unknown>
+    : {};
+  return {
+    ...empty(packageName),
+    ok: raw.ok === true,
+    package_name: String(raw.package_name || packageName),
+    app_name: String(raw.app_name || "这个 App"),
+    tier: String(raw.tier || "feed"),
+    device_type: String(raw.device_type || "phone"),
+    incoming_text: String(raw.incoming_text || ""),
+    purpose_minutes: numberValue(raw.purpose_minutes, 5),
+    break_minutes: numberValue(raw.break_minutes, 5),
+    direct_minutes: numberValue(raw.direct_minutes, 3),
+    small_step_minutes: numberValue(raw.small_step_minutes, 5),
+    small_step_pending: raw.small_step_pending === true,
+    small_step_done: raw.small_step_done === true,
+    small_step_remaining_ms: numberValue(raw.small_step_remaining_ms, 0),
+    small_step_text: String(raw.small_step_text || ""),
+    current_effective_ms: numberValue(raw.current_effective_ms, 0),
+    error: raw.error ? String(raw.error) : undefined,
+  };
+};
+
 export const readGateSnapshot = (
   packageName: string,
   reason = "entry"
@@ -64,26 +92,10 @@ export const readGateSnapshot = (
   const bridge = window.WorldBetweenGate;
   if (!bridge?.snapshot) return empty(packageName);
   try {
-    const raw = JSON.parse(bridge.snapshot(packageName, reason)) as Record<string, unknown>;
-    return {
-      ...empty(packageName),
-      ok: raw.ok === true,
-      package_name: String(raw.package_name || packageName),
-      app_name: String(raw.app_name || "这个 App"),
-      tier: String(raw.tier || "feed"),
-      device_type: String(raw.device_type || "phone"),
-      incoming_text: String(raw.incoming_text || ""),
-      purpose_minutes: numberValue(raw.purpose_minutes, 5),
-      break_minutes: numberValue(raw.break_minutes, 5),
-      direct_minutes: numberValue(raw.direct_minutes, 3),
-      small_step_minutes: numberValue(raw.small_step_minutes, 5),
-      small_step_pending: raw.small_step_pending === true,
-      small_step_done: raw.small_step_done === true,
-      small_step_remaining_ms: numberValue(raw.small_step_remaining_ms, 0),
-      small_step_text: String(raw.small_step_text || ""),
-      current_effective_ms: numberValue(raw.current_effective_ms, 0),
-      error: raw.error ? String(raw.error) : undefined,
-    };
+    return normalizeGateSnapshot(
+      JSON.parse(bridge.snapshot(packageName, reason)),
+      packageName
+    );
   } catch {
     return empty(packageName);
   }
