@@ -19,7 +19,7 @@ import androidx.core.app.Person
 import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.IconCompat
-import dev.jlz.presence.MainActivity
+import dev.jlz.presence.WebShellActivity
 import java.util.UUID
 
 data class NotificationResult(
@@ -61,23 +61,15 @@ class NotificationAdapter(private val context: Context) {
         val contentPendingIntent = PendingIntent.getActivity(
             context,
             notificationId,
-            Intent(context, MainActivity::class.java)
-                .putExtra(
-                    MainActivity.EXTRA_DESTINATION,
-                    MainActivity.DESTINATION_CHAT
-                )
-                .putExtra(
-                    NotificationReplyReceiver.EXTRA_EVENT_ID,
-                    eventId
-                )
-                .putExtra(
-                    NotificationReplyReceiver.EXTRA_INTENT_ID,
-                    intentId
-                )
-                .addFlags(
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP
-                ),
+            Intent(
+                Intent.ACTION_VIEW,
+                android.net.Uri.parse("https://between-worlds-prod.onrender.com/?shell=android#echo"),
+                context,
+                WebShellActivity::class.java
+            )
+                .putExtra(NotificationReplyReceiver.EXTRA_EVENT_ID, eventId)
+                .putExtra(NotificationReplyReceiver.EXTRA_INTENT_ID, intentId)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or
                 PendingIntent.FLAG_IMMUTABLE
         )
@@ -207,8 +199,12 @@ class NotificationAdapter(private val context: Context) {
         val openChat = PendingIntent.getActivity(
             context,
             notificationId,
-            Intent(context, MainActivity::class.java)
-                .putExtra(MainActivity.EXTRA_DESTINATION, MainActivity.DESTINATION_CHAT)
+            Intent(
+                Intent.ACTION_VIEW,
+                android.net.Uri.parse("https://between-worlds-prod.onrender.com/?shell=android#echo"),
+                context,
+                WebShellActivity::class.java
+            )
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
