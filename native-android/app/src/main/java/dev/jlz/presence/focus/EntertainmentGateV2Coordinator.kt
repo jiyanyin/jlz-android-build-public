@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import dev.jlz.presence.notification.NotificationAdapter
+import dev.jlz.presence.WebShellActivity
 
 /**
  * Immediate, local entertainment gate.
@@ -149,14 +150,21 @@ class EntertainmentGateV2Coordinator(
             if (!repository.enabled()) return@Runnable
             if (repository.activeRelease(profile.packageName) != null) return@Runnable
 
-            val launched = EntertainmentGateActivity.show(
+            val launched = WebShellActivity.showEntertainmentGate(
                 service,
                 packageName = profile.packageName,
-                reason = reason,
-                isTablet = isTablet
+                reason = reason
             )
             if (launched) {
                 lastGateAtMs[profile.packageName] = System.currentTimeMillis()
+            } else {
+                // Keep the standalone native surface as a last-resort fallback.
+                EntertainmentGateActivity.show(
+                    service,
+                    packageName = profile.packageName,
+                    reason = reason,
+                    isTablet = isTablet
+                )
             }
         }
         callbacks += present
