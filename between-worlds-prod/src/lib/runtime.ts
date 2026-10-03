@@ -1,3 +1,4 @@
+import { normalizeDailyPlan, type DailyPlan } from "./dailyPlan";
 // Low-privilege Web client for the World Between Runtime.
 // Only ever sends the user-entered Web token (X-Web-Token). Never handles Android/MCP credentials.
 
@@ -11,7 +12,8 @@ export type WritePath =
   | "/api/web/life/action"
   | "/api/web/journal"
   | "/api/web/message"
-  | "/api/web/presence";
+  | "/api/web/presence"
+  | "/api/web/daily-plan/task";
 export type OutboxItem = { event_id: string; path: WritePath; body: Record<string, unknown>; queuedAt: string; tries: number };
 
 export class RuntimeError extends Error {
@@ -52,6 +54,11 @@ export const runtime = {
   health: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, "/api/web/health"),
   state: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, `/api/web/state?${q}`),
   messages: (cfg: RuntimeConfig, limit = 80) => request<unknown>(cfg, `/api/web/messages?${q}&limit=${limit}`),
+  dailyPlan: async (cfg: RuntimeConfig, date: string): Promise<DailyPlan> =>
+    normalizeDailyPlan(
+      await request<unknown>(cfg, `/api/web/daily-plan?${q}&date=${encodeURIComponent(date)}`),
+      date,
+    ),
   pushPublicKey: (cfg: RuntimeConfig) =>
     request<{ ok: boolean; configured: boolean; public_key: string }>(cfg, "/api/web/push/public-key"),
   pushSubscribe: (cfg: RuntimeConfig, subscription: PushSubscriptionJSON) =>
