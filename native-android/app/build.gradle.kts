@@ -12,9 +12,9 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026100310
-        versionName = "0.4.0-webshell.10"
-        // Phone RC4 avatar + WebShell Study build anchor
+        versionCode = 2026100311
+        versionName = "0.4.0-webshell.11"
+        // Phone RC4 final stale-runtime-sync build anchor
     }
 
     buildTypes {
