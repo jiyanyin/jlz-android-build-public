@@ -4,6 +4,7 @@ import { EMPTY_VOICE_MEMORY, formatVoiceClock, formatVoiceDate, selectVoiceCard,
 import { emptyDailyPlan, optimisticTaskMutation, planSections, TASK_CATEGORIES, type DailyPlan, type DailyTask } from "./lib/dailyPlan";
 import { emptyStudySummary, formatStudyClock, formatStudyMinutes, liveStudyTotals, studyDeviceLabel, type StudySummary } from "./lib/studySession";
 import { appHubActions, appHubCategories, appHubHomeItems, emptyAppHubSnapshot, readNativeAppHub, type AppHubItem, type AppHubSnapshot } from "./lib/appHub";
+import { finishNativeStudy, liveNativeStudy, nativeStudyAvailable, openNativeBanduread, openNativeFenbi, pauseNativeStudy, readNativeStudy, resumeNativeStudy, startNativeStudy, type NativeStudySnapshot } from "./lib/nativeStudy";
 import { declineGate, gateBridgeAvailable, gateResponse, grantGate, readGateSnapshot, startGateSmallStep, type EntertainmentGateSnapshot, type GateChoice } from "./lib/entertainmentGate";
 
 type Theme = "mist" | "gothic";
@@ -39,7 +40,7 @@ const vapidKeyBytes = (value: string) => {
 
 const welcomePortrait = "/jlz-welcome-portrait.webp";
 const homePortrait = "/jlz-home-portrait.webp";
-const chatAvatar = "/jlz-chat-avatar.webp";
+const chatAvatar = "/jlz-chat-avatar-v2.webp";
 const STORE = "world-between-web-v1";
 const CLEANUP_MARKER = "world-between-cleanup-20261002-v1";
 const INSTALL_GUIDE_DISMISSED = "world-between-install-guide-dismissed-v1";
@@ -416,8 +417,12 @@ export default function BetweenWorlds() {
   });
 
   const openNativeStudy = () => {
+    if (ANDROID_SHELL && nativeStudyAvailable()) {
+      window.location.href = "/?shell=android&entry=study";
+      return;
+    }
     if (ANDROID_SHELL) {
-      window.location.href = "jlz://native/study";
+      window.location.href = "/?shell=android&entry=study";
       return;
     }
     notify("学习计时控制在「世界之间」Android App 里。");
@@ -482,6 +487,10 @@ export default function BetweenWorlds() {
       reason={GATE_REASON}
       avatar={chatAvatar}
     />;
+  }
+
+  if (ENTRY_MODE === "study") {
+    return <StudySessionWebPage avatar={chatAvatar} />;
   }
 
   return <div className="bw-root">
@@ -646,7 +655,7 @@ function EntertainmentGateWebPage({
               做到了 · 放行 {snapshot.small_step_minutes} 分钟
             </button>
           : <>
-              <button className="gate-web-primary wide" onClick={() => { window.location.href = "jlz://native/study"; }}>
+              <button className="gate-web-primary wide" onClick={() => { window.location.href = "/?shell=android&entry=study"; }}>
                 回去做完这三分钟
               </button>
               <button className="gate-web-text" onClick={refresh}>我做了 · 重新检查</button>
@@ -667,6 +676,137 @@ function EntertainmentGateWebPage({
 
       {error && <div className="gate-web-error">{error}</div>}
       <button className="gate-web-text muted" onClick={() => goHome("declined_after_connect")}>算了，这次不进</button>
+    </div>
+  </div>;
+}
+
+function StudySessionWebPage({ avatar }: { avatar: string }) {
+  const [snapshot, setSnapshot] = useState<NativeStudySnapshot>(() => readNativeStudy());
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [note, setNote] = useState("");
+
+  const refresh = useCallback(() => {
+    const next = readNativeStudy();
+    setSnapshot(next);
+    if (next.stale_recovered) {
+      setNote("刚才那条异常旧计时已经清掉了。166 小时不算数。");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (snapshot.stale_recovered) {
+      setNote("刚才那条异常旧计时已经清掉了。166 小时不算数。");
+    }
+  }, [snapshot.stale_recovered]);
+
+  useEffect(() => {
+    const tick = window.setInterval(() => setNowMs(Date.now()), 1000);
+    const sync = window.setInterval(refresh, 10_000);
+    const onFocus = () => refresh();
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.clearInterval(tick);
+      window.clearInterval(sync);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [refresh]);
+
+  const live = liveNativeStudy(snapshot, nowMs);
+  const hhmmss = (ms: number) => {
+    const seconds = Math.floor(Math.max(0, ms) / 1000);
+    return [
+      Math.floor(seconds / 3600),
+      Math.floor((seconds % 3600) / 60),
+      seconds % 60,
+    ].map((value) => String(value).padStart(2, "0")).join(":");
+  };
+
+  const commit = (
+    action: () => NativeStudySnapshot,
+    message: string
+  ) => {
+    const next = action();
+    setSnapshot(next);
+    setNowMs(Date.now());
+    setNote(message);
+  };
+
+  if (!nativeStudyAvailable()) {
+    return <div className="study-web-root">
+      <div className="study-web-shell">
+        <div className="study-web-kicker">WORLD BETWEEN · STUDY</div>
+        <h1>学习计时暂时没接上原生端。</h1>
+        <p className="study-web-muted">这次先不制造假计时。返回首页，我会继续排查。</p>
+        <button className="study-web-primary" onClick={() => { window.location.href = "/?shell=android&entry=home"; }}>返回世界之间</button>
+      </div>
+    </div>;
+  }
+
+  const stateText = !snapshot.active
+    ? "等你开始"
+    : snapshot.paused ? "这一轮暂停着" : "正在学习";
+
+  return <div className="study-web-root">
+    <div className="study-web-stars" />
+    <div className="study-web-shell">
+      <div className="study-web-top">
+        <div>
+          <div className="study-web-kicker">BETWEEN WORLDS · STUDY SESSION</div>
+          <h1>陪你学习</h1>
+          <p>计时留在 Android 原生层，页面留在我们的世界里。</p>
+        </div>
+        <button className="study-web-back" onClick={() => { window.location.href = "/?shell=android&entry=home"; }}>返回</button>
+      </div>
+
+      <section className={`study-web-card ${snapshot.active ? "active" : ""} ${snapshot.paused ? "paused" : ""}`}>
+        <div className="study-web-card-head">
+          <div><span>TODAY · FOCUS</span><b>{stateText}</b></div>
+          <img src={avatar} alt="纪临洲" />
+        </div>
+        <strong className="study-web-clock">{hhmmss(live.todayMs)}</strong>
+        <small>今日累计 · 已完成 {snapshot.completed_sessions} 轮</small>
+        <div className="study-web-divider" />
+        <div className="study-web-stats">
+          <div><span>本轮</span><b>{hhmmss(live.currentMs)}</b></div>
+          <div><span>计时规则</span><b>{snapshot.paused ? "暂停时间不计入" : "原生后台持续保存"}</b></div>
+        </div>
+      </section>
+
+      <section className="study-web-card control">
+        {!snapshot.active ? <>
+          <span className="study-web-section-label">NOW · START</span>
+          <h2>现在开始这一轮。</h2>
+          <p>不限定 25 分钟。你开始，我计时；切去伴读或粉笔，Session 仍然留在本机。</p>
+          <button className="study-web-primary" onClick={() => commit(startNativeStudy, "开始了。我看着时间。")}>开始这一轮</button>
+        </> : snapshot.paused ? <>
+          <span className="study-web-section-label">PAUSED</span>
+          <h2>暂停着。</h2>
+          <p>这段时间不会继续算。准备好了就接回去，不重开一轮。</p>
+          <div className="study-web-two">
+            <button className="study-web-primary" onClick={() => commit(resumeNativeStudy, "接上了。继续。")}>继续</button>
+            <button className="study-web-secondary" onClick={() => commit(finishNativeStudy, "这一轮收好了。")}>结束这一轮</button>
+          </div>
+        </> : <>
+          <span className="study-web-section-label">LIVE</span>
+          <h2>这一轮正在走。</h2>
+          <p>通知栏也有原生实时计时。离开这个页面，不会把 Session 弄丢。</p>
+          <div className="study-web-two">
+            <button className="study-web-secondary" onClick={() => commit(pauseNativeStudy, "暂停。现在不算时间。")}>暂停</button>
+            <button className="study-web-primary" onClick={() => commit(finishNativeStudy, "这一轮收好了。")}>结束这一轮</button>
+          </div>
+        </>}
+        {note && <div className="study-web-note">{note}</div>}
+      </section>
+
+      <div className="study-web-section-label outside">去学习</div>
+      <div className="study-web-two launch">
+        <button onClick={() => { const result = openNativeBanduread(); setNote(result || "正在打开伴读。"); }}>伴读 <span>刷题 / 复盘</span></button>
+        <button onClick={() => { const result = openNativeFenbi(); setNote(result || "正在打开粉笔。"); }}>粉笔 <span>练习 / 模考</span></button>
+      </div>
+
+      <p className="study-web-foot">真正的 Session 仍由 Android 保存；WebShell 只是把它画成和「世界之间」同一套界面。</p>
     </div>
   </div>;
 }
