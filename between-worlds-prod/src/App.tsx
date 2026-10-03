@@ -125,7 +125,12 @@ export default function BetweenWorlds() {
   }, []);
   useEffect(() => {
     if (!unlockHello) return;
-    const timer = window.setTimeout(() => setUnlockHello(false), 8_000);
+    const timer = window.setTimeout(() => {
+      setUnlockHello(false);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("entry");
+      history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }, 8_000);
     return () => window.clearTimeout(timer);
   }, [unlockHello]);
 
