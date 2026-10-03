@@ -112,6 +112,14 @@ class EntertainmentGateActivity : ComponentActivity() {
                                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                         )
                         finish()
+                    },
+                    onOpenStudy = {
+                        startActivity(
+                            Intent(this, MainActivity::class.java)
+                                .putExtra(MainActivity.EXTRA_DESTINATION, MainActivity.DESTINATION_STUDY)
+                                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        )
+                        finish()
                     }
                 )
             }
@@ -153,7 +161,8 @@ private fun EntertainmentGateScreen(
     isTablet: Boolean,
     onClose: (String) -> Unit,
     onOpenApp: (EntertainmentIntentChoice, Int) -> Unit,
-    onSmallStep: (Long) -> Unit
+    onSmallStep: (Long) -> Unit,
+    onOpenStudy: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
@@ -252,6 +261,7 @@ private fun EntertainmentGateScreen(
                                 onSmallStep(baseline)
                             }
                         },
+                        onOpenStudy = onOpenStudy,
                         onClose = { onClose("declined_after_connect") }
                     )
                 }
@@ -373,6 +383,7 @@ private fun ConnectedGate(
     loadCurrent: () -> Unit,
     onChoice: (EntertainmentIntentChoice) -> Unit,
     onSmallStep: () -> Unit,
+    onOpenStudy: () -> Unit,
     onClose: () -> Unit
 ) {
     val remaining = pending?.let {
@@ -383,6 +394,7 @@ private fun ConnectedGate(
         )
     } ?: 0L
     val stepDone = pending != null && !loadingStudy && remaining <= 0L
+    var selectedChoice by remember { mutableStateOf<EntertainmentIntentChoice?>(null) }
 
     Column(
         Modifier.fillMaxSize(),
@@ -433,7 +445,7 @@ private fun ConnectedGate(
                 }
             } else {
                 Button(
-                    onClick = onSmallStep,
+                    onClick = onOpenStudy,
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF9186BC),
@@ -447,16 +459,37 @@ private fun ConnectedGate(
                     Text("我做了，重新检查", color = Color(0xFFC5BCD2))
                 }
             }
+        } else if (selectedChoice != null) {
+            val choice = selectedChoice!!
+            val plan = EntertainmentGateV2Policy.releasePlan(
+                isTablet, profile.tier, choice
+            )
+            GateSpeech(EntertainmentGateCopy.response(choice, seed))
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = { onChoice(choice) },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFD7ADC2),
+                    contentColor = Color(0xFF251821)
+                ),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Text("进去 · ${plan.minutes} 分钟")
+            }
+            TextButton(onClick = { selectedChoice = null }) {
+                Text("我换个答案", color = Color(0xFFC5BCD2))
+            }
         } else {
             ChoiceButton(
                 title = "我有明确目的",
                 subtitle = if (profile.tier == EntertainmentTier.SHOPPING) "查东西 / 买东西 / 处理一件事" else "找一条内容 / 查一个东西",
-                onClick = { onChoice(EntertainmentIntentChoice.PURPOSE) }
+                onClick = { selectedChoice = EntertainmentIntentChoice.PURPOSE }
             )
             ChoiceButton(
                 title = "我就是想休息一下",
                 subtitle = "给一小段时间，到点提醒",
-                onClick = { onChoice(EntertainmentIntentChoice.BREAK) }
+                onClick = { selectedChoice = EntertainmentIntentChoice.BREAK }
             )
             ChoiceButton(
                 title = "先做一小步再进去",
@@ -466,7 +499,7 @@ private fun ConnectedGate(
             ChoiceButton(
                 title = "我现在就是想进去",
                 subtitle = "不编理由 · 给最短放行",
-                onClick = { onChoice(EntertainmentIntentChoice.DIRECT) }
+                onClick = { selectedChoice = EntertainmentIntentChoice.DIRECT }
             )
         }
 
