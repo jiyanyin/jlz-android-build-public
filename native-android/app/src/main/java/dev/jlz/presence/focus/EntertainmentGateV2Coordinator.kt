@@ -83,6 +83,7 @@ class EntertainmentGateV2Coordinator(
         if (release.untilMs - nowMs > EntertainmentGateV2Policy.WARNING_BEFORE_MS) {
             val warning = Runnable {
                 if (
+                    repository.enabled() &&
                     repository.activeRelease(profile.packageName)?.sessionId == release.sessionId &&
                     foregroundPackage == profile.packageName &&
                     warningSessionIds.add(release.sessionId)
@@ -113,6 +114,7 @@ class EntertainmentGateV2Coordinator(
             scheduledSessionIds.remove(release.sessionId)
             val current = repository.release(profile.packageName)
             if (
+                repository.enabled() &&
                 current?.sessionId == release.sessionId &&
                 !current.active(System.currentTimeMillis())
             ) {
