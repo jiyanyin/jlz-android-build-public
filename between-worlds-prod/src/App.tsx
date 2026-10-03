@@ -422,7 +422,7 @@ export default function BetweenWorlds() {
       return;
     }
     if (ANDROID_SHELL) {
-      window.location.href = "/?shell=android&entry=study";
+      window.location.href = "jlz://native/study";
       return;
     }
     notify("学习计时控制在「世界之间」Android App 里。");
@@ -585,7 +585,7 @@ function EntertainmentGateWebPage({
         setError("这一步没有记下来。先别动，我再修。");
         return;
       }
-      window.location.href = "jlz://native/study";
+      window.location.href = "/?shell=android&entry=study";
       return;
     }
     setChoice(next);
