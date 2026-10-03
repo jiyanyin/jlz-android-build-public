@@ -183,11 +183,12 @@ export default function BetweenWorlds() {
   const pullMessages = useCallback(async () => {
     const c = cfg();
     if (!c) return;
-    const incoming = extractMessages(await runtime.messages(c, 80));
+    const incoming = extractMessages(await runtime.messages(c, 200))
+      .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
     const s = stateRef.current;
     const firstSync = s.remoteMessages.length === 0 && s.seenCompanion.length === 0;
     const fresh = incoming.filter((m) => m.fromCompanion && !s.seenCompanion.includes(m.id));
-    update((st) => ({ ...st, remoteMessages: incoming.slice(-120), seenCompanion: [...st.seenCompanion, ...fresh.map((m) => m.id)].slice(-300) }));
+    update((st) => ({ ...st, remoteMessages: incoming.slice(-200), seenCompanion: [...st.seenCompanion, ...fresh.map((m) => m.id)].slice(-300) }));
     if (!firstSync && fresh.length) {
       const last = fresh[fresh.length - 1];
       notify(`纪临洲：${last.text.length > 40 ? last.text.slice(0, 40) + "…" : last.text}`);
