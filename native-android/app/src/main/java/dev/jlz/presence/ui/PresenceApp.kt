@@ -623,6 +623,11 @@ fun StudyScreen() {
     }
 
     LaunchedEffect(Unit) {
+        val recovery = repo.recoverStaleSession()
+        if (recovery.recovered) {
+            StudyTimerService.stop(context)
+            actionNote = "旧的异常计时已经清掉了。重新开始这一轮就好。"
+        }
         refreshDay()
         while (true) {
             now = System.currentTimeMillis()
