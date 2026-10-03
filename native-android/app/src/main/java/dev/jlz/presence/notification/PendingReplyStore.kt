@@ -9,11 +9,16 @@ import java.util.UUID
 
 /** Durable, small, app-private queue for Android notification inline replies. */
 class PendingReplyStore(context: Context) :
-    SQLiteOpenHelper(context.applicationContext, "jlz_inline_replies_v1.db", null, 1) {
+    SQLiteOpenHelper(context.applicationContext, "jlz_inline_replies_v1.db", null, 2) {
 
     data class Entry(
-        val id: String, val text: String, val observedAtMs: Long,
-        val parentEventId: String?, val intentId: String?
+        val id: String,
+        val text: String,
+        val observedAtMs: Long,
+        val parentEventId: String?,
+        val intentId: String?,
+        val replyToTitle: String?,
+        val replyToText: String?
     )
 
     override fun onCreate(db: SQLiteDatabase) {
@@ -24,24 +29,39 @@ class PendingReplyStore(context: Context) :
                 observed_at_ms INTEGER NOT NULL,
                 parent_event_id TEXT,
                 intent_id TEXT,
+                reply_to_title TEXT,
+                reply_to_text TEXT,
                 delivered INTEGER NOT NULL DEFAULT 0
             )
         """.trimIndent())
         db.execSQL("CREATE INDEX idx_reply_pending ON pending_replies(delivered, observed_at_ms)")
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE pending_replies ADD COLUMN reply_to_title TEXT")
+            db.execSQL("ALTER TABLE pending_replies ADD COLUMN reply_to_text TEXT")
+        }
+    }
 
     @Synchronized
     fun keep(
         text: String,
         parentEventId: String?,
         intentId: String?,
-        observedAtMs: Long = System.currentTimeMillis()
+        observedAtMs: Long = System.currentTimeMillis(),
+        replyToTitle: String? = null,
+        replyToText: String? = null
     ): Entry {
         require(text.isNotBlank() && text.length <= 1200) { "reply_text_length_invalid" }
         val reply = Entry(
-            UUID.randomUUID().toString(), text, observedAtMs, parentEventId, intentId
+            id = UUID.randomUUID().toString(),
+            text = text,
+            observedAtMs = observedAtMs,
+            parentEventId = parentEventId,
+            intentId = intentId,
+            replyToTitle = replyToTitle?.take(160),
+            replyToText = replyToText?.take(1200)
         )
         val row = ContentValues().apply {
             put("id", reply.id)
@@ -49,6 +69,8 @@ class PendingReplyStore(context: Context) :
             put("observed_at_ms", reply.observedAtMs)
             put("parent_event_id", reply.parentEventId)
             put("intent_id", reply.intentId)
+            put("reply_to_title", reply.replyToTitle)
+            put("reply_to_text", reply.replyToText)
             put("delivered", 0)
         }
         check(writableDatabase.insertOrThrow("pending_replies", null, row) > 0) {
@@ -71,7 +93,9 @@ class PendingReplyStore(context: Context) :
                     id = field("id"), text = field("text"),
                     observedAtMs = cursor.getLong(cursor.getColumnIndexOrThrow("observed_at_ms")),
                     parentEventId = field("parent_event_id"),
-                    intentId = field("intent_id")
+                    intentId = field("intent_id"),
+                    replyToTitle = field("reply_to_title"),
+                    replyToText = field("reply_to_text")
                 )
             }
         }
@@ -88,7 +112,9 @@ class PendingReplyStore(context: Context) :
                     text = item.text, role = "user",
                     eventId = item.parentEventId, intentId = item.intentId,
                     notify = false, messageId = item.id,
-                    createdAtMs = item.observedAtMs
+                    createdAtMs = item.observedAtMs,
+                    replyToTitle = item.replyToTitle,
+                    replyToText = item.replyToText
                 )
             } catch (_: Exception) { break }
             if (response.id != item.id || response.text != item.text) break
