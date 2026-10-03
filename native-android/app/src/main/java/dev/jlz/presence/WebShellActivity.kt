@@ -14,6 +14,7 @@ import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import dev.jlz.presence.launcher.AppHubBridge
+import dev.jlz.presence.focus.EntertainmentGateBridge
 
 class WebShellActivity : ComponentActivity() {
     private lateinit var webView: WebView
@@ -35,6 +36,10 @@ class WebShellActivity : ComponentActivity() {
             settings.allowContentAccess = false
             webChromeClient = WebChromeClient()
             addJavascriptInterface(AppHubBridge(this@WebShellActivity), "WorldBetweenAppHub")
+            addJavascriptInterface(
+                EntertainmentGateBridge(this@WebShellActivity),
+                "WorldBetweenGate"
+            )
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(
                     view: WebView?,
@@ -123,5 +128,30 @@ class WebShellActivity : ComponentActivity() {
     companion object {
         private const val WEB_HOST = "between-worlds-prod.onrender.com"
         private const val WEB_URL = "https://between-worlds-prod.onrender.com/?shell=android"
+
+        fun showEntertainmentGate(
+            context: android.content.Context,
+            packageName: String,
+            reason: String
+        ): Boolean = runCatching {
+            val uri = Uri.parse("https://between-worlds-prod.onrender.com/")
+                .buildUpon()
+                .appendQueryParameter("shell", "android")
+                .appendQueryParameter("entry", "gate")
+                .appendQueryParameter("gate_pkg", packageName)
+                .appendQueryParameter("gate_reason", reason)
+                .build()
+            context.startActivity(
+                Intent(context, WebShellActivity::class.java)
+                    .setAction(Intent.ACTION_VIEW)
+                    .setData(uri)
+                    .addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
+            )
+            true
+        }.getOrDefault(false)
     }
 }
