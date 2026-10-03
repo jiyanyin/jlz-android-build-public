@@ -6,6 +6,8 @@ Status: implemented on `feature/world-between-control-v1-20261003`.
 
 World Between stays an ordinary Android app, not a replacement system launcher.
 
+Stage E explicitly removes the old Android `HOME` role advertisement and the unused launcher-role coordinator. The system desktop remains the real desktop; Stage F will use unlock-aware soft interception instead.
+
 Stage E adds a **soft start hub** inside the existing WebShell Home:
 
 - learning shortcuts are visually first;
