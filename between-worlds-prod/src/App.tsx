@@ -681,6 +681,66 @@ function MorePage({ state, update, setWelcome, banner, reconnect }: { state: App
    <button className="setting-button danger" onClick={()=>{if(window.confirm("确定清空这个浏览器里的本地记录和钥匙吗？未同步的记录会丢失。")){localStorage.removeItem(STORE);window.location.reload()}}}>清空本地数据 <span>›</span></button>
  </section>;
 }
+function TaskEditor({
+ task, date, close, mutateTask, notify,
+}: {
+ task: DailyTask | null;
+ date: string;
+ close: () => void;
+ mutateTask: (action: string, task: Partial<DailyTask> & { task_id?: string }) => void;
+ notify: (s: string) => void;
+}) {
+ const [title, setTitle] = useState(task?.title ?? "");
+ const [category, setCategory] = useState(task?.category ?? "考试/学习");
+ const [priority, setPriority] = useState<DailyTask["priority"]>(task?.priority ?? "normal");
+ const [nextAction, setNextAction] = useState(task?.next_action ?? "");
+ const [minutes, setMinutes] = useState(task?.estimated_minutes ? String(task.estimated_minutes) : "");
+ const [dueTime, setDueTime] = useState(() => {
+   const raw = task?.due_at ?? "";
+   const match = raw.match(/T(\d{2}:\d{2})/);
+   return match?.[1] ?? "";
+ });
+ const [pinned, setPinned] = useState(!!task?.user_pinned);
+ const save = () => {
+   const value = title.trim();
+   if (!value) { notify("先写清楚这件事是什么。"); return; }
+   const parsedMinutes = Math.max(0, Math.min(1440, Number(minutes) || 0));
+   mutateTask("upsert", {
+     task_id: task?.task_id || newEventId(),
+     title: value,
+     category,
+     priority,
+     status: task?.status ?? "todo",
+     must_do: pinned,
+     user_pinned: pinned,
+     owner: task?.owner ?? "user",
+     estimated_minutes: parsedMinutes,
+     due_at: dueTime ? `${date}T${dueTime}:00` : "",
+     next_action: nextAction.trim(),
+     source: task?.source || "world_between_web",
+     sort_order: task?.sort_order ?? 100,
+   });
+   close();
+   notify(task ? "任务已经改好。" : "今天多了一件事。");
+ };
+ return <>
+   <p className="sheet-desc">把任务写清楚。首页只替你保留最重要的三件，其他的会折起来，不准把一天铺成满墙待办。</p>
+   <div className="field"><label>这件事是什么</label><input maxLength={180} placeholder="例如：图推专项复盘 3 题" value={title} onChange={e=>setTitle(e.target.value)} /></div>
+   <div className="field"><label>下一步具体做什么</label><input maxLength={240} placeholder="例如：先打开伴读，复盘第 1 题错因" value={nextAction} onChange={e=>setNextAction(e.target.value)} /></div>
+   <div className="task-editor-grid">
+     <div className="field"><label>分类</label><select value={category} onChange={e=>setCategory(e.target.value)}>{TASK_CATEGORIES.map(item=><option value={item} key={item}>{item}</option>)}</select></div>
+     <div className="field"><label>优先级</label><select value={priority} onChange={e=>setPriority(e.target.value as DailyTask["priority"])}><option value="high">高</option><option value="normal">普通</option><option value="low">低</option></select></div>
+     <div className="field"><label>预计分钟</label><input type="number" min="0" max="1440" inputMode="numeric" value={minutes} onChange={e=>setMinutes(e.target.value)} /></div>
+     <div className="field"><label>希望几点前</label><input type="time" value={dueTime} onChange={e=>setDueTime(e.target.value)} /></div>
+   </div>
+   <label className="task-pin-toggle"><input type="checkbox" checked={pinned} onChange={e=>setPinned(e.target.checked)} /><span><b>今天必须做 · 固定</b><small>勾上以后，官端不能悄悄把它删掉。</small></span></label>
+   <div className="sheet-actions">
+     {task ? <button className="secondary task-delete" onClick={()=>{ if (window.confirm("把这件事从今天删掉？")) { mutateTask("delete", { task_id: task.task_id }); close(); notify("这件事已经删掉。"); } }}>删除</button> : <button className="secondary" onClick={close}>取消</button>}
+     <button className="primary" onClick={save}>{task ? "保存修改" : "放进今天"}</button>
+   </div>
+ </>;
+}
+
 function StatusEditor({ close, update, send, notify, savedText }: { close:()=>void; update:(fn:(s:AppState)=>AppState)=>void; send: Send; notify:(s:string)=>void; savedText:(w:string)=>string }) {
  const [enabled,setEnabled]=useState<Record<string,boolean>>({}); const [values,setValues]=useState<Record<string,number>>({}); const [picked,setPicked]=useState<Record<string,string[]>>({}); const [text,setText]=useState("");
  const toggleChip=(group:string,value:string)=>setPicked(p=>({...p,[group]:(p[group]||[]).includes(value)?(p[group]||[]).filter(x=>x!==value):[...(p[group]||[]),value]}));
