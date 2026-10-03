@@ -12,9 +12,9 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026100306
-        versionName = "0.4.0-webshell.6"
-        // Stage F Unlock Soft Gate build anchor
+        versionCode = 2026100307
+        versionName = "0.4.0-webshell.7"
+        // Stage G Entertainment Gate V2 build anchor
     }
 
     buildTypes {
