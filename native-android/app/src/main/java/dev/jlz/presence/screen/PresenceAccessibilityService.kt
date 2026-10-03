@@ -8,6 +8,8 @@ import dev.jlz.presence.capture.AutomaticCaptureCoordinator
 import dev.jlz.presence.focus.FocusRepository
 import dev.jlz.presence.focus.FocusGateActivity
 import dev.jlz.presence.focus.FocusState
+import dev.jlz.presence.focus.EntertainmentGuard
+import dev.jlz.presence.notification.NotificationAdapter
 import dev.jlz.presence.overlay.FloatingPresenceMode
 import dev.jlz.presence.overlay.FloatingPresenceService
 import dev.jlz.presence.usage.ForegroundUsageTracker
@@ -26,6 +28,7 @@ class PresenceAccessibilityService : AccessibilityService() {
     @Volatile private var focusState: FocusState = FocusState()
     private lateinit var focusRepository: FocusRepository
     private lateinit var automaticCapture: AutomaticCaptureCoordinator
+    private lateinit var entertainmentGuard: EntertainmentGuard
     private val lastGateAtMs = mutableMapOf<String, Long>()
     private val observationCache = AccessibilityObservationCache()
     @Volatile private var contentChangePending = false
@@ -53,6 +56,7 @@ class PresenceAccessibilityService : AccessibilityService() {
         AttentionRhythmTracker.bind(applicationContext)
         focusRepository = FocusRepository(applicationContext)
         automaticCapture = AutomaticCaptureCoordinator(applicationContext)
+        entertainmentGuard = EntertainmentGuard(applicationContext)
         scope.launch {
             focusRepository.state.collectLatest { state -> focusState = state }
         }
@@ -84,6 +88,40 @@ class PresenceAccessibilityService : AccessibilityService() {
                 FocusGateActivity.show(applicationContext, packageName, currentFocus.reason)
             }
             return
+        }
+
+        if (::entertainmentGuard.isInitialized) {
+            val decision = entertainmentGuard.observe(packageName, eventType, now)
+            if (decision != null) {
+                NotificationAdapter(applicationContext).showMessage(
+                    title = decision.title,
+                    message = decision.message
+                )
+                if (decision.shouldLock && packageName != null) {
+                    val lockReason =
+                        decision.profile.appName + " 这一轮已经到上限，先休息 " +
+                            decision.lockMinutes + " 分钟。"
+                    scope.launch {
+                        focusRepository.lockAppForDuration(
+                            packageName,
+                            decision.lockMinutes * 60_000L,
+                            lockReason
+                        )
+                        performGlobalAction(GLOBAL_ACTION_HOME)
+                        FloatingPresenceService.start(
+                            applicationContext,
+                            decision.message,
+                            FloatingPresenceMode.FOCUS
+                        )
+                        FocusGateActivity.show(
+                            applicationContext,
+                            packageName,
+                            lockReason
+                        )
+                    }
+                    return
+                }
+            }
         }
         when (eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
