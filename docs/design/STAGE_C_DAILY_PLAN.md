@@ -30,7 +30,7 @@ Every task supports:
 - `created_at`
 - `updated_at`
 
-The plan-level `date` is authoritative; tasks belong to that plan date rather than duplicating a mutable task date internally.
+The plan and every task both carry `date`. Runtime enforces that a task date matches its containing plan date, so the field remains explicit without being allowed to drift.
 
 Default categories:
 
