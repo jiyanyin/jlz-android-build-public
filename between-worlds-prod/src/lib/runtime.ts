@@ -112,7 +112,7 @@ export function extractMessages(payload: unknown): RemoteMessage[] {
       const m = asObj(raw);
       const role = str(m.role ?? m.sender ?? m.from ?? m.author).toLowerCase();
       return {
-        id: str(m.event_id ?? m.id),
+        id: str(m.event_id || m.id),
         text: str(m.text ?? m.content ?? m.body),
         at: toIso(m.at ?? m.created_at ?? m.timestamp),
         fromCompanion: !["user", "web", "me", "yanyin", "human"].includes(role),
