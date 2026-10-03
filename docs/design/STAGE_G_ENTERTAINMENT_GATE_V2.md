@@ -176,6 +176,19 @@ Opening the same app again inside the release window does not show another gate.
 
 Leaving and re-entering the app does not reset the window; the original expiry remains authoritative.
 
+## HyperOS presentation fix
+
+Phone RC1 proved that the gate detector itself fired — Xiaohongshu was pushed out of the foreground — but HyperOS could complete the HOME transition after the gate Activity had already been started, leaving only the launcher visible.
+
+RC2 changes the order to:
+
+1. detect entertainment entry;
+2. request HOME;
+3. wait 320 ms for the launcher transition to settle;
+4. launch `EntertainmentGateActivity` directly from the bound AccessibilityService context.
+
+The gate launcher now fails softly if an OEM refuses the Activity start, and duplicate pending presentations for the same package are suppressed.
+
 ## Warning and expiry
 
 The coordinator schedules local timers from the release session:
@@ -276,8 +289,8 @@ Stage G also does not:
 
 ## Android build
 
-- versionName: `0.4.0-webshell.7`
-- versionCode: `2026100307`
+- versionName: `0.4.0-webshell.8`
+- versionCode: `2026100308`
 
 ## Acceptance
 
