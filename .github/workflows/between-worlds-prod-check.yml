@@ -1,0 +1,30 @@
+name: Between Worlds Prod Check
+
+on:
+  pull_request:
+    paths:
+      - "between-worlds-prod/**"
+      - ".github/workflows/between-worlds-prod-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: between-worlds-prod
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: between-worlds-prod/package-lock.json
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck and build
+        run: npm run build
