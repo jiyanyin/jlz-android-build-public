@@ -53,14 +53,7 @@ class WebShellActivity : ComponentActivity() {
         setContentView(webView)
 
         if (savedInstanceState == null) {
-            val launchUrl = intent?.data
-                ?.takeIf { it.scheme == "https" && it.host == WEB_HOST }
-                ?.buildUpon()
-                ?.appendQueryParameter("shell", "android")
-                ?.build()
-                ?.toString()
-                ?: WEB_URL
-            webView.loadUrl(launchUrl)
+            webView.loadUrl(resolveWebUrl(intent))
         } else {
             webView.restoreState(savedInstanceState)
         }
@@ -70,6 +63,24 @@ class WebShellActivity : ComponentActivity() {
                 if (webView.canGoBack()) webView.goBack() else finish()
             }
         })
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        webView.loadUrl(resolveWebUrl(intent))
+    }
+
+    private fun resolveWebUrl(intent: Intent?): String {
+        val uri = intent?.data
+        if (uri?.scheme == "https" && uri.host == WEB_HOST) {
+            val builder = uri.buildUpon()
+            if (uri.getQueryParameter("shell") == null) {
+                builder.appendQueryParameter("shell", "android")
+            }
+            return builder.build().toString()
+        }
+        return WEB_URL
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

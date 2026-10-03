@@ -12,8 +12,8 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026100302
-        versionName = "0.4.0-webshell.2"
+        versionCode = 2026100303
+        versionName = "0.4.0-webshell.3"
         // slim.3 settings hotfix build anchor
     }
 
