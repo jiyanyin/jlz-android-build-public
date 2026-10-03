@@ -2,6 +2,7 @@ package dev.jlz.presence.ui
 
 import android.content.Intent
 import android.provider.Settings
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,8 +16,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import dev.jlz.presence.R
 import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.launcher.LauncherRepository
 import dev.jlz.presence.navigation.PresenceRoute
@@ -489,15 +494,14 @@ fun TimelineScreen() {
                                 }
                             ) {
                                 if (side == -1) {
-                                    Box(
-                                        Modifier.size(30.dp).background(
-                                            GlassFillPressed,
-                                            RoundedCornerShape(9.dp)
-                                        ),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text("纪", color = TextPrimary, style = MaterialTheme.typography.labelMedium)
-                                    }
+                                    Image(
+                                        painter = painterResource(R.drawable.jlz_chat_avatar),
+                                        contentDescription = "纪临洲",
+                                        modifier = Modifier
+                                            .size(30.dp)
+                                            .clip(RoundedCornerShape(9.dp)),
+                                        contentScale = ContentScale.Crop
+                                    )
                                     Spacer(Modifier.width(7.dp))
                                 }
 
