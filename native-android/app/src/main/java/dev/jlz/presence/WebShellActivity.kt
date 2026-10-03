@@ -101,6 +101,7 @@ class WebShellActivity : ComponentActivity() {
                 Intent(this, MainActivity::class.java)
                     .setAction(Intent.ACTION_VIEW)
                     .setData(uri)
+                    .putExtra(MainActivity.EXTRA_RETURN_TO_WEB_SHELL, true)
             )
             return true
         }
