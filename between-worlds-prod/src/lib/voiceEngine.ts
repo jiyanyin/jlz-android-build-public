@@ -335,7 +335,7 @@ const statusSignal = (status: VoiceStatus | null | undefined, nowMs: number): Vo
   if (includesAny(reply, ["强势一点但疼我", "热烈直白一点"]) || closeness.includes("强势一点但要宠我")) return "style:strong";
   if (reply.includes("多逗逗我") || closeness.includes("主动逗逗我")) return "style:tease";
   if (
-    includesAny(reply, ["温柔地宠着我", "主动向我讨亲近"]) ||
+    includesAny(reply, ["温柔地宠着我", "主动向我讨亲近", "先别分析"]) ||
     includesAny(closeness, ["抱紧我", "主动亲亲我", "让我感受到偏爱", "热烈一点", "你也向我撒娇", "安静拥着我"])
   ) return "style:affection";
 
