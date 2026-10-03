@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import dev.jlz.presence.R
+import dev.jlz.presence.MainActivity
 import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.launcher.LauncherRepository
 import dev.jlz.presence.navigation.PresenceRoute
@@ -644,7 +645,11 @@ fun StudyScreen() {
                     "返回",
                     color = BlueGlow,
                     modifier = Modifier
-                        .clickable { PresenceRouteBus.open(PresenceRoute.Home) }
+                        .clickable {
+                            val activity = context as? MainActivity
+                            if (activity?.shouldReturnToWebShell() == true) activity.finish()
+                            else PresenceRouteBus.open(PresenceRoute.Home)
+                        }
                         .padding(8.dp)
                 )
             }
