@@ -36,6 +36,7 @@
             android:name=".focus.EntertainmentGateActivity"
             android:exported="false"
             android:excludeFromRecents="true"
+            android:noHistory="true"
             android:theme="@style/Theme.JLZPresence" />
         <activity android:name=".callback.PresenceCallbackActivity" android:exported="false"
             android:excludeFromRecents="true" android:showWhenLocked="true" android:turnScreenOn="true" />
