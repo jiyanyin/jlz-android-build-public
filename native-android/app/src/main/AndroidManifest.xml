@@ -29,7 +29,7 @@
     </queries>
     <application android:allowBackup="false" android:label="@string/app_name"
         android:supportsRtl="true" android:theme="@style/Theme.JLZPresence"
-        android:icon="@drawable/ic_launcher_visual" android:roundIcon="@drawable/ic_launcher_visual" android:usesCleartextTraffic="false">
+        android:icon="@mipmap/ic_launcher_world_between" android:roundIcon="@mipmap/ic_launcher_world_between_round" android:usesCleartextTraffic="false">
         <meta-data android:name="asset_statements" android:resource="@string/asset_statements" />
         <activity android:name=".focus.FocusGateActivity" android:exported="false" android:excludeFromRecents="true" />
         <activity
@@ -79,7 +79,7 @@
         <activity android:name=".actions.FilePickerProxyActivity" android:exported="false"
             android:theme="@style/Theme.JLZPresence" />
         <service android:name=".quick.QuickCaptureTileService" android:exported="true"
-            android:icon="@mipmap/ic_launcher" android:label="@string/quick_capture_tile_label"
+            android:icon="@mipmap/ic_launcher_world_between" android:label="@string/quick_capture_tile_label"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
         </service>

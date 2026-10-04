@@ -12,9 +12,9 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026100401
-        versionName = "0.4.0-webshell.11"
-        // Phone RC5 icon + Study start + Gate reset build anchor
+        versionCode = 2026100402
+        versionName = "0.4.0-webshell.12"
+        // Phone RC5.1 real launcher asset + adaptive icon cache-bust anchor
     }
 
     buildTypes {
