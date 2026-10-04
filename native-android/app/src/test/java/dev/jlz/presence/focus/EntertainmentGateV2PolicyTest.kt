@@ -94,4 +94,43 @@ class EntertainmentGateV2PolicyTest {
         assertTrue(EntertainmentGateV2Policy.shouldWarn(now + 1L, now))
         assertFalse(EntertainmentGateV2Policy.shouldWarn(now, now))
     }
+    @Test
+    fun staleSmallStepIsResetInsteadOfBecomingLongDebt() {
+        val now = 2_000_000L
+        assertTrue(
+            EntertainmentGateV2Policy.shouldResetSmallStep(
+                baselineEffectiveMs = 166L * 60L * 60L * 1000L,
+                currentEffectiveMs = 0L,
+                createdAtMs = now - 60_000L,
+                nowMs = now
+            )
+        )
+    }
+
+    @Test
+    fun freshSmallStepSurvivesThreeMinuteRoundTrip() {
+        val now = 2_000_000L
+        assertFalse(
+            EntertainmentGateV2Policy.shouldResetSmallStep(
+                baselineEffectiveMs = 10 * 60_000L,
+                currentEffectiveMs = 11 * 60_000L,
+                createdAtMs = now - 3 * 60_000L,
+                nowMs = now
+            )
+        )
+    }
+
+    @Test
+    fun abandonedSmallStepExpires() {
+        val now = EntertainmentGateV2Policy.SMALL_STEP_PENDING_TTL_MS + 1L
+        assertTrue(
+            EntertainmentGateV2Policy.shouldResetSmallStep(
+                baselineEffectiveMs = 0L,
+                currentEffectiveMs = 0L,
+                createdAtMs = 0L + 1L,
+                nowMs = now
+            )
+        )
+    }
+
 }

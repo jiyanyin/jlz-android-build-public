@@ -5,7 +5,7 @@ import { emptyDailyPlan, optimisticTaskMutation, planSections, TASK_CATEGORIES, 
 import { emptyStudySummary, formatStudyClock, formatStudyMinutes, liveStudyTotals, studyDeviceLabel, type StudySummary } from "./lib/studySession";
 import { appHubActions, appHubCategories, appHubHomeItems, emptyAppHubSnapshot, readNativeAppHub, type AppHubItem, type AppHubSnapshot } from "./lib/appHub";
 import { finishNativeStudy, liveNativeStudy, nativeStudyAvailable, openNativeBanduread, openNativeFenbi, pauseNativeStudy, readNativeStudy, resumeNativeStudy, startNativeStudy, type NativeStudySnapshot } from "./lib/nativeStudy";
-import { declineGate, gateBridgeAvailable, gateResponse, grantGate, readGateSnapshot, startGateSmallStep, type EntertainmentGateSnapshot, type GateChoice } from "./lib/entertainmentGate";
+import { cancelGateSmallStep, declineGate, gateBridgeAvailable, gateResponse, grantGate, readGateSnapshot, startGateSmallStep, type EntertainmentGateSnapshot, type GateChoice } from "./lib/entertainmentGate";
 
 type Theme = "mist" | "gothic";
 type Tab = "home" | "echo" | "timeline" | "calendar" | "more";
@@ -659,6 +659,12 @@ function EntertainmentGateWebPage({
                 回去做完这三分钟
               </button>
               <button className="gate-web-text" onClick={refresh}>我做了 · 重新检查</button>
+              <button className="gate-web-text" onClick={() => {
+                cancelGateSmallStep(packageName);
+                setChoice(null);
+                setResponse("");
+                refresh();
+              }}>我改主意 · 重新选用途</button>
             </>
         }
       </> : choice ? <>
@@ -733,6 +739,25 @@ function StudySessionWebPage({ avatar }: { avatar: string }) {
     setNote(message);
   };
 
+  const launchStudyTarget = (target: "banduread" | "fenbi") => {
+    const running = snapshot.active ? snapshot : startNativeStudy();
+    setSnapshot(running);
+    setNowMs(Date.now());
+    if (!running.active) {
+      setNote("计时没有成功启动。先别跳出去，我还没把这一轮记上。");
+      return;
+    }
+    const result = target === "banduread"
+      ? openNativeBanduread()
+      : openNativeFenbi();
+    setNote(
+      result ||
+      (target === "banduread"
+        ? "计时已经开始，正在打开伴读。"
+        : "计时已经开始，正在打开粉笔。")
+    );
+  };
+
   if (!nativeStudyAvailable()) {
     return <div className="study-web-root">
       <div className="study-web-shell">
@@ -802,11 +827,11 @@ function StudySessionWebPage({ avatar }: { avatar: string }) {
 
       <div className="study-web-section-label outside">去学习</div>
       <div className="study-web-two launch">
-        <button onClick={() => { const result = openNativeBanduread(); setNote(result || "正在打开伴读。"); }}>伴读 <span>刷题 / 复盘</span></button>
-        <button onClick={() => { const result = openNativeFenbi(); setNote(result || "正在打开粉笔。"); }}>粉笔 <span>练习 / 模考</span></button>
+        <button onClick={() => launchStudyTarget("banduread")}>伴读 <span>刷题 / 复盘</span></button>
+        <button onClick={() => launchStudyTarget("fenbi")}>粉笔 <span>练习 / 模考</span></button>
       </div>
 
-      <p className="study-web-foot">真正的 Session 仍由 Android 保存；WebShell 只是把它画成和「世界之间」同一套界面。</p>
+      <p className="study-web-foot">点伴读或粉笔时，如果这一轮还没开始，我会先自动开计时。真正的 Session 仍由 Android 保存；WebShell 只负责把它画成和「世界之间」同一套界面。</p>
     </div>
   </div>;
 }

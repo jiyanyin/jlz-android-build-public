@@ -72,10 +72,13 @@ export const normalizeNativeStudySnapshot = (payload: unknown): NativeStudySnaps
 };
 
 const call = (method: keyof NativeStudyBridge): NativeStudySnapshot => {
-  const fn = window.WorldBetweenStudy?.[method];
-  if (typeof fn !== "function") return empty();
+  const bridge = window.WorldBetweenStudy;
+  const fn = bridge?.[method];
+  if (!bridge || typeof fn !== "function") return empty();
   try {
-    return normalizeNativeStudySnapshot(JSON.parse((fn as () => string)()));
+    return normalizeNativeStudySnapshot(
+      JSON.parse((fn as () => string).call(bridge))
+    );
   } catch {
     return empty();
   }

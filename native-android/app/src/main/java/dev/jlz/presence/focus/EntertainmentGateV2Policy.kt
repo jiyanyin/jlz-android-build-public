@@ -17,6 +17,9 @@ object EntertainmentGateV2Policy {
     const val GATE_PRESENT_DELAY_MS = 320L
     const val WARNING_BEFORE_MS = 60_000L
     const val SMALL_STEP_REQUIRED_MS = 3 * 60_000L
+    const val SMALL_STEP_PENDING_TTL_MS = 20 * 60_000L
+    const val SMALL_STEP_BASELINE_TOLERANCE_MS = 10_000L
+    const val SMALL_STEP_FUTURE_TOLERANCE_MS = 5 * 60_000L
 
     fun releasePlan(
         isTablet: Boolean,
@@ -50,6 +53,19 @@ object EntertainmentGateV2Policy {
     fun shouldWarn(untilMs: Long, nowMs: Long): Boolean {
         val remaining = untilMs - nowMs
         return remaining in 1..WARNING_BEFORE_MS
+    }
+
+    fun shouldResetSmallStep(
+        baselineEffectiveMs: Long,
+        currentEffectiveMs: Long,
+        createdAtMs: Long,
+        nowMs: Long = System.currentTimeMillis()
+    ): Boolean {
+        if (createdAtMs <= 0L) return true
+        if (createdAtMs > nowMs + SMALL_STEP_FUTURE_TOLERANCE_MS) return true
+        if (nowMs - createdAtMs >= SMALL_STEP_PENDING_TTL_MS) return true
+        if (baselineEffectiveMs > currentEffectiveMs + SMALL_STEP_BASELINE_TOLERANCE_MS) return true
+        return false
     }
 
     fun smallStepComplete(

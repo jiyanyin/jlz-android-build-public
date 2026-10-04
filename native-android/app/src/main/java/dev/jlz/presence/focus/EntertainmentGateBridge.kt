@@ -33,7 +33,19 @@ class EntertainmentGateBridge(context: Context) {
 
         val now = System.currentTimeMillis()
         val currentEffectiveMs = runCatching { effectiveToday(now) }.getOrDefault(0L)
-        val pending = repository.smallStep(packageName)
+        var pending = repository.smallStep(packageName)
+        if (
+            pending != null &&
+            EntertainmentGateV2Policy.shouldResetSmallStep(
+                baselineEffectiveMs = pending.baselineEffectiveMs,
+                currentEffectiveMs = currentEffectiveMs,
+                createdAtMs = pending.createdAtMs,
+                nowMs = now
+            )
+        ) {
+            repository.clearSmallStep(packageName)
+            pending = null
+        }
         val remainingMs = pending?.let {
             EntertainmentGateV2Policy.remainingSmallStepMs(
                 it.baselineEffectiveMs,
@@ -139,8 +151,16 @@ class EntertainmentGateBridge(context: Context) {
     }
 
     @JavascriptInterface
+    fun cancelSmallStep(packageName: String): Boolean {
+        if (EntertainmentPolicy.profile(packageName) == null) return false
+        repository.clearSmallStep(packageName)
+        return true
+    }
+
+    @JavascriptInterface
     fun decline(packageName: String, stage: String): Boolean {
         val profile = EntertainmentPolicy.profile(packageName) ?: return false
+        repository.clearSmallStep(profile.packageName)
         repository.recordDecline(profile, stage.ifBlank { "web_gate" })
         return true
     }
