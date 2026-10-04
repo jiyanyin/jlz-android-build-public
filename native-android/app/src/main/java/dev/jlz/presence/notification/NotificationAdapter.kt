@@ -143,7 +143,7 @@ class NotificationAdapter(private val context: Context) {
             context,
             CHANNEL_ID
         )
-            .setSmallIcon(R.drawable.ic_notification_world_between)
+            .setSmallIcon(R.drawable.ic_notification_world_between_v2)
             .setLargeIcon(avatar)
             .setContentTitle(title.ifBlank { "我在找你" })
             .setContentText(message)
@@ -210,7 +210,7 @@ class NotificationAdapter(private val context: Context) {
         // Deliberately keep the same channel, ID and null tag as showMessage().
         // We show an explicit status instead of silently retracting the message.
         val updated = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification_world_between)
+            .setSmallIcon(R.drawable.ic_notification_world_between_v2)
             .setLargeIcon(avatar)
             .setContentTitle(originalTitle.ifBlank { "纪临洲" })
             .setContentText(status)
