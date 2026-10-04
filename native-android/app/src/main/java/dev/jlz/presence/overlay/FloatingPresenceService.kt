@@ -20,6 +20,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
+import dev.jlz.presence.R
 import dev.jlz.presence.capture.CaptureEventStore
 import dev.jlz.presence.capture.PendingScreenshotQueue
 import dev.jlz.presence.data.LocalLifeStore
@@ -90,7 +91,7 @@ class FloatingPresenceService : Service() {
         startForeground(
             NOTIFICATION_ID,
             NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setSmallIcon(R.drawable.ic_notification_world_between)
                 .setContentTitle("我在屏幕边上")
                 .setContentText("点小小的纪临洲，展开四个动作")
                 .setOngoing(true)
