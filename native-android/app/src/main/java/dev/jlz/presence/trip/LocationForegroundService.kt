@@ -81,6 +81,7 @@ class LocationForegroundService : Service() {
         super.onCreate()
         locationManager = getSystemService(LocationManager::class.java)
         createChannel()
+        getSystemService(NotificationManager::class.java)?.cancel(LEGACY_NOTIF_ID)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -198,6 +199,7 @@ class LocationForegroundService : Service() {
     }
 
     companion object {
-        const val NOTIF_ID = 3001
+        const val LEGACY_NOTIF_ID = 3001
+        const val NOTIF_ID = 4301
     }
 }
