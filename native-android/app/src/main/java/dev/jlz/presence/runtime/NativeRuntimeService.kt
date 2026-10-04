@@ -149,7 +149,21 @@ class NativeRuntimeService : Service() {
                 .setSmallIcon(R.drawable.ic_notification_world_between_v2)
                 .setContentTitle("我在")
                 .setContentText("正在保持和 JLZ Runtime 的连接")
+                .setGroup(PRESENCE_GROUP_KEY)
                 .setOngoing(true)
+                .build()
+        )
+
+        getSystemService(NotificationManager::class.java).notify(
+            PRESENCE_GROUP_SUMMARY_ID,
+            NotificationCompat.Builder(this, SERVICE_CHANNEL)
+                .setSmallIcon(R.drawable.ic_notification_world_between_v2)
+                .setContentTitle("世界之间")
+                .setContentText("我在")
+                .setGroup(PRESENCE_GROUP_KEY)
+                .setGroupSummary(true)
+                .setOngoing(true)
+                .setSilent(true)
                 .build()
         )
 
@@ -172,6 +186,7 @@ class NativeRuntimeService : Service() {
         NativeClientDiagnostics.update {
             it.copy(serviceRunning = false, runtimeConnected = false)
         }
+        getSystemService(NotificationManager::class.java).cancel(PRESENCE_GROUP_SUMMARY_ID)
         super.onDestroy()
     }
 
@@ -1055,6 +1070,8 @@ class NativeRuntimeService : Service() {
         private const val SERVICE_CHANNEL = "jlz_native_runtime"
         private const val LEGACY_FOREGROUND_ID = 4001
         private const val FOREGROUND_ID = 4401
+        private const val PRESENCE_GROUP_KEY = "jlz_presence_core_group"
+        private const val PRESENCE_GROUP_SUMMARY_ID = 4499
         private const val HEARTBEAT_INTERVAL_MS = 60_000L
         private const val COMMAND_LONG_POLL_MS = 20_000
         private const val COMMAND_RETRY_BACKOFF_MS = 2_000L
