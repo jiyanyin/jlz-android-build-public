@@ -22,6 +22,7 @@ import android.widget.TextView
 import androidx.core.app.NotificationCompat
 import dev.jlz.presence.R
 import dev.jlz.presence.capture.CaptureEventStore
+import dev.jlz.presence.notification.NotificationIdentityMigration
 import dev.jlz.presence.capture.PendingScreenshotQueue
 import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.focus.FocusRepository
@@ -87,6 +88,7 @@ class FloatingPresenceService : Service() {
     override fun onCreate() {
         super.onCreate()
         liveService = this
+        NotificationIdentityMigration.ensureFresh(applicationContext)
         createChannel()
         getSystemService(NotificationManager::class.java).cancel(LEGACY_NOTIFICATION_ID)
         startForeground(
@@ -753,7 +755,7 @@ class FloatingPresenceService : Service() {
             }
         }
 
-        private const val CHANNEL_ID = "jlz_presence_overlay"
+        private const val CHANNEL_ID = "jlz_presence_overlay_v2"
         private const val LEGACY_NOTIFICATION_ID = 4201
         private const val NOTIFICATION_ID = 4421
         private const val PRESENCE_GROUP_KEY = "jlz_presence_core_group"
