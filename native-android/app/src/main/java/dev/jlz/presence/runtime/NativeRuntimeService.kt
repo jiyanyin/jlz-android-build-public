@@ -145,7 +145,7 @@ class NativeRuntimeService : Service() {
         startForeground(
             FOREGROUND_ID,
             NotificationCompat.Builder(this, SERVICE_CHANNEL)
-                .setSmallIcon(R.drawable.ic_notification_world_between)
+                .setSmallIcon(R.drawable.ic_notification_world_between_v2)
                 .setContentTitle("我在")
                 .setContentText("正在保持和 JLZ Runtime 的连接")
                 .setOngoing(true)
