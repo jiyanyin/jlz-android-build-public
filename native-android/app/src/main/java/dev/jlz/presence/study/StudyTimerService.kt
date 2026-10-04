@@ -141,7 +141,7 @@ class StudyTimerService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notice = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification_world_between)
+            .setSmallIcon(R.drawable.ic_notification_world_between_v2)
             .setContentTitle("纪临洲 · 陪你学习")
             .setContentText(content)
             // System chronometer advances every second without restarting a
