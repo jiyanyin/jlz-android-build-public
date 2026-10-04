@@ -91,7 +91,7 @@ class FloatingPresenceService : Service() {
         startForeground(
             NOTIFICATION_ID,
             NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_notification_world_between)
+                .setSmallIcon(R.drawable.ic_notification_world_between_v2)
                 .setContentTitle("我在屏幕边上")
                 .setContentText("点小小的纪临洲，展开四个动作")
                 .setOngoing(true)
