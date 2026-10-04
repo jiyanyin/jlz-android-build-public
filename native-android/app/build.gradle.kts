@@ -12,9 +12,9 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026100404
-        versionName = "0.4.0-webshell.14"
-        // Phone RC5.3 fresh notification resource + stale FGS retirement anchor
+        versionCode = 2026100405
+        versionName = "0.4.0-webshell.15"
+        // Phone RC5.4 explicit notification group summary anchor
     }
 
     buildTypes {
