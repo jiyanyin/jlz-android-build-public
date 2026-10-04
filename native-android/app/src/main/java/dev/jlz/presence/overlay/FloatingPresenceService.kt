@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -95,6 +96,7 @@ class FloatingPresenceService : Service() {
             NOTIFICATION_ID,
             NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification_world_between_v2)
+                .setLargeIcon(BitmapFactory.decodeResource(resources, R.drawable.ic_launcher_world_between_art))
                 .setContentTitle("我在屏幕边上")
                 .setContentText("点小小的纪临洲，展开四个动作")
                 .setGroup(PRESENCE_GROUP_KEY)
