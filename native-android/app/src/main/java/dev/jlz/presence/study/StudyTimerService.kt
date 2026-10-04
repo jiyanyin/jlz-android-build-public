@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import dev.jlz.presence.MainActivity
+import dev.jlz.presence.notification.NotificationIdentityMigration
 import dev.jlz.presence.R
 import dev.jlz.presence.overlay.FloatingPresenceService
 import kotlinx.coroutines.CoroutineScope
@@ -185,7 +186,7 @@ class StudyTimerService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
-        private const val CHANNEL_ID = "jlz_study_progress_v1"
+        private const val CHANNEL_ID = "jlz_study_progress_v2"
         private const val LEGACY_NOTIFICATION_ID = 4317
         private const val NOTIFICATION_ID = 4437
         const val ACTION_REFRESH = "dev.jlz.presence.study.REFRESH"
