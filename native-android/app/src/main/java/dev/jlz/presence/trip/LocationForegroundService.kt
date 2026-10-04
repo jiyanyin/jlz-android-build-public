@@ -192,7 +192,7 @@ class LocationForegroundService : Service() {
         return Notification.Builder(this, "jlz_trip")
             .setContentTitle("带着老公")
             .setContentText(text)
-            .setSmallIcon(R.drawable.ic_notification_world_between)
+            .setSmallIcon(R.drawable.ic_notification_world_between_v2)
             .setOngoing(true)
             .setContentIntent(pi).build()
     }
