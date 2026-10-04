@@ -24,6 +24,7 @@ type NativeGateBridge = {
   response?: (packageName: string, choice: string) => string;
   grant?: (packageName: string, choice: string) => string;
   startSmallStep?: (packageName: string) => string;
+  cancelSmallStep?: (packageName: string) => boolean;
   decline?: (packageName: string, stage: string) => boolean;
   enabled?: () => boolean;
 };
@@ -133,6 +134,9 @@ export const startGateSmallStep = (packageName: string): boolean => {
     return false;
   }
 };
+
+export const cancelGateSmallStep = (packageName: string): boolean =>
+  window.WorldBetweenGate?.cancelSmallStep?.(packageName) ?? false;
 
 export const declineGate = (packageName: string, stage: string): boolean =>
   window.WorldBetweenGate?.decline?.(packageName, stage) ?? false;
