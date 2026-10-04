@@ -88,6 +88,7 @@ class FloatingPresenceService : Service() {
         super.onCreate()
         liveService = this
         createChannel()
+        getSystemService(NotificationManager::class.java).cancel(LEGACY_NOTIFICATION_ID)
         startForeground(
             NOTIFICATION_ID,
             NotificationCompat.Builder(this, CHANNEL_ID)
@@ -752,7 +753,8 @@ class FloatingPresenceService : Service() {
         }
 
         private const val CHANNEL_ID = "jlz_presence_overlay"
-        private const val NOTIFICATION_ID = 4201
+        private const val LEGACY_NOTIFICATION_ID = 4201
+        private const val NOTIFICATION_ID = 4421
         private const val EXTRA_MESSAGE = "message"
         private const val EXTRA_MODE = "mode"
         private const val EXTRA_ATTENTION_NUDGE = "attention_nudge"
