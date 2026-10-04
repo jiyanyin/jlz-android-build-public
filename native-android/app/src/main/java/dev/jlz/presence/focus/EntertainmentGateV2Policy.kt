@@ -63,7 +63,7 @@ object EntertainmentGateV2Policy {
     ): Boolean {
         if (createdAtMs <= 0L) return true
         if (createdAtMs > nowMs + SMALL_STEP_FUTURE_TOLERANCE_MS) return true
-        if (nowMs - createdAtMs > SMALL_STEP_PENDING_TTL_MS) return true
+        if (nowMs - createdAtMs >= SMALL_STEP_PENDING_TTL_MS) return true
         if (baselineEffectiveMs > currentEffectiveMs + SMALL_STEP_BASELINE_TOLERANCE_MS) return true
         return false
     }
