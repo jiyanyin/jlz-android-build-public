@@ -133,6 +133,7 @@ class NativeRuntimeService : Service() {
         }
 
         createChannel()
+        getSystemService(NotificationManager::class.java).cancel(LEGACY_FOREGROUND_ID)
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         commandWakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
@@ -1052,7 +1053,8 @@ class NativeRuntimeService : Service() {
 
     companion object {
         private const val SERVICE_CHANNEL = "jlz_native_runtime"
-        private const val FOREGROUND_ID = 4001
+        private const val LEGACY_FOREGROUND_ID = 4001
+        private const val FOREGROUND_ID = 4401
         private const val HEARTBEAT_INTERVAL_MS = 60_000L
         private const val COMMAND_LONG_POLL_MS = 20_000
         private const val COMMAND_RETRY_BACKOFF_MS = 2_000L
