@@ -1,0 +1,29 @@
+name: Handoff Source Snapshot
+
+on:
+  push:
+    branches:
+      - handoff/a-g-final-20261004
+  workflow_dispatch:
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write snapshot metadata
+        run: |
+          printf 'repository=%s\nbranch=%s\ncommit=%s\ngenerated_utc=%s\n' \
+            "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > HANDOFF_SOURCE_METADATA.txt
+      - name: Build source archive
+        run: |
+          rm -rf .git
+          zip -qr /tmp/world-between-a-g-source-20261004.zip . \
+            -x '*.gradle/caches/*' '*/build/*' '*/node_modules/*'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: world-between-a-g-source-20261004
+          path: /tmp/world-between-a-g-source-20261004.zip
+          if-no-files-found: error
+          retention-days: 30
