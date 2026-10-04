@@ -12,9 +12,9 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026100406
-        versionName = "0.4.0-webshell.16"
-        // Phone RC5.5 notification purge + channel rotation anchor
+        versionCode = 2026100407
+        versionName = "0.4.0-webshell.17"
+        // Phone RC5.6 notification purge + channel rotation + explicit MIUI large icon
     }
 
     buildTypes {
