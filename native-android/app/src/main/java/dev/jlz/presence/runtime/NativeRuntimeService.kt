@@ -13,6 +13,7 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import dev.jlz.presence.R
 import dev.jlz.presence.actions.DeviceActionExecutor
+import dev.jlz.presence.notification.NotificationIdentityMigration
 import dev.jlz.presence.actions.DeviceSystemController
 import dev.jlz.presence.agency.PresencePlanRepository
 import dev.jlz.presence.capture.CaptureEventStore
@@ -132,6 +133,7 @@ class NativeRuntimeService : Service() {
             registerReceiver(deviceEventReceiver, eventFilter)
         }
 
+        NotificationIdentityMigration.ensureFresh(applicationContext)
         createChannel()
         getSystemService(NotificationManager::class.java).cancel(LEGACY_FOREGROUND_ID)
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -1067,7 +1069,7 @@ class NativeRuntimeService : Service() {
     }
 
     companion object {
-        private const val SERVICE_CHANNEL = "jlz_native_runtime"
+        private const val SERVICE_CHANNEL = "jlz_native_runtime_v2"
         private const val LEGACY_FOREGROUND_ID = 4001
         private const val FOREGROUND_ID = 4401
         private const val PRESENCE_GROUP_KEY = "jlz_presence_core_group"
