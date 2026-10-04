@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import dev.jlz.presence.R
 import dev.jlz.presence.actions.DeviceActionExecutor
 import dev.jlz.presence.actions.DeviceSystemController
 import dev.jlz.presence.agency.PresencePlanRepository
@@ -144,7 +145,7 @@ class NativeRuntimeService : Service() {
         startForeground(
             FOREGROUND_ID,
             NotificationCompat.Builder(this, SERVICE_CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setSmallIcon(R.drawable.ic_notification_world_between)
                 .setContentTitle("我在")
                 .setContentText("正在保持和 JLZ Runtime 的连接")
                 .setOngoing(true)
