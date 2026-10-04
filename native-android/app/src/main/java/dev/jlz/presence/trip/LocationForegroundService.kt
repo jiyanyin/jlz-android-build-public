@@ -15,6 +15,7 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
+import dev.jlz.presence.R
 import dev.jlz.presence.data.LocalLifeStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -191,7 +192,7 @@ class LocationForegroundService : Service() {
         return Notification.Builder(this, "jlz_trip")
             .setContentTitle("带着老公")
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(R.drawable.ic_notification_world_between)
             .setOngoing(true)
             .setContentIntent(pi).build()
     }
