@@ -143,7 +143,7 @@ class NotificationAdapter(private val context: Context) {
             context,
             CHANNEL_ID
         )
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_notification_world_between_v2)
             .setLargeIcon(avatar)
             .setContentTitle(title.ifBlank { "我在找你" })
             .setContentText(message)
@@ -210,7 +210,7 @@ class NotificationAdapter(private val context: Context) {
         // Deliberately keep the same channel, ID and null tag as showMessage().
         // We show an explicit status instead of silently retracting the message.
         val updated = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_notification_world_between_v2)
             .setLargeIcon(avatar)
             .setContentTitle(originalTitle.ifBlank { "纪临洲" })
             .setContentText(status)
@@ -263,6 +263,7 @@ class NotificationAdapter(private val context: Context) {
     }
 
     private fun ensureChannel() {
+        NotificationIdentityMigration.ensureFresh(context)
         if (Build.VERSION.SDK_INT >= 26) {
             manager.createNotificationChannel(
                 NotificationChannel(
@@ -299,7 +300,7 @@ class NotificationAdapter(private val context: Context) {
     }
 
     companion object {
-        const val CHANNEL_ID = "jlz_presence_messages"
+        const val CHANNEL_ID = "jlz_presence_messages_v2"
         private const val AVATAR_SIZE = 128
         private val idLock = Any()
     }

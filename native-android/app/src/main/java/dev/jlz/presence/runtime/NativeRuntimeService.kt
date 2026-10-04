@@ -7,11 +7,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import dev.jlz.presence.R
 import dev.jlz.presence.actions.DeviceActionExecutor
+import dev.jlz.presence.notification.NotificationIdentityMigration
 import dev.jlz.presence.actions.DeviceSystemController
 import dev.jlz.presence.agency.PresencePlanRepository
 import dev.jlz.presence.capture.CaptureEventStore
@@ -131,7 +134,9 @@ class NativeRuntimeService : Service() {
             registerReceiver(deviceEventReceiver, eventFilter)
         }
 
+        NotificationIdentityMigration.ensureFresh(applicationContext)
         createChannel()
+        getSystemService(NotificationManager::class.java).cancel(LEGACY_FOREGROUND_ID)
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         commandWakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
@@ -144,10 +149,26 @@ class NativeRuntimeService : Service() {
         startForeground(
             FOREGROUND_ID,
             NotificationCompat.Builder(this, SERVICE_CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setSmallIcon(R.drawable.ic_notification_world_between_v2)
+                .setLargeIcon(BitmapFactory.decodeResource(resources, R.drawable.ic_launcher_world_between_art))
                 .setContentTitle("我在")
                 .setContentText("正在保持和 JLZ Runtime 的连接")
+                .setGroup(PRESENCE_GROUP_KEY)
                 .setOngoing(true)
+                .build()
+        )
+
+        getSystemService(NotificationManager::class.java).notify(
+            PRESENCE_GROUP_SUMMARY_ID,
+            NotificationCompat.Builder(this, SERVICE_CHANNEL)
+                .setSmallIcon(R.drawable.ic_notification_world_between_v2)
+                .setLargeIcon(BitmapFactory.decodeResource(resources, R.drawable.ic_launcher_world_between_art))
+                .setContentTitle("世界之间")
+                .setContentText("我在")
+                .setGroup(PRESENCE_GROUP_KEY)
+                .setGroupSummary(true)
+                .setOngoing(true)
+                .setSilent(true)
                 .build()
         )
 
@@ -170,6 +191,7 @@ class NativeRuntimeService : Service() {
         NativeClientDiagnostics.update {
             it.copy(serviceRunning = false, runtimeConnected = false)
         }
+        getSystemService(NotificationManager::class.java).cancel(PRESENCE_GROUP_SUMMARY_ID)
         super.onDestroy()
     }
 
@@ -1050,8 +1072,11 @@ class NativeRuntimeService : Service() {
     }
 
     companion object {
-        private const val SERVICE_CHANNEL = "jlz_native_runtime"
-        private const val FOREGROUND_ID = 4001
+        private const val SERVICE_CHANNEL = "jlz_native_runtime_v2"
+        private const val LEGACY_FOREGROUND_ID = 4001
+        private const val FOREGROUND_ID = 4401
+        private const val PRESENCE_GROUP_KEY = "jlz_presence_core_group"
+        private const val PRESENCE_GROUP_SUMMARY_ID = 4499
         private const val HEARTBEAT_INTERVAL_MS = 60_000L
         private const val COMMAND_LONG_POLL_MS = 20_000
         private const val COMMAND_RETRY_BACKOFF_MS = 2_000L

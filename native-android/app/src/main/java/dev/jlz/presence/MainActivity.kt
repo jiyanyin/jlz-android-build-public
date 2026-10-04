@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import dev.jlz.presence.navigation.PresenceRoute
 import dev.jlz.presence.navigation.PresenceRouteBus
+import dev.jlz.presence.notification.NotificationIdentityMigration
 import dev.jlz.presence.notification.NotificationReplyReceiver
 import dev.jlz.presence.ui.PresenceApp
 import dev.jlz.presence.ui.theme.IceCrystalTheme
@@ -16,6 +17,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        NotificationIdentityMigration.ensureFresh(applicationContext)
         handleIntent(intent)
         setContent { IceCrystalTheme { PresenceApp() } }
     }
