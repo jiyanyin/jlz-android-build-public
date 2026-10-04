@@ -263,6 +263,7 @@ class NotificationAdapter(private val context: Context) {
     }
 
     private fun ensureChannel() {
+        NotificationIdentityMigration.ensureFresh(context)
         if (Build.VERSION.SDK_INT >= 26) {
             manager.createNotificationChannel(
                 NotificationChannel(
@@ -299,7 +300,7 @@ class NotificationAdapter(private val context: Context) {
     }
 
     companion object {
-        const val CHANNEL_ID = "jlz_presence_messages"
+        const val CHANNEL_ID = "jlz_presence_messages_v2"
         private const val AVATAR_SIZE = 128
         private val idLock = Any()
     }
