@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -149,6 +150,7 @@ class NativeRuntimeService : Service() {
             FOREGROUND_ID,
             NotificationCompat.Builder(this, SERVICE_CHANNEL)
                 .setSmallIcon(R.drawable.ic_notification_world_between_v2)
+                .setLargeIcon(BitmapFactory.decodeResource(resources, R.drawable.ic_launcher_world_between_art))
                 .setContentTitle("我在")
                 .setContentText("正在保持和 JLZ Runtime 的连接")
                 .setGroup(PRESENCE_GROUP_KEY)
@@ -160,6 +162,7 @@ class NativeRuntimeService : Service() {
             PRESENCE_GROUP_SUMMARY_ID,
             NotificationCompat.Builder(this, SERVICE_CHANNEL)
                 .setSmallIcon(R.drawable.ic_notification_world_between_v2)
+                .setLargeIcon(BitmapFactory.decodeResource(resources, R.drawable.ic_launcher_world_between_art))
                 .setContentTitle("世界之间")
                 .setContentText("我在")
                 .setGroup(PRESENCE_GROUP_KEY)
