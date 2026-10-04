@@ -16,6 +16,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.Looper
 import dev.jlz.presence.R
+import dev.jlz.presence.notification.NotificationIdentityMigration
 import dev.jlz.presence.data.LocalLifeStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -179,7 +180,7 @@ class LocationForegroundService : Service() {
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel("jlz_trip", "同行定位", NotificationManager.IMPORTANCE_LOW).apply {
+            val ch = NotificationChannel("jlz_trip_v2", "同行定位", NotificationManager.IMPORTANCE_LOW).apply {
                 setShowBadge(false)
                 setSound(null, null)
             }
