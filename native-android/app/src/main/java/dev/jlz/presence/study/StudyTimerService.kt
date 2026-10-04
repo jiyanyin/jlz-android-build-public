@@ -34,6 +34,7 @@ class StudyTimerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        manager.cancel(LEGACY_NOTIFICATION_ID)
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "学习专注计时", NotificationManager.IMPORTANCE_LOW)
                 .apply {
@@ -185,7 +186,8 @@ class StudyTimerService : Service() {
 
     companion object {
         private const val CHANNEL_ID = "jlz_study_progress_v1"
-        private const val NOTIFICATION_ID = 4317
+        private const val LEGACY_NOTIFICATION_ID = 4317
+        private const val NOTIFICATION_ID = 4437
         const val ACTION_REFRESH = "dev.jlz.presence.study.REFRESH"
         private const val ACTION_PAUSE = "dev.jlz.presence.study.PAUSE"
         private const val ACTION_RESUME = "dev.jlz.presence.study.RESUME"
