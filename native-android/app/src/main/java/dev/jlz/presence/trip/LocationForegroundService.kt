@@ -15,6 +15,8 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
+import dev.jlz.presence.R
+import dev.jlz.presence.notification.NotificationIdentityMigration
 import dev.jlz.presence.data.LocalLifeStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -80,6 +82,7 @@ class LocationForegroundService : Service() {
         super.onCreate()
         locationManager = getSystemService(LocationManager::class.java)
         createChannel()
+        getSystemService(NotificationManager::class.java)?.cancel(LEGACY_NOTIF_ID)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -177,7 +180,7 @@ class LocationForegroundService : Service() {
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel("jlz_trip", "同行定位", NotificationManager.IMPORTANCE_LOW).apply {
+            val ch = NotificationChannel("jlz_trip_v2", "同行定位", NotificationManager.IMPORTANCE_LOW).apply {
                 setShowBadge(false)
                 setSound(null, null)
             }
@@ -191,12 +194,13 @@ class LocationForegroundService : Service() {
         return Notification.Builder(this, "jlz_trip")
             .setContentTitle("带着老公")
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(R.drawable.ic_notification_world_between_v2)
             .setOngoing(true)
             .setContentIntent(pi).build()
     }
 
     companion object {
-        const val NOTIF_ID = 3001
+        const val LEGACY_NOTIF_ID = 3001
+        const val NOTIF_ID = 4301
     }
 }

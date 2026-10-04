@@ -11,6 +11,8 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import dev.jlz.presence.MainActivity
+import dev.jlz.presence.notification.NotificationIdentityMigration
+import dev.jlz.presence.R
 import dev.jlz.presence.overlay.FloatingPresenceService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +35,7 @@ class StudyTimerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        manager.cancel(LEGACY_NOTIFICATION_ID)
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "学习专注计时", NotificationManager.IMPORTANCE_LOW)
                 .apply {
@@ -140,7 +143,7 @@ class StudyTimerService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notice = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setSmallIcon(R.drawable.ic_notification_world_between_v2)
             .setContentTitle("纪临洲 · 陪你学习")
             .setContentText(content)
             // System chronometer advances every second without restarting a
@@ -183,8 +186,9 @@ class StudyTimerService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
-        private const val CHANNEL_ID = "jlz_study_progress_v1"
-        private const val NOTIFICATION_ID = 4317
+        private const val CHANNEL_ID = "jlz_study_progress_v2"
+        private const val LEGACY_NOTIFICATION_ID = 4317
+        private const val NOTIFICATION_ID = 4437
         const val ACTION_REFRESH = "dev.jlz.presence.study.REFRESH"
         private const val ACTION_PAUSE = "dev.jlz.presence.study.PAUSE"
         private const val ACTION_RESUME = "dev.jlz.presence.study.RESUME"
