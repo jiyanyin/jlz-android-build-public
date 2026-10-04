@@ -95,6 +95,7 @@ class FloatingPresenceService : Service() {
                 .setSmallIcon(R.drawable.ic_notification_world_between_v2)
                 .setContentTitle("我在屏幕边上")
                 .setContentText("点小小的纪临洲，展开四个动作")
+                .setGroup(PRESENCE_GROUP_KEY)
                 .setOngoing(true)
                 .build()
         )
@@ -755,6 +756,7 @@ class FloatingPresenceService : Service() {
         private const val CHANNEL_ID = "jlz_presence_overlay"
         private const val LEGACY_NOTIFICATION_ID = 4201
         private const val NOTIFICATION_ID = 4421
+        private const val PRESENCE_GROUP_KEY = "jlz_presence_core_group"
         private const val EXTRA_MESSAGE = "message"
         private const val EXTRA_MODE = "mode"
         private const val EXTRA_ATTENTION_NUDGE = "attention_nudge"
