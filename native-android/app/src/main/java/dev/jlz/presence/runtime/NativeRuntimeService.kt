@@ -280,10 +280,17 @@ class NativeRuntimeService : Service() {
                 // Actual screen pixels and accessibility node text are fetched
                 // on demand through the screenshot / get_screen_nodes tools.
                 ForegroundUsageTracker.flush()
+                val nowMs = System.currentTimeMillis()
                 val dayStart = LocalDate.now().atStartOfDay(ZoneId.systemDefault())
                     .toInstant().toEpochMilli()
-                val usageTotals = ForegroundUsageStore(applicationContext)
-                    .totalsSince(dayStart, 50)
+                val usageStore = ForegroundUsageStore(applicationContext)
+                val usageTotals = usageStore.totalsSince(dayStart, 16)
+                val usageWindowMinutes = 60
+                val usageWindowStart = (nowMs - usageWindowMinutes * 60_000L)
+                    .coerceAtLeast(dayStart)
+                val recentUsageTotals = usageStore.totalsBetween(
+                    usageWindowStart, nowMs, 12
+                )
                 val observedScreen = ScreenObservationBus.observations.value
                 val observedAt = observedScreen?.observedAtMs ?: 0L
                 val screenFresh = observedAt > 0L &&
@@ -303,11 +310,20 @@ class NativeRuntimeService : Service() {
                     JSONObject()
                         .put("source", "android_accessibility_foreground_segments")
                         .put("since_ms", dayStart)
-                        .put("observed_at_ms", System.currentTimeMillis())
+                        .put("observed_at_ms", nowMs)
                         .put("usage_permission_ready", false)
                         .put("recording_available", ScreenObservationBus.isAvailable())
                         .put("totals", org.json.JSONArray().apply {
                             usageTotals.forEach { total ->
+                                put(JSONObject()
+                                    .put("package_name", total.packageName)
+                                    .put("duration_ms", total.durationMs))
+                            }
+                        })
+                        .put("recent_window_minutes", usageWindowMinutes)
+                        .put("recent_window_since_ms", usageWindowStart)
+                        .put("recent_window_totals", org.json.JSONArray().apply {
+                            recentUsageTotals.forEach { total ->
                                 put(JSONObject()
                                     .put("package_name", total.packageName)
                                     .put("duration_ms", total.durationMs))
