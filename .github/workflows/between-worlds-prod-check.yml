@@ -36,5 +36,7 @@ jobs:
         run: node --experimental-strip-types --test tests/entertainmentGate.test.ts
       - name: Native Study WebShell tests
         run: node --experimental-strip-types --test tests/nativeStudy.test.ts
+      - name: Migration 2 hosting contract tests
+        run: node --experimental-strip-types --test tests/migration2Hosting.test.ts
       - name: Typecheck and build
         run: npm run build
