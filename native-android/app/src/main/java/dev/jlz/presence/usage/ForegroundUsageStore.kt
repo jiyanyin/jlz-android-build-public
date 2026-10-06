@@ -74,6 +74,38 @@ class ForegroundUsageStore(context: Context) :
     }
 
     @Synchronized
+    fun totalsBetween(startMs: Long, endMs: Long, limit: Int = 30): List<AppUsageTotal> {
+        if (endMs <= startMs) return emptyList()
+        val totals = mutableMapOf<String, Long>()
+        readableDatabase.rawQuery(
+            """
+            SELECT package_name, started_at_ms, ended_at_ms
+            FROM usage_segments
+            WHERE started_at_ms < ?
+              AND ended_at_ms > ?
+            """.trimIndent(),
+            arrayOf(endMs.toString(), startMs.toString())
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val packageName = cursor.getString(0)
+                val segmentStart = cursor.getLong(1)
+                val segmentEnd = cursor.getLong(2)
+                val overlapStart = maxOf(segmentStart, startMs)
+                val overlapEnd = minOf(segmentEnd, endMs)
+                if (overlapEnd > overlapStart) {
+                    totals[packageName] = (totals[packageName] ?: 0L) +
+                        (overlapEnd - overlapStart)
+                }
+            }
+        }
+        return totals.entries
+            .filter { it.value > 0L }
+            .sortedByDescending { it.value }
+            .take(limit.coerceIn(1, 100))
+            .map { AppUsageTotal(it.key, it.value) }
+    }
+
+    @Synchronized
     fun durationBetween(
         startMs: Long,
         endMs: Long,
