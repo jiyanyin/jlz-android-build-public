@@ -47,6 +47,9 @@ object SystemUsageSnapshot {
         val event = UsageEvents.Event()
         val starts = linkedMapOf<String, Long>()
         val totals = mutableMapOf<String, Long>()
+        val recentTotals = mutableMapOf<String, Long>()
+        val recentWindowMinutes = 60
+        val recentStart = (now - recentWindowMinutes * 60_000L).coerceAtLeast(day)
         var interactive = true
         var lastPackage: String? = null
         var unlocks = 0
@@ -54,8 +57,16 @@ object SystemUsageSnapshot {
 
         fun close(pkg: String, at: Long) {
             val started = starts.remove(pkg) ?: return
-            if (at > started) totals[pkg] = (totals[pkg] ?: 0L) +
-                (at - started).coerceAtMost(now - day)
+            if (at <= started) return
+            val safeEnd = at.coerceAtMost(now)
+            val duration = (safeEnd - started).coerceAtMost(now - day)
+            if (duration > 0L) {
+                totals[pkg] = (totals[pkg] ?: 0L) + duration
+            }
+            val overlapStart = maxOf(started, recentStart)
+            if (safeEnd > overlapStart) {
+                recentTotals[pkg] = (recentTotals[pkg] ?: 0L) + (safeEnd - overlapStart)
+            }
         }
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
@@ -91,9 +102,15 @@ object SystemUsageSnapshot {
             }
         }
         if (interactive) starts.keys.toList().forEach { close(it, now) }
+        // Keep the heartbeat payload deliberately small. Full raw UsageEvents
+        // stay on-device; Runtime receives only bounded aggregates.
         val ordered = totals.entries.filter { it.value > 0L }
-            .sortedByDescending { it.value }.take(50)
-        val totalMs = ordered.sumOf { it.value }.coerceAtMost(now - day)
+            .sortedByDescending { it.value }.take(16)
+        val recentOrdered = recentTotals.entries.filter { it.value > 0L }
+            .sortedByDescending { it.value }.take(12)
+        val totalMs = totals.values.sum().coerceAtMost(now - day)
+        val recentTotalMs = recentTotals.values.sum()
+            .coerceAtMost((now - recentStart).coerceAtLeast(0L))
         val attribution = DeviceActivityJournal(context.applicationContext)
             .usageAttribution(context, day, now)
         return base
@@ -105,6 +122,15 @@ object SystemUsageSnapshot {
             })
             .put("screen_time_today_minutes", totalMs / 60_000L)
             .put("device_screen_time_ms", totalMs)
+            .put("recent_window_minutes", recentWindowMinutes)
+            .put("recent_window_since_ms", recentStart)
+            .put("recent_window_screen_time_ms", recentTotalMs)
+            .put("recent_window_totals", JSONArray().apply {
+                recentOrdered.forEach { entry ->
+                    put(JSONObject().put("package_name", entry.key)
+                        .put("duration_ms", entry.value))
+                }
+            })
             .put("known_runtime_screen_time_ms",
                 attribution.optLong("known_runtime_foreground_app_time_ms"))
             .put("known_work_test_screen_time_ms",
