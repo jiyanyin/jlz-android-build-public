@@ -76,28 +76,35 @@ class ForegroundUsageStore(context: Context) :
     @Synchronized
     fun totalsBetween(startMs: Long, endMs: Long, limit: Int = 30): List<AppUsageTotal> {
         if (endMs <= startMs) return emptyList()
-        val result = mutableListOf<AppUsageTotal>()
+        val totals = mutableMapOf<String, Long>()
         readableDatabase.rawQuery(
             """
-            SELECT package_name,
-                   SUM(MAX(0, MIN(ended_at_ms, ?) - MAX(started_at_ms, ?))) AS total_ms
+            SELECT package_name, started_at_ms, ended_at_ms
             FROM usage_segments
             WHERE started_at_ms < ?
               AND ended_at_ms > ?
-            GROUP BY package_name
-            ORDER BY total_ms DESC
-            LIMIT ?
             """.trimIndent(),
-            arrayOf(endMs.toString(), startMs.toString(), endMs.toString(),
-                startMs.toString(), limit.coerceIn(1, 100).toString())
+            arrayOf(endMs.toString(), startMs.toString())
         ).use { cursor ->
             while (cursor.moveToNext()) {
-                val duration = cursor.getLong(1)
-                if (duration > 0L) result += AppUsageTotal(cursor.getString(0), duration)
+                val packageName = cursor.getString(0)
+                val segmentStart = cursor.getLong(1)
+                val segmentEnd = cursor.getLong(2)
+                val overlapStart = maxOf(segmentStart, startMs)
+                val overlapEnd = minOf(segmentEnd, endMs)
+                if (overlapEnd > overlapStart) {
+                    totals[packageName] = (totals[packageName] ?: 0L) +
+                        (overlapEnd - overlapStart)
+                }
             }
         }
-        return result
+        return totals.entries
+            .filter { it.value > 0L }
+            .sortedByDescending { it.value }
+            .take(limit.coerceIn(1, 100))
+            .map { AppUsageTotal(it.key, it.value) }
     }
+
     @Synchronized
     fun durationBetween(
         startMs: Long,
