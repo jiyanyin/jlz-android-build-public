@@ -58,7 +58,13 @@ jobs:
 
       - name: Android static checks
         working-directory: native-android
-        run: gradle :app:lintDebug --no-daemon
+        shell: bash
+        run: |
+          set +e
+          gradle :app:lintDebug --no-daemon
+          result=$?
+          cat app/build/reports/lint-results-debug.txt
+          exit $result
 
       - name: Upload unit test evidence
         if: always()

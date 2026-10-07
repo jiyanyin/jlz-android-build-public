@@ -263,8 +263,7 @@ class NativeRuntimeService : Service() {
                 ForegroundUsageTracker.flush()
                 val dayStart = LocalDate.now().atStartOfDay(ZoneId.systemDefault())
                     .toInstant().toEpochMilli()
-                val usageTotals = ForegroundUsageStore(applicationContext)
-                    .totalsSince(dayStart, 50)
+                val usageTotals = ForegroundUsageStore(applicationContext).use { it.totalsSince(dayStart, 50) }
                 val observedScreen = ScreenObservationBus.observations.value
                 val observedAt = observedScreen?.observedAtMs ?: 0L
                 val screenFresh = observedAt > 0L &&
@@ -294,6 +293,16 @@ class NativeRuntimeService : Service() {
                                     .put("duration_ms", total.durationMs))
                             }
                         })
+                }
+                if (ScreenObservationBus.isAvailable()) {
+                    val windowEnd = System.currentTimeMillis()
+                    val rolling = ForegroundUsageStore(applicationContext).use { it.totalsInWindow(windowEnd-3_600_000L,windowEnd,12) }
+                    usageJson.put("recent_window_minutes",60)
+                        .put("recent_window_source","android_accessibility_foreground_segments")
+                        .put("recent_window_end_ms",windowEnd)
+                        .put("recent_window_totals",JSONArray().apply { rolling.forEach { total ->
+                            put(JSONObject().put("package_name",total.packageName).put("duration_ms",total.durationMs))
+                        } })
                 }
                 // V2: Health Connect telemetry removed by product decision.
                 api.postDeviceState(

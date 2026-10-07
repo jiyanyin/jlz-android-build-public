@@ -27,13 +27,15 @@ export function validateInstructionPack(raw: string): InstructionPack {
 
 /** Explicit allowlist: connection configuration, tokens and outboxes are excluded. */
 export function exportWorldPack(state: Record<string,unknown>, native: Record<string,unknown>={}) {
+  const context = state.lastContextPack as Record<string,unknown> | null;
+  const conversation = context?.conversation as Record<string,unknown> | undefined;
   return {
     schema_version:"jlzpack-1", exported_at:new Date().toISOString(), device:native.device ?? "web",
     status_light:state.status ?? null, daily_plan:state.dailyPlan ?? null,
     timeline:(Array.isArray(state.notes)?state.notes:[]).slice(0,80), offline_messages:state.importedMessages ?? [], import_audit:state.packAudit ?? [], native_timeline:native.timeline ?? [],
-    app_usage_summary:native.usage_summary ?? [], study_summary:state.studySummary ?? null,
+    app_usage_summary:native.usage_summary ?? [], study_summary:native.study_summary ?? state.studySummary ?? null,
     gate_state:native.gate ?? null, bridge_diagnostics:native.bridge ?? null,
-    capture_metadata:native.capture_metadata ?? [], world_cursor:state.worldCursor ?? null,
-    context_cursor:state.contextCursor ?? null, image_bytes_included:false,
+    capture_metadata:native.capture_metadata ?? [], context_snapshot:context ?? null, world_cursor:conversation?.pending_next_cursor ?? null,
+    context_cursor:context?.cursor ?? null, image_bytes_included:false,
   };
 }

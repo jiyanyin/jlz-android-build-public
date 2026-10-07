@@ -17,7 +17,7 @@ type Sync = "queued" | "synced";
 type RecordItem = { id: number | string; type: string; at: string; body: string; event_id?: string; sync?: Sync; [key: string]: unknown };
 type Message = { text: string; at: string; event_id?: string; sync?: Sync };
 type ActiveLife = { action: string; session: string; startAt: number } | null;
-type AppState = { theme: Theme; notes: RecordItem[]; messages: Message[]; status: RecordItem | null; life: RecordItem[]; journal: RecordItem[]; activeLife: ActiveLife;
+type AppState = { lastContextPack: Record<string,unknown> | null; theme: Theme; notes: RecordItem[]; messages: Message[]; status: RecordItem | null; life: RecordItem[]; journal: RecordItem[]; activeLife: ActiveLife;
   importedMessages: RemoteMessage[]; packAudit: {id:string;at:string;count:number}[]; pendingPackGate: boolean | null;
   runtimeUrl: string; webToken: string; outbox: OutboxItem[]; remoteRecords: RemoteRecord[]; remoteMessages: RemoteMessage[]; seenCompanion: string[]; voiceMemory: VoiceMemory; dailyPlan: DailyPlan | null; studySummary: StudySummary | null };
 type Conn = "local" | "syncing" | "online";
@@ -54,7 +54,7 @@ const ENTRY_MODE = new URLSearchParams(window.location.search).get("entry");
 const GATE_PACKAGE = new URLSearchParams(window.location.search).get("gate_pkg") || "";
 const GATE_REASON = new URLSearchParams(window.location.search).get("gate_reason") || "entry";
 const OUTBOX_CAP = 300;
-const defaults: AppState = { theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
+const defaults: AppState = { lastContextPack: null, theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
   importedMessages: [], packAudit: [], pendingPackGate: null,
   runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [], voiceMemory: EMPTY_VOICE_MEMORY, dailyPlan: null, studySummary: null };
 const markSynced = (s: AppState, id: string): AppState => {
@@ -275,6 +275,10 @@ export default function BetweenWorlds() {
       await pullMessages();
       await pullDailyPlan();
       await pullStudySummary();
+      if(c.baseUrl === "native") {
+        // One bounded snapshot per reconnect, cached for offline export. Optional on older servers.
+        try { const snapshot=await runtime.exportContext(c); update(s=>({...s,lastContextPack:snapshot.context_pack})); } catch { /* retain last known snapshot */ }
+      }
       setConn("online");
       setLastError("");
     } catch (e) {
@@ -524,7 +528,7 @@ export default function BetweenWorlds() {
   }
 
   return <div className="bw-root">
-    {tab==="more" && <RescuePanel snapshot={()=>exportWorldPack(stateRef.current,JSON.parse(homeBridge()?.snapshot()||"{}"))} apply={applyInstructionPack}/>}
+    {tab==="more" && <RescuePanel snapshot={()=>exportWorldPack(stateRef.current,{...JSON.parse(homeBridge()?.snapshot()||"{}"),study_summary:nativeStudyAvailable()?readNativeStudy():undefined})} apply={applyInstructionPack}/>}
     {installGuide && <div className="install-guide-backdrop" role="dialog" aria-modal="true" aria-label="安装世界之间">
       <div className="install-guide-card">
         <img src="/icon-512.webp" alt="世界之间图标" />

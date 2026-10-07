@@ -67,6 +67,7 @@ async function request<T>(cfg: RuntimeConfig, path: string, init: { method?: "GE
 
 const q = `space_id=${encodeURIComponent(SPACE_ID)}`;
 export const runtime = {
+  exportContext: (cfg: RuntimeConfig) => request<{context_pack: Record<string,unknown>}>(cfg, `/api/web/export-context?${q}`),
   health: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, "/api/web/health"),
   state: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, `/api/web/state?${q}`),
   messages: (cfg: RuntimeConfig, limit = 80) => request<unknown>(cfg, `/api/web/messages?${q}&limit=${limit}`),

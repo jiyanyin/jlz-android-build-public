@@ -46,7 +46,7 @@ class HomeWebBridge(private val context: Context, private val save: (String)->Un
             timeline.put(JSONObject().put("id",it.id).put("type",it.type).put("title",it.title).put("at_ms",it.createdAtMs))
         } }
         val usage=JSONArray()
-        ForegroundUsageStore(context).use { db -> db.totalsSince(System.currentTimeMillis()-3600000,12).forEach {
+        ForegroundUsageStore(context).use { db -> db.totalsInWindow(System.currentTimeMillis()-3600000,System.currentTimeMillis(),12).forEach {
             usage.put(JSONObject().put("package",it.packageName).put("foreground_ms",it.durationMs))
         } }
         val captures=JSONArray()
