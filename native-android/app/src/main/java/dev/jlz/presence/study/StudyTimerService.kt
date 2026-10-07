@@ -10,6 +10,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import dev.jlz.presence.R
 import dev.jlz.presence.MainActivity
 import dev.jlz.presence.notification.NotificationIdentityMigration
 import dev.jlz.presence.overlay.FloatingPresenceService
