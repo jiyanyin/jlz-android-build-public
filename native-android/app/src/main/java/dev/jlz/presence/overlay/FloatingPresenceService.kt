@@ -20,6 +20,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
+import dev.jlz.presence.R
 import dev.jlz.presence.capture.CaptureEventStore
 import dev.jlz.presence.capture.PendingScreenshotQueue
 import dev.jlz.presence.data.LocalLifeStore
