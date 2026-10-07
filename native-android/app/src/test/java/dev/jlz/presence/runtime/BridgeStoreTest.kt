@@ -33,4 +33,20 @@ class BridgeStoreTest {
         assertEquals("Railway Standby",store.select(old).bridgeName)
         assertFalse(store.diagnostics().toString().contains("old-token"))
     }
+
+    @Test fun preferredHomeTailscaleRecoversWhenLanIsUnavailable() {
+        val ctx: Context=RuntimeEnvironment.getApplication()
+        val prefs=ctx.getSharedPreferences("home_bridge",Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        val store=BridgeStore(ctx)
+        store.save(listOf(BridgeEndpoint("Home LAN","http://192.168.1.2:17860","a"),
+            BridgeEndpoint("Home Node","http://100.78.16.38:17860","b",priority=1),
+            BridgeEndpoint("Railway","https://standby.example","c",priority=2)))
+        prefs.edit().putString("active","Railway").commit()
+        store.probePreferred { it.name == "Home Node" }
+        assertEquals("Railway",store.select(RuntimeSettings("https://old.example","x")).bridgeName)
+        prefs.edit().putLong("probe_at",0).commit()
+        store.probePreferred { it.name == "Home Node" }
+        assertEquals("Home Node",store.select(RuntimeSettings("https://old.example","x")).bridgeName)
+    }
 }

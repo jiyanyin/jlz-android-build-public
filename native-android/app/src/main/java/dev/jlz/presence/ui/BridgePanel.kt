@@ -15,6 +15,7 @@ fun BridgePanel() {
     val context = LocalContext.current
     val store = remember { BridgeStore(context) }
     val scope = rememberCoroutineScope()
+    var lan by remember { mutableStateOf(store.endpoints().find { it.name=="Home LAN" }?.url.orEmpty()) }
     var home by remember { mutableStateOf(store.endpoints().find { it.name=="Home Node" }?.url.orEmpty()) }
     var standby by remember { mutableStateOf(store.endpoints().find { it.name=="Railway Standby" }?.url.orEmpty()) }
     var custom by remember { mutableStateOf(store.endpoints().find { it.name=="Custom" }?.url.orEmpty()) }
@@ -27,6 +28,7 @@ fun BridgePanel() {
         Column(Modifier.padding(14.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
             Text("连接 / Bridge", style=MaterialTheme.typography.titleMedium)
             Text("优先 Home Node；连续 3 次失败才切备用。留空的端点不启用。密钥留空保留已保存值。")
+            OutlinedTextField(lan,{lan=it},label={Text("Home LAN · 同局域网优先（可留空）")},singleLine=true)
             OutlinedTextField(home,{home=it},label={Text("Home Node · LAN / Tailscale")},singleLine=true)
             OutlinedTextField(homeKey,{homeKey=it},label={Text("Home Node 密钥")},visualTransformation=PasswordVisualTransformation(),singleLine=true)
             OutlinedTextField(standby,{standby=it},label={Text("Railway Standby · HTTPS")},singleLine=true)
@@ -37,9 +39,9 @@ fun BridgePanel() {
                 result = runCatching {
                     val old = store.endpoints()
                     val legacy = RuntimeSettingsRepository(context).load()
-                    val rows = listOf(Triple("Home Node",home,homeKey),Triple("Railway Standby",standby,standbyKey),Triple("Custom",custom,customKey))
+                    val rows = listOf(Triple("Home LAN",lan,homeKey),Triple("Home Node",home,homeKey),Triple("Railway Standby",standby,standbyKey),Triple("Custom",custom,customKey))
                         .mapIndexedNotNull { index, (name,url,key) -> if(url.isBlank()) null else {
-                            val token = key.ifBlank { old.find { it.name==name }?.token ?: if(url==legacy.baseUrl) legacy.token else "" }
+                            val token = key.ifBlank { old.find { it.name==name }?.token ?: if(name=="Home LAN") old.find { it.name=="Home Node" }?.token.orEmpty() else if(url==legacy.baseUrl) legacy.token else "" }
                             BridgeEndpoint(name,url.trim().trimEnd('/'),token,priority=index)
                         } }
                     store.save(rows)

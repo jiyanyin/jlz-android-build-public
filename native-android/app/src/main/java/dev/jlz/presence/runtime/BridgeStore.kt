@@ -29,6 +29,8 @@ class BridgeStore(context: Context) {
             .put("token",it.token).put("enabled",it.enabled).put("priority",it.priority)) }
         prefs.edit().putString("endpoints",a.toString()).remove("active").putInt("failures",0).commit()
     }
+    fun hasHomeEndpoint()=endpoints().any { it.name.startsWith("Home") }
+    fun recordCommand(id: String) { prefs.edit().putString("last_command",id.take(100)).putLong("last_command_at",System.currentTimeMillis()).apply() }
     fun select(fallback: RuntimeSettings): RuntimeSettings = synchronized(lock) {
         val rows = endpoints()
         val selected = rows.find { it.name == prefs.getString("active", "") } ?: rows.firstOrNull()
@@ -46,31 +48,40 @@ class BridgeStore(context: Context) {
             edit.putString("last_error_$name","poll_failed").putInt("failures",n)
             if (n >= 3 && now-prefs.getLong("switched_at",0) >= 120_000) {
                 val rows = endpoints()
-                val next = rows.firstOrNull { it.name != name }
+                val current = rows.indexOfFirst { it.name==name }
+                val next = if(rows.size>1) rows[(current+1).mod(rows.size)] else null
                 if(next != null) edit.putString("active",next.name).putLong("switched_at",now).putInt("failures",0)
             }
         }
         edit.commit()
     }
     /** Only called by the one command loop, between polls. Health probes never claim commands. */
-    fun probePreferred() {
-        val preferred = endpoints().firstOrNull() ?: return
+    fun probePreferred(probe: (BridgeEndpoint) -> Boolean = ::healthProbe) {
+        val rows = endpoints()
+        val active = prefs.getString("active",rows.firstOrNull()?.name) ?: return
+        val preferred = rows.takeWhile { it.name != active }
         val now = System.currentTimeMillis()
-        if (prefs.getString("active",preferred.name) == preferred.name || now-prefs.getLong("probe_at",0)<120_000 ||
+        if (preferred.isEmpty() || now-prefs.getLong("probe_at",0)<120_000 ||
             now-prefs.getLong("switched_at",0)<120_000) return
         prefs.edit().putLong("probe_at",now).apply()
-        val ok = runCatching {
-            val c = URL(preferred.url+"/health").openConnection() as HttpURLConnection
-            c.connectTimeout=3000; c.readTimeout=3000; c.instanceFollowRedirects=false
-            try { c.responseCode==200 && JSONObject(c.inputStream.bufferedReader().use { it.readText() }).optBoolean("ok") }
-            finally { c.disconnect() }
-        }.getOrDefault(false)
-        synchronized(lock) {
-            val wins = if(ok) prefs.getInt("probe_wins",0)+1 else 0
-            val edit = prefs.edit().putInt("probe_wins",wins).putString("health_${preferred.name}",if(ok) "reachable" else "unreachable")
-            if(wins>=2) edit.putString("active",preferred.name).putLong("switched_at",now).putInt("failures",0).putInt("probe_wins",0)
-            edit.commit()
+        // LAN may be unavailable away from home while Home Tailscale is reachable.
+        for (candidate in preferred) {
+            val ok = runCatching { probe(candidate) }.getOrDefault(false)
+            synchronized(lock) {
+                val key = "probe_wins_${candidate.name}"
+                val wins = if(ok) prefs.getInt(key,0)+1 else 0
+                val edit = prefs.edit().putInt(key,wins).putString("health_${candidate.name}",if(ok) "reachable" else "unreachable")
+                if(wins>=2) edit.putString("active",candidate.name).putLong("switched_at",now).putInt("failures",0).putInt(key,0)
+                edit.commit()
+            }
+            if(ok) break
         }
+    }
+    private fun healthProbe(endpoint: BridgeEndpoint): Boolean {
+        val c = URL(endpoint.url+"/health").openConnection() as HttpURLConnection
+        c.connectTimeout=3000; c.readTimeout=3000; c.instanceFollowRedirects=false
+        return try { c.responseCode==200 && JSONObject(c.inputStream.bufferedReader().use { it.readText() }).optBoolean("ok") }
+        finally { c.disconnect() }
     }
     fun recordTransfer(sent: Int=0, received: Int=0) = synchronized(lock) {
         prefs.edit().putLong("bytes_sent",prefs.getLong("bytes_sent",0)+sent)
@@ -80,7 +91,7 @@ class BridgeStore(context: Context) {
         val rows = endpoints()
         val a = JSONArray()
         rows.forEach { a.put(JSONObject().put("name",it.name).put("enabled",it.enabled).put("priority",it.priority)
-            .put("health",prefs.getString("health_${it.name}","unknown"))
+            .put("base_url",it.url).put("health",prefs.getString("health_${it.name}","unknown"))
             .put("last_success",prefs.getLong("last_success_${it.name}",0))
             .put("last_error",prefs.getString("last_error_${it.name}",""))) }
         val active = prefs.getString("active",rows.firstOrNull()?.name ?: "Existing Runtime")
@@ -88,6 +99,9 @@ class BridgeStore(context: Context) {
         return JSONObject().put("active",active).put("endpoints",a)
             .put("mode",if(uri.contains("100.") || uri.contains(".ts.net")) "Tailscale" else if(uri.startsWith("http:")) "LAN" else "HTTPS")
             .put("bytes_sent",prefs.getLong("bytes_sent",0)).put("bytes_received",prefs.getLong("bytes_received",0))
+            .put("last_sync",rows.maxOfOrNull { prefs.getLong("last_success_${it.name}",0) } ?: 0)
+            .put("last_command",prefs.getString("last_command",""))
+            .put("last_command_at",prefs.getLong("last_command_at",0))
     }
     companion object {
         private val lock = Any()

@@ -98,6 +98,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
     })
 
     fun captureIndex(limit: Int = 100): JSONArray {
+        requirePrivateCaptureRoute()
         val q = URLEncoder.encode(settings.deviceId, Charsets.UTF_8.name())
         val response = getJson("/api/captures?device_id=" + q +
             "&limit=" + limit.coerceIn(1, 100))
@@ -301,6 +302,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         studySessionId: String? = null, capturedAtMs: Long? = null,
         captureOrigin: String? = null
     ): JSONObject {
+        requirePrivateCaptureRoute()
         val conn = connection("/api/screenshot", "POST").apply {
             doOutput = true
             setRequestProperty("Content-Type", mimeType)
@@ -322,6 +324,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
 
     /** Confirms Android -> Runtime -> Android image byte identity, not GPT vision. */
     fun downloadNativeCaptureBytes(eventId: String): ByteArray {
+        requirePrivateCaptureRoute()
         require(Regex("[0-9a-fA-F-]{36}").matches(eventId)) { "invalid_capture_uuid" }
         val path = "/api/captures/" + eventId + "/image?device_id=" +
             URLEncoder.encode(settings.deviceId, Charsets.UTF_8.name())
@@ -345,6 +348,12 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         path: String,
         readTimeoutMs: Int = 15_000
     ): JSONObject = readJson(connection(path, "GET", readTimeoutMs))
+
+    private fun requirePrivateCaptureRoute() {
+        check(settings.bridge?.hasHomeEndpoint()!=true || settings.bridgeName.startsWith("Home")) {
+            "home_capture_waiting_for_private_link"
+        }
+    }
 
     private fun postJson(path: String, body: JSONObject): JSONObject {
         val bytes = body.toString().toByteArray(Charsets.UTF_8)

@@ -5,10 +5,12 @@ on:
     branches: [main, runtime-slim-20260930]
     paths:
       - 'native-android/**'
+      - 'between-worlds-prod/**'
       - '.github/workflows/android-build.yml'
   pull_request:
     paths:
       - 'native-android/**'
+      - 'between-worlds-prod/**'
       - '.github/workflows/android-build.yml'
   workflow_dispatch:
 
@@ -53,6 +55,14 @@ jobs:
       - name: Verify screenshot traffic policy
         working-directory: native-android
         run: gradle :app:testDebugUnitTest --no-daemon
+
+      - name: Upload unit test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-unit-tests
+          path: native-android/app/build/test-results/testDebugUnitTest/*.xml
+          retention-days: 14
 
       - name: Build Debug APK
         working-directory: native-android

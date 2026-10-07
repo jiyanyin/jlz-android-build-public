@@ -413,6 +413,7 @@ class NativeRuntimeService : Service() {
                 }
 
                 val previous = CommandExecutionLedger(applicationContext).use { it.reserve(command) }
+                settings.bridge?.recordCommand(command.id)
                 if(previous != null) {
                     api.report(command,previous.first,previous.second)
                     continue

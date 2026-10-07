@@ -26,8 +26,8 @@ export function RescuePanel({snapshot, apply}:{snapshot:()=>unknown; apply:(pack
     <p>带走计划和生活摘要。默认不包含截图像素或连接密钥。</p>
     <button className="setting-button" onClick={exportPack}>导出给纪临洲</button>
     {homeBridge() ? <button className="setting-button" onClick={()=>homeBridge()?.openPack()}>导入纪临洲指令包</button> :
-      <input type="file" accept=".jlzpack,.json" onChange={e=>{const f=e.target.files?.[0];if(f && f.size<=524288) void f.text().then(load);else setError("文件过大");}} />}
-    <details><summary>粘贴指令包</summary><textarea value={raw} onChange={e=>setRaw(e.target.value)} maxLength={524288}/><button onClick={()=>load(raw)}>预览</button></details>
+      <input aria-label="选择指令包" type="file" accept=".jlzpack,.json" onChange={e=>{const f=e.target.files?.[0];if(f && f.size<=524288) void f.text().then(load);else setError("文件过大");}} />}
+    <details><summary>粘贴指令包</summary><textarea aria-label="指令包内容" value={raw} onChange={e=>setRaw(e.target.value)} maxLength={524288}/><button onClick={()=>load(raw)}>预览</button></details>
     {preview && <div role="dialog" aria-label="确认指令包">
       <h4>将应用 {preview.actions.length} 项变更</h4><pre style={{whiteSpace:"pre-wrap"}}>{JSON.stringify(preview.actions,null,2)}</pre>
       <p>提醒将进入 DailyPlan；留言和心声留在本地世界。Gate 更改需要本机桥接。</p>

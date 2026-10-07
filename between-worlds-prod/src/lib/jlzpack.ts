@@ -30,7 +30,7 @@ export function exportWorldPack(state: Record<string,unknown>, native: Record<st
   return {
     schema_version:"jlzpack-1", exported_at:new Date().toISOString(), device:native.device ?? "web",
     status_light:state.status ?? null, daily_plan:state.dailyPlan ?? null,
-    timeline:(Array.isArray(state.notes)?state.notes:[]).slice(-80), native_timeline:native.timeline ?? [],
+    timeline:(Array.isArray(state.notes)?state.notes:[]).slice(0,80), offline_messages:state.importedMessages ?? [], import_audit:state.packAudit ?? [], native_timeline:native.timeline ?? [],
     app_usage_summary:native.usage_summary ?? [], study_summary:state.studySummary ?? null,
     gate_state:native.gate ?? null, bridge_diagnostics:native.bridge ?? null,
     capture_metadata:native.capture_metadata ?? [], world_cursor:state.worldCursor ?? null,
