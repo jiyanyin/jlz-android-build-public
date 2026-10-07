@@ -29,7 +29,7 @@
     </queries>
     <application android:allowBackup="false" android:label="@string/app_name"
         android:supportsRtl="true" android:theme="@style/Theme.JLZPresence"
-        android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:usesCleartextTraffic="false">
+        android:icon="@drawable/world_between_app_icon" android:roundIcon="@drawable/world_between_app_icon" android:usesCleartextTraffic="false">
         <meta-data android:name="asset_statements" android:resource="@string/asset_statements" />
         <activity android:name=".focus.FocusGateActivity" android:exported="false" android:excludeFromRecents="true" />
         <activity
@@ -45,11 +45,6 @@
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.JLZPresence">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -67,7 +62,20 @@
                     android:host="between-worlds-prod.onrender.com" />
             </intent-filter>
         </activity>
-        <!-- MainActivity is a native control surface only; WebShellActivity remains the app launcher. -->
+        <activity-alias
+            android:name=".WorldBetweenLauncher20261007"
+            android:targetActivity=".WebShellActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:icon="@drawable/world_between_app_icon"
+            android:roundIcon="@drawable/world_between_app_icon">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <!-- MainActivity is a native control surface only; the alias above is the app launcher. -->
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
