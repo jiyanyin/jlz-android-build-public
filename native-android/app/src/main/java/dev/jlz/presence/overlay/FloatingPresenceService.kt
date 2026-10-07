@@ -20,9 +20,11 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
+import dev.jlz.presence.R
 import dev.jlz.presence.capture.CaptureEventStore
 import dev.jlz.presence.capture.PendingScreenshotQueue
 import dev.jlz.presence.data.LocalLifeStore
+import dev.jlz.presence.notification.NotificationIdentityMigration
 import dev.jlz.presence.focus.FocusRepository
 import dev.jlz.presence.focus.FocusState
 import dev.jlz.presence.runtime.PresenceDevicePreferencesRepository
@@ -86,11 +88,12 @@ class FloatingPresenceService : Service() {
     override fun onCreate() {
         super.onCreate()
         liveService = this
+        NotificationIdentityMigration.ensureFresh(applicationContext)
         createChannel()
         startForeground(
             NOTIFICATION_ID,
             NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setSmallIcon(R.drawable.ic_notification_world_between_v3)
                 .setContentTitle("我在屏幕边上")
                 .setContentText("点小小的纪临洲，展开四个动作")
                 .setOngoing(true)
@@ -750,8 +753,8 @@ class FloatingPresenceService : Service() {
             }
         }
 
-        private const val CHANNEL_ID = "jlz_presence_overlay"
-        private const val NOTIFICATION_ID = 4201
+        private const val CHANNEL_ID = "jlz_presence_overlay_v3"
+        private const val NOTIFICATION_ID = 4521
         private const val EXTRA_MESSAGE = "message"
         private const val EXTRA_MODE = "mode"
         private const val EXTRA_ATTENTION_NUDGE = "attention_nudge"

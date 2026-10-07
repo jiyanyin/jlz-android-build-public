@@ -15,7 +15,9 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
+import dev.jlz.presence.R
 import dev.jlz.presence.data.LocalLifeStore
+import dev.jlz.presence.notification.NotificationIdentityMigration
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -79,6 +81,7 @@ class LocationForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         locationManager = getSystemService(LocationManager::class.java)
+        NotificationIdentityMigration.ensureFresh(applicationContext)
         createChannel()
     }
 
@@ -177,7 +180,7 @@ class LocationForegroundService : Service() {
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val ch = NotificationChannel("jlz_trip", "同行定位", NotificationManager.IMPORTANCE_LOW).apply {
+            val ch = NotificationChannel("jlz_trip_v3", "同行定位", NotificationManager.IMPORTANCE_LOW).apply {
                 setShowBadge(false)
                 setSound(null, null)
             }
@@ -188,15 +191,15 @@ class LocationForegroundService : Service() {
     private fun buildNotification(text: String): Notification {
         val open = packageManager.getLaunchIntentForPackage(packageName)
         val pi = PendingIntent.getActivity(this, 0, open, PendingIntent.FLAG_IMMUTABLE)
-        return Notification.Builder(this, "jlz_trip")
+        return Notification.Builder(this, "jlz_trip_v3")
             .setContentTitle("带着老公")
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setSmallIcon(R.drawable.ic_notification_world_between_v3)
             .setOngoing(true)
             .setContentIntent(pi).build()
     }
 
     companion object {
-        const val NOTIF_ID = 3001
+        const val NOTIF_ID = 4541
     }
 }

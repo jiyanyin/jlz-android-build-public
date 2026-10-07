@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import dev.jlz.presence.R
 import dev.jlz.presence.actions.DeviceActionExecutor
 import dev.jlz.presence.actions.DeviceSystemController
 import dev.jlz.presence.agency.PresencePlanRepository
@@ -30,6 +31,7 @@ import dev.jlz.presence.focus.FocusRepository
 import dev.jlz.presence.life.CycleReminderEngine
 import dev.jlz.presence.life.NativeCalendarBridge
 import dev.jlz.presence.notification.NotificationAdapter
+import dev.jlz.presence.notification.NotificationIdentityMigration
 import dev.jlz.presence.notification.PendingReplyStore
 import dev.jlz.presence.usage.PendingActivityEventStore
 import dev.jlz.presence.overlay.FloatingPresenceMode
@@ -131,6 +133,7 @@ class NativeRuntimeService : Service() {
             registerReceiver(deviceEventReceiver, eventFilter)
         }
 
+        NotificationIdentityMigration.ensureFresh(applicationContext)
         createChannel()
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         commandWakeLock = powerManager.newWakeLock(
@@ -144,7 +147,7 @@ class NativeRuntimeService : Service() {
         startForeground(
             FOREGROUND_ID,
             NotificationCompat.Builder(this, SERVICE_CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setSmallIcon(R.drawable.ic_notification_world_between_v3)
                 .setContentTitle("我在")
                 .setContentText("正在保持和 JLZ Runtime 的连接")
                 .setOngoing(true)
@@ -1050,8 +1053,8 @@ class NativeRuntimeService : Service() {
     }
 
     companion object {
-        private const val SERVICE_CHANNEL = "jlz_native_runtime"
-        private const val FOREGROUND_ID = 4001
+        private const val SERVICE_CHANNEL = "jlz_native_runtime_v3"
+        private const val FOREGROUND_ID = 4501
         private const val HEARTBEAT_INTERVAL_MS = 60_000L
         private const val COMMAND_LONG_POLL_MS = 20_000
         private const val COMMAND_RETRY_BACKOFF_MS = 2_000L

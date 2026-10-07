@@ -13,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import dev.jlz.presence.R
 import dev.jlz.presence.data.LocalLifeStore
+import dev.jlz.presence.notification.NotificationIdentityMigration
 import java.util.UUID
 
 data class CallbackResult(
@@ -68,7 +69,7 @@ class PresenceCallbackAdapter(private val context: Context) {
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.sym_call_incoming)
+            .setSmallIcon(R.drawable.ic_notification_world_between_v3)
             .setLargeIcon(BitmapFactory.decodeResource(context.resources, R.drawable.jlz_chat_avatar))
             .setContentTitle("纪临洲正在找你")
             .setContentText(reason)
@@ -108,6 +109,7 @@ class PresenceCallbackAdapter(private val context: Context) {
     }
 
     private fun ensureChannel() {
+        NotificationIdentityMigration.ensureFresh(context)
         if (Build.VERSION.SDK_INT >= 26) {
             manager.createNotificationChannel(
                 NotificationChannel(
@@ -123,7 +125,7 @@ class PresenceCallbackAdapter(private val context: Context) {
     }
 
     companion object {
-        const val CHANNEL_ID = "jlz_presence_callback"
+        const val CHANNEL_ID = "jlz_presence_callback_v3"
         private val idLock = Any()
 
         /** Deterministic Timeline row id so the call and its result share one event. */
