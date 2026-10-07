@@ -397,6 +397,7 @@ class NativeRuntimeService : Service() {
 
     private suspend fun runCommandLoop() {
         while (scope.isActive) {
+            BridgeStore(applicationContext).probePreferred()
             val settings = settingsRepository.load()
             if (settings.baseUrl.isBlank() || settings.token.isBlank()) {
                 delay(5_000L)

@@ -82,11 +82,12 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         readTimeoutMs: Int = 15_000
     ): HttpURLConnection {
         val base = settings.baseUrl.trim().trimEnd('/')
-        require(base.startsWith("https://")) { "Runtime URL must use https://" }
+        require(BridgeStore.validUrl(base)) { "Runtime URL must use HTTPS or a private LAN/Tailscale IPv4 address" }
         return (URL(base + path).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 10_000
             readTimeout = readTimeoutMs
+            instanceFollowRedirects = false
             setRequestProperty("X-Auth-Token", settings.token)
             setRequestProperty("Accept", "application/json")
         }
@@ -109,10 +110,11 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
     fun pollCommand(waitMs: Int = 0): RuntimeCommand? {
         val encodedId = URLEncoder.encode(settings.deviceId, Charsets.UTF_8.name())
         val safeWait = waitMs.coerceIn(0, 25_000)
-        val response = getJson(
+        val response = try { getJson(
             "/api/poll?device_id=" + encodedId + "&wait_ms=" + safeWait,
             readTimeoutMs = (safeWait + 10_000).coerceAtLeast(15_000)
-        )
+        ).also { settings.bridge?.pollResult(settings.bridgeName, true) } }
+        catch (e: Exception) { settings.bridge?.pollResult(settings.bridgeName, false); throw e }
         if (!response.optBoolean("ok", false) || response.isNull("command")) return null
         val command = response.optJSONObject("command") ?: return null
         val payload = command.optJSONObject("payload") ?: JSONObject()
@@ -360,6 +362,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         val stream = if (code in 200..299) conn.inputStream else conn.errorStream
         val bodyBytes = stream?.use { it.readBytes() } ?: byteArrayOf()
         settings.traffic?.record(download = bodyBytes.size.toLong())
+        settings.bridge?.recordTransfer(received=bodyBytes.size)
         conn.disconnect()
         val text = bodyBytes.toString(Charsets.UTF_8)
         if (code !in 200..299) {
