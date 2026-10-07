@@ -1,6 +1,6 @@
 package dev.jlz.presence.runtime
 import android.content.Context
-import androidx.test.core.app.ApplicationProvider
+import org.robolectric.RuntimeEnvironment
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -18,7 +18,7 @@ class BridgeStoreTest {
         assertFalse(BridgeStore.validUrl("https://example.com?token=secret"))
     }
     @Test fun failoverOnlyAfterThresholdAndPreservesFallback() {
-        val ctx=ApplicationProvider.getApplicationContext<Context>()
+        val ctx: Context=RuntimeEnvironment.getApplication()
         ctx.getSharedPreferences("home_bridge",Context.MODE_PRIVATE).edit().clear().commit()
         val store=BridgeStore(ctx)
         val old=RuntimeSettings("https://existing.example","old-token")
