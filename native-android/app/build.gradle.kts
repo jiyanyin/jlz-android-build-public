@@ -12,9 +12,9 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026100702
-        versionName = "0.4.1-webshell-recovery.2"
-        // 2026-10-07 recovery.2: adaptive launcher icon + WebShell recovery
+        versionCode = 2026100703
+        versionName = "0.4.1-webshell-recovery.3"
+        // 2026-10-07 recovery.3: exact approved World Between icon + fresh launcher alias
     }
 
     buildTypes {
