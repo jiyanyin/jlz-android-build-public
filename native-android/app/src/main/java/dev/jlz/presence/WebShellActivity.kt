@@ -7,7 +7,9 @@ import android.net.Uri
 import android.os.Bundle
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -20,6 +22,7 @@ import dev.jlz.presence.study.StudySessionBridge
 class WebShellActivity : ComponentActivity() {
     private lateinit var webView: WebView
     private lateinit var studyBridge: StudySessionBridge
+    private var nativeFallbackOpened = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -59,6 +62,30 @@ class WebShellActivity : ComponentActivity() {
                     val uri = url?.let(Uri::parse) ?: return false
                     return handleUri(uri)
                 }
+
+                override fun onReceivedError(
+                    view: WebView?,
+                    request: WebResourceRequest?,
+                    error: WebResourceError?
+                ) {
+                    super.onReceivedError(view, request, error)
+                    if (request?.isForMainFrame == true) {
+                        openNativeFallback()
+                    }
+                }
+
+                override fun onReceivedHttpError(
+                    view: WebView?,
+                    request: WebResourceRequest?,
+                    errorResponse: WebResourceResponse?
+                ) {
+                    super.onReceivedHttpError(view, request, errorResponse)
+                    if (request?.isForMainFrame == true &&
+                        (errorResponse?.statusCode ?: 0) >= 400
+                    ) {
+                        openNativeFallback()
+                    }
+                }
             }
         }
 
@@ -80,19 +107,33 @@ class WebShellActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        nativeFallbackOpened = false
         webView.loadUrl(resolveWebUrl(intent))
     }
 
     private fun resolveWebUrl(intent: Intent?): String {
         val uri = intent?.data
-        if (uri?.scheme == "https" && uri.host == WEB_HOST) {
-            val builder = uri.buildUpon()
-            if (uri.getQueryParameter("shell") == null) {
-                builder.appendQueryParameter("shell", "android")
-            }
-            return builder.build().toString()
+        if (uri?.scheme == "https" && uri.host in WEB_HOSTS) {
+            return rewriteToPrimary(uri)
         }
         return WEB_URL
+    }
+
+    private fun rewriteToPrimary(uri: Uri): String {
+        val builder = Uri.Builder()
+            .scheme("https")
+            .authority(WEB_HOST)
+            .path(uri.path)
+        uri.queryParameterNames.forEach { name ->
+            uri.getQueryParameters(name).forEach { value ->
+                builder.appendQueryParameter(name, value)
+            }
+        }
+        if (uri.getQueryParameter("shell") == null) {
+            builder.appendQueryParameter("shell", "android")
+        }
+        uri.fragment?.let(builder::fragment)
+        return builder.build().toString()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -119,7 +160,11 @@ class WebShellActivity : ComponentActivity() {
             return true
         }
 
-        if (uri.scheme == "https" && uri.host == WEB_HOST) {
+        if (uri.scheme == "https" && uri.host in WEB_HOSTS) {
+            if (uri.host != WEB_HOST) {
+                webView.loadUrl(rewriteToPrimary(uri))
+                return true
+            }
             return false
         }
 
@@ -131,16 +176,33 @@ class WebShellActivity : ComponentActivity() {
         }
     }
 
+    private fun openNativeFallback() {
+        if (nativeFallbackOpened || isFinishing || isDestroyed) return
+        nativeFallbackOpened = true
+        runCatching {
+            startActivity(
+                Intent(this, MainActivity::class.java)
+                    .putExtra(EXTRA_WEB_FALLBACK_REASON, "web_shell_unavailable")
+            )
+            finish()
+        }
+    }
+
     companion object {
-        private const val WEB_HOST = "between-worlds-prod.onrender.com"
-        private const val WEB_URL = "https://between-worlds-prod.onrender.com/?shell=android"
+        private const val WEB_HOST = "between-worlds-prod.pages.dev"
+        private val WEB_HOSTS = setOf(
+            WEB_HOST,
+            "between-worlds-prod.onrender.com"
+        )
+        private const val WEB_URL = "https://between-worlds-prod.pages.dev/?shell=android"
+        const val EXTRA_WEB_FALLBACK_REASON = "web_fallback_reason"
 
         fun showEntertainmentGate(
             context: android.content.Context,
             packageName: String,
             reason: String
         ): Boolean = runCatching {
-            val uri = Uri.parse("https://between-worlds-prod.onrender.com/")
+            val uri = Uri.parse("https://between-worlds-prod.pages.dev/")
                 .buildUpon()
                 .appendQueryParameter("shell", "android")
                 .appendQueryParameter("entry", "gate")
