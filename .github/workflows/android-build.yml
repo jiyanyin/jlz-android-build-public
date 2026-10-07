@@ -38,6 +38,18 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Package unchanged WebShell UI for offline startup
+        shell: bash
+        run: |
+          npm install --prefix between-worlds-prod --no-audit --no-fund
+          npm run build --prefix between-worlds-prod
+          mkdir -p native-android/app/src/main/assets/world-between
+          cp -R between-worlds-prod/dist/. native-android/app/src/main/assets/world-between/
+
       - name: Verify screenshot traffic policy
         working-directory: native-android
         run: gradle :app:testDebugUnitTest --no-daemon

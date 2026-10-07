@@ -10,3 +10,8 @@ native-android/keystore/
 local.properties
 **/google-services.json
 **/secrets.properties
+**/node_modules/
+**/dist/
+**/build/
+**/.gradle/
+native-android/app/src/main/assets/world-between/

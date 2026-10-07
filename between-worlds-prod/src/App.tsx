@@ -6,6 +6,9 @@ import { emptyStudySummary, formatStudyClock, formatStudyMinutes, liveStudyTotal
 import { appHubActions, appHubCategories, appHubHomeItems, emptyAppHubSnapshot, readNativeAppHub, type AppHubItem, type AppHubSnapshot } from "./lib/appHub";
 import { finishNativeStudy, liveNativeStudy, nativeStudyAvailable, openNativeBanduread, openNativeFenbi, pauseNativeStudy, readNativeStudy, resumeNativeStudy, startNativeStudy, type NativeStudySnapshot } from "./lib/nativeStudy";
 import { cancelGateSmallStep, declineGate, gateBridgeAvailable, gateResponse, grantGate, readGateSnapshot, startGateSmallStep, type EntertainmentGateSnapshot, type GateChoice } from "./lib/entertainmentGate";
+import { homeBridge } from "./lib/runtime";
+import { exportWorldPack, type InstructionPack } from "./lib/jlzpack";
+import { RescuePanel } from "./RescuePanel";
 
 type Theme = "mist" | "gothic";
 type Tab = "home" | "echo" | "timeline" | "calendar" | "more";
@@ -198,6 +201,7 @@ export default function BetweenWorlds() {
 
   const cfg = (): RuntimeConfig | null => {
     const s = stateRef.current;
+    if(homeBridge()?.available()) return {baseUrl:"native",token:"native-managed"};
     return s.webToken.trim() ? { baseUrl: s.runtimeUrl, token: s.webToken.trim() } : null;
   };
 
@@ -354,6 +358,22 @@ export default function BetweenWorlds() {
     setSheet("task");
   }, []);
 
+  const applyInstructionPack = (pack: InstructionPack) => {
+    const auditKey="world-between-pack-audit-v1";
+    const audit=JSON.parse(localStorage.getItem(auditKey)||"[]") as {id:string; at:string}[];
+    if(audit.some(e=>e.id===pack.pack_id)) throw new Error("这个包已经应用过。");
+    if(pack.actions.some(a=>a.type==="gate_config") && !homeBridge()) throw new Error("Gate 配置需要 Android 本机桥接。");
+    for(const [index,a] of pack.actions.entries()) {
+      if(a.type==="daily_task") mutateDailyTask(a.action!,{task_id:a.task_id,title:a.title,next_action:a.next_action,due_at:a.due_at});
+      else if(a.type==="reminder") mutateDailyTask("upsert",{task_id:pack.pack_id+"-"+index,title:a.title,due_at:a.due_at});
+      else if(a.type==="gate_config") homeBridge()!.setGateEnabled(a.enabled!);
+      else if(a.type==="world_settings") update(s=>({...s,theme:a.theme!}));
+      else update(s=>({...s,notes:[...s.notes,{id:pack.pack_id+"-"+index,type:a.type,at:new Date().toISOString(),body:a.text!,source:"confirmed_jlzpack"}]}));
+    }
+    audit.push({id:pack.pack_id,at:new Date().toISOString()});
+    localStorage.setItem(auditKey,JSON.stringify(audit));
+  };
+
   // (Re)connect when the key or URL changes, on network return, and periodically.
   useEffect(() => { if (loaded) void connect(); }, [loaded, state.webToken, state.runtimeUrl, connect]);
   useEffect(() => {
@@ -494,6 +514,7 @@ export default function BetweenWorlds() {
   }
 
   return <div className="bw-root">
+    {tab==="more" && <RescuePanel snapshot={()=>exportWorldPack(stateRef.current,JSON.parse(homeBridge()?.snapshot()||"{}"))} apply={applyInstructionPack}/>}
     {installGuide && <div className="install-guide-backdrop" role="dialog" aria-modal="true" aria-label="安装世界之间">
       <div className="install-guide-card">
         <img src="/icon-512.webp" alt="世界之间图标" />
