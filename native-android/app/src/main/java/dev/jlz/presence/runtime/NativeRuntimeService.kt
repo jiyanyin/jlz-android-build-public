@@ -412,6 +412,12 @@ class NativeRuntimeService : Service() {
                     continue
                 }
 
+                val previous = CommandExecutionLedger(applicationContext).use { it.reserve(command) }
+                if(previous != null) {
+                    api.report(command,previous.first,previous.second)
+                    continue
+                }
+
                 NativeClientDiagnostics.update {
                     it.copy(
                         runtimeConnected = true,
@@ -435,6 +441,7 @@ class NativeRuntimeService : Service() {
                     deviceId = command.deviceId
                 )
                 val execution = execute(command, api)
+                CommandExecutionLedger(applicationContext).use { it.finish(command,execution) }
                 val executedAtMs = System.currentTimeMillis()
                 val afterState = deviceSystem.systemState()
                 val parsedResult = runCatching { JSONObject(execution.second) }.getOrNull()

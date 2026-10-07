@@ -315,6 +315,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
             setFixedLengthStreamingMode(bytes.size)
         }
         settings.traffic?.record(upload = bytes.size.toLong(), screenshot = if (conn.url.path == "/api/screenshot") bytes.size.toLong() else 0)
+        settings.bridge?.recordTransfer(sent=bytes.size)
         conn.outputStream.use { it.write(bytes) }
         return readJson(conn)
     }
@@ -353,6 +354,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
             setFixedLengthStreamingMode(bytes.size)
         }
         settings.traffic?.record(upload = bytes.size.toLong(), screenshot = if (conn.url.path == "/api/screenshot") bytes.size.toLong() else 0)
+        settings.bridge?.recordTransfer(sent=bytes.size)
         conn.outputStream.use { it.write(bytes) }
         return readJson(conn)
     }
