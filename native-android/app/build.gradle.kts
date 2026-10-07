@@ -12,9 +12,9 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026100701
-        versionName = "0.4.1-webshell-recovery"
-        // 2026-10-07 WebShell recovery: Cloudflare Pages primary + native fallback
+        versionCode = 2026100702
+        versionName = "0.4.1-webshell-recovery.2"
+        // 2026-10-07 recovery.2: adaptive launcher icon + WebShell recovery
     }
 
     buildTypes {
