@@ -64,7 +64,7 @@ class BridgeStore(context: Context) {
         if (preferred.isEmpty() || now-prefs.getLong("probe_at",0)<120_000 ||
             now-prefs.getLong("switched_at",0)<120_000) return
         prefs.edit().putLong("probe_at",now).apply()
-        // LAN may be unavailable away from home while Home Tailscale is reachable.
+        // An optional LAN may be unavailable while Home Funnel HTTPS is reachable.
         for (candidate in preferred) {
             val ok = runCatching { probe(candidate) }.getOrDefault(false)
             synchronized(lock) {
@@ -78,8 +78,9 @@ class BridgeStore(context: Context) {
         }
     }
     private fun healthProbe(endpoint: BridgeEndpoint): Boolean {
-        val c = URL(endpoint.url+"/health").openConnection() as HttpURLConnection
+        val c = URL(apiUrl(endpoint.url,"/health")).openConnection() as HttpURLConnection
         c.connectTimeout=3000; c.readTimeout=3000; c.instanceFollowRedirects=false
+        c.setRequestProperty("X-Auth-Token",endpoint.token)
         return try { c.responseCode==200 && JSONObject(c.inputStream.bufferedReader().use { it.readText() }).optBoolean("ok") }
         finally { c.disconnect() }
     }
@@ -97,7 +98,7 @@ class BridgeStore(context: Context) {
         val active = prefs.getString("active",rows.firstOrNull()?.name ?: "Existing Runtime")
         val uri = rows.find { it.name==active }?.url.orEmpty()
         return JSONObject().put("active",active).put("endpoints",a)
-            .put("mode",if(uri.contains("100.") || uri.contains(".ts.net")) "Tailscale" else if(uri.startsWith("http:")) "LAN" else "HTTPS")
+            .put("mode",connectionMode(uri))
             .put("bytes_sent",prefs.getLong("bytes_sent",0)).put("bytes_received",prefs.getLong("bytes_received",0))
             .put("last_sync",rows.maxOfOrNull { prefs.getLong("last_success_${it.name}",0) } ?: 0)
             .put("last_command",prefs.getString("last_command",""))
@@ -105,9 +106,25 @@ class BridgeStore(context: Context) {
     }
     companion object {
         private val lock = Any()
+        const val RECOMMENDED_HOME_URL = "https://laptop-p23k8ciu.tail9f1176.ts.net/runtime"
+        fun apiUrl(base: String, path: String): String {
+            require(validUrl(base) && path.startsWith('/') && !path.startsWith("//"))
+            return base.trimEnd('/') + path
+        }
+        fun connectionMode(raw: String): String = runCatching {
+            val u=URI(raw)
+            when {
+                u.scheme=="https" && u.host.orEmpty().endsWith(".ts.net") -> "Funnel HTTPS"
+                u.scheme=="https" -> "HTTPS"
+                u.scheme=="http" && u.host.orEmpty().split('.').let { it.size==4 && it[0]=="100" && (it[1].toIntOrNull() ?: -1) in 64..127 } -> "Tailscale private (optional)"
+                u.scheme=="http" -> "LAN (optional)"
+                else -> "Unconfigured"
+            }
+        }.getOrDefault("Unconfigured")
         fun validUrl(raw: String): Boolean = runCatching {
             val u = URI(raw.trimEnd('/'))
-            require(u.rawUserInfo==null && u.rawQuery==null && u.rawFragment==null && u.host!=null && u.path.orEmpty().isEmpty())
+            require(u.rawUserInfo==null && u.rawQuery==null && u.rawFragment==null && u.host!=null)
+            require(u.rawPath.orEmpty().isEmpty() || u.scheme=="https" && u.rawPath=="/runtime")
             if (u.scheme=="https") true else {
                 val oct = u.host.split('.').map { it.toIntOrNull() ?: -1 }
                 u.scheme=="http" && oct.size==4 && oct.all { it in 0..255 } &&

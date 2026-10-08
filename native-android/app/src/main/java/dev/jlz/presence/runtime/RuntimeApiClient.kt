@@ -83,7 +83,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
     ): HttpURLConnection {
         val base = settings.baseUrl.trim().trimEnd('/')
         require(BridgeStore.validUrl(base)) { "Runtime URL must use HTTPS or a private LAN/Tailscale IPv4 address" }
-        return (URL(base + path).openConnection() as HttpURLConnection).apply {
+        return (URL(BridgeStore.apiUrl(base,path)).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 10_000
             readTimeout = readTimeoutMs

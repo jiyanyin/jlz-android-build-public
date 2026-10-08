@@ -30,7 +30,7 @@ class HomeWebBridge(private val context: Context, private val save: (String)->Un
         require(body.toByteArray().size <= 262144)
         val s = runBlocking { RuntimeSettingsRepository(context).load() }
         require(s.bridgeName.startsWith("Home") && BridgeStore.validUrl(s.baseUrl))
-        val c = URL(s.baseUrl+path).openConnection() as HttpURLConnection
+        val c = URL(BridgeStore.apiUrl(s.baseUrl,path)).openConnection() as HttpURLConnection
         try {
             c.requestMethod=method; c.connectTimeout=5000; c.readTimeout=10000; c.instanceFollowRedirects=false
             c.setRequestProperty("X-Web-Token",s.token)
