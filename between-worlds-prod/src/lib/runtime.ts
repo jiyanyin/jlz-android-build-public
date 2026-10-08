@@ -3,7 +3,9 @@ import { normalizeStudySummary, type StudySummary } from "./studySession";
 // Low-privilege Web client for the World Between Runtime.
 // Only ever sends the user-entered Web token (X-Web-Token). Never handles Android/MCP credentials.
 
-export const DEFAULT_RUNTIME_URL = "https://jlz-palm-server.onrender.com";
+export const LEGACY_RUNTIME_URL = "https://jlz-palm-server.onrender.com";
+const configuredRuntimeUrl = String(import.meta.env.VITE_RUNTIME_URL || "").trim();
+export const DEFAULT_RUNTIME_URL = (configuredRuntimeUrl || LEGACY_RUNTIME_URL).replace(/\/+$/, "");
 export const SPACE_ID = "world-between-primary";
 
 export type RuntimeConfig = { baseUrl: string; token: string };
