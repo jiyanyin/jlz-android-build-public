@@ -30,4 +30,17 @@ class CommandExecutionLedgerTest {
             assertTrue(prior.second.contains("execution_uncertain"))
         }
     }
+
+    @Test fun messagesInOneIntentRemainDistinctButSameMessageNeverReplays() {
+        val ctx = RuntimeEnvironment.getApplication() as android.content.Context
+        ctx.deleteDatabase("bridge_execution.db")
+        val first = RuntimeCommand("message-one","leave_inbox_message",JSONObject(),intentId="shared-batch")
+        val second = first.copy(id="message-two")
+        CommandExecutionLedger(ctx).use {
+            assertNull(it.reserve(first));it.finish(first,Pair(true,"shown"))
+            assertNull(it.reserve(second));it.finish(second,Pair(true,"shown"))
+            assertEquals(Pair(true,"shown"),it.reserve(first))
+            assertEquals(Pair(true,"shown"),it.reserve(second))
+        }
+    }
 }

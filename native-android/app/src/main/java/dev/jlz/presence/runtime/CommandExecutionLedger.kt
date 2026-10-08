@@ -11,7 +11,11 @@ class CommandExecutionLedger(context: Context): SQLiteOpenHelper(context.applica
         db.execSQL("CREATE TABLE executions (id TEXT PRIMARY KEY, at_ms INTEGER NOT NULL, ok INTEGER, result TEXT)")
     }
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
-    fun key(c: RuntimeCommand)=c.deviceId+":"+(c.intentId ?: c.id)+":"+c.action
+    fun key(c: RuntimeCommand): String {
+        // Inbox command ID is the stable message ID. A multi-message batch intentionally shares intent_id.
+        val identity = if(c.action == "leave_inbox_message") c.id else c.intentId?.takeIf { it.isNotBlank() } ?: c.id
+        return c.deviceId+":"+identity+":"+c.action
+    }
     @Synchronized fun reserve(c: RuntimeCommand): Pair<Boolean,String>? {
         val db=writableDatabase
         db.beginTransaction()
