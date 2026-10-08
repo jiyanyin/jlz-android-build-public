@@ -51,9 +51,9 @@ class HomeWebBridge(private val context: Context, private val save: (String)->Un
         } }
         val captures=JSONArray()
         val root=java.io.File(context.filesDir,"jlz_capture_outbox_v1")
-        root.listFiles()?.filter { it.extension=="json" }?.takeLast(30)?.forEach { f ->
+        root.listFiles()?.filter { it.extension=="json" }?.sortedByDescending { it.lastModified() }?.take(30)?.forEach { f ->
             runCatching { val m=JSONObject(f.readText()); captures.put(JSONObject().put("event_id",f.nameWithoutExtension)
-                .put("captured_at_ms",m.optLong("captured_at_ms")).put("source_package",m.optString("origin_package"))) }
+                .put("captured_at_ms",m.optLong("observed_at_ms")).put("source_package",m.optString("source_package"))) }
         }
         return JSONObject().put("device",if(context.resources.configuration.smallestScreenWidthDp>=600) "tablet" else "phone")
             .put("timeline",timeline).put("usage_summary",usage).put("capture_metadata",captures)

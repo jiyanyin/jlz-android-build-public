@@ -78,7 +78,7 @@ class ForegroundUsageStore(context: Context) :
         if (endMs <= startMs) return emptyList()
         val result = mutableListOf<AppUsageTotal>()
         readableDatabase.rawQuery(
-            """SELECT package_name, SUM(MAX(0, MIN(ended_at_ms, ?) - MAX(started_at_ms, ?))) AS total_ms
+            """SELECT package_name, SUM(MAX(0, MIN(ended_at_ms, CAST(? AS INTEGER)) - MAX(started_at_ms, CAST(? AS INTEGER)))) AS total_ms
                FROM usage_segments WHERE started_at_ms < ? AND ended_at_ms > ?
                GROUP BY package_name ORDER BY total_ms DESC LIMIT ?""",
             arrayOf(endMs.toString(), startMs.toString(), endMs.toString(), startMs.toString(), limit.coerceIn(1,100).toString())

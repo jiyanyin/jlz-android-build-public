@@ -27,8 +27,10 @@ class BridgeStoreTest {
             BridgeEndpoint("Railway Standby","https://standby.example","standby",priority=1)))
         repeat(2) { store.pollResult("Home Node",false) }
         assertEquals("Home Node",store.select(old).bridgeName)
+        assertTrue(RuntimeApiClient(store.select(old)).canTransferCapture())
         store.pollResult("Home Node",false)
         assertEquals("Railway Standby",store.select(old).bridgeName)
+        assertFalse(RuntimeApiClient(store.select(old)).canTransferCapture())
         repeat(4) { store.pollResult("Railway Standby",false) }
         assertEquals("Railway Standby",store.select(old).bridgeName)
         assertFalse(store.diagnostics().toString().contains("old-token"))

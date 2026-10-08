@@ -57,6 +57,7 @@ jobs:
         run: gradle :app:testDebugUnitTest --no-daemon
 
       - name: Android static checks
+        if: always()
         working-directory: native-android
         shell: bash
         run: |

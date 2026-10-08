@@ -349,8 +349,10 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         readTimeoutMs: Int = 15_000
     ): JSONObject = readJson(connection(path, "GET", readTimeoutMs))
 
+    fun canTransferCapture(): Boolean = settings.bridge?.hasHomeEndpoint()!=true || settings.bridgeName.startsWith("Home")
+
     private fun requirePrivateCaptureRoute() {
-        check(settings.bridge?.hasHomeEndpoint()!=true || settings.bridgeName.startsWith("Home")) {
+        check(canTransferCapture()) {
             "home_capture_waiting_for_private_link"
         }
     }
