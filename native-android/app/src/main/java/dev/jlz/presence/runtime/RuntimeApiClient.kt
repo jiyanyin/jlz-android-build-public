@@ -316,7 +316,8 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
             }
             setFixedLengthStreamingMode(bytes.size)
         }
-        settings.traffic?.record(upload = bytes.size.toLong(), screenshot = if (conn.url.path == "/api/screenshot") bytes.size.toLong() else 0)
+        // Funnel mounts the Runtime under /runtime; path equality would silently miss screenshot bytes.
+        settings.traffic?.record(upload = bytes.size.toLong(), screenshot = bytes.size.toLong())
         settings.bridge?.recordTransfer(sent=bytes.size)
         conn.outputStream.use { it.write(bytes) }
         return readJson(conn)
