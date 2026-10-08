@@ -106,6 +106,8 @@ class LocationForegroundService : Service() {
         checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
+    // Guarded by hasLocationPermission; runCatching also handles revocation between check and call.
+    @android.annotation.SuppressLint("MissingPermission")
     private fun startTrip() {
         _trip.value = TripSession(active = true, startedAtMs = System.currentTimeMillis())
         TripController.setActive(true)

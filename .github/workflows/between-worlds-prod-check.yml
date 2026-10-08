@@ -39,4 +39,4 @@ jobs:
       - name: Typecheck and build
         run: npm run build
       - name: Offline instruction pack validation and secret exclusion
-        run: node --experimental-strip-types --test tests/jlzpack.test.ts tests/packApply.test.mjs
+        run: node --experimental-strip-types --test tests/jlzpack.test.ts tests/packApply.test.mjs tests/nativeTransport.test.mjs

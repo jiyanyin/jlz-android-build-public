@@ -1,3 +1,4 @@
+import { nativeRequest } from "./nativeTransport";
 import { normalizeDailyPlan, type DailyPlan } from "./dailyPlan";
 import { normalizeStudySummary, type StudySummary } from "./studySession";
 // Low-privilege Web client for the World Between Runtime.
@@ -10,6 +11,7 @@ export type RuntimeConfig = { baseUrl: string; token: string };
 export type HomeBridge = {
   available(): boolean;
   request(path: string, method: string, body: string): string;
+  requestAsync?(id: string, path: string, method: string, body: string): void;
   snapshot(): string;
   savePack(raw: string): void;
   openPack(): void;
@@ -40,7 +42,7 @@ const base = (cfg: RuntimeConfig) => (cfg.baseUrl.trim() || DEFAULT_RUNTIME_URL)
 async function request<T>(cfg: RuntimeConfig, path: string, init: { method?: "GET" | "POST"; body?: unknown } = {}): Promise<T> {
   const native = homeBridge();
   if(native?.available()) {
-    const reply=JSON.parse(native.request(path,init.method ?? "GET",JSON.stringify(init.body ?? {})));
+    const reply=JSON.parse(await nativeRequest(native,path,init.method ?? "GET",JSON.stringify(init.body ?? {})));
     if(reply.status<200 || reply.status>=300) throw new RuntimeError("Home Node unavailable",reply.status);
     return JSON.parse(reply.body || "{}");
   }

@@ -24,6 +24,7 @@ import dev.jlz.presence.study.StudySessionBridge
 
 class WebShellActivity : ComponentActivity() {
     private lateinit var webView: WebView
+    private lateinit var homeWebBridge: HomeWebBridge
     private lateinit var studyBridge: StudySessionBridge
     private var nativeFallbackOpened = false
     private var pendingPack = ""
@@ -68,9 +69,16 @@ class WebShellActivity : ComponentActivity() {
                 "WorldBetweenGate"
             )
             addJavascriptInterface(studyBridge, "WorldBetweenStudy")
-            addJavascriptInterface(HomeWebBridge(this@WebShellActivity,
+            homeWebBridge = HomeWebBridge(this@WebShellActivity,
                 { raw -> runOnUiThread { pendingPack=raw; savePack.launch("world-between-"+java.text.SimpleDateFormat("yyyyMMdd-HHmm",java.util.Locale.ROOT).format(java.util.Date())+".jlzpack") } },
-                { runOnUiThread { openPack.launch(arrayOf("application/json","application/octet-stream","*/*")) } }), "WorldBetweenHome")
+                { runOnUiThread { openPack.launch(arrayOf("application/json","application/octet-stream","*/*")) } },
+                { id, response -> runOnUiThread {
+                    if(!isDestroyed && !isFinishing) {
+                        val detail=JSONObject().put("id",id).put("response",response).toString()
+                        webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('home-node-response',{detail:"+detail+"}));",null)
+                    }
+                } })
+            addJavascriptInterface(homeWebBridge, "WorldBetweenHome")
             webViewClient = object : WebViewClient() {
                 override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
                     val uri=request?.url ?: return null
@@ -180,6 +188,7 @@ class WebShellActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (::homeWebBridge.isInitialized) homeWebBridge.close()
         if (::studyBridge.isInitialized) studyBridge.close()
         webView.stopLoading()
         webView.webChromeClient = null

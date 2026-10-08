@@ -13,7 +13,9 @@ export function RescuePanel({snapshot, apply}:{snapshot:()=>unknown; apply:(pack
     return ()=>window.removeEventListener("jlzpack-import",listener);
   },[]);
   const exportPack=()=>{
-    const raw=JSON.stringify(snapshot(),null,2);
+    let raw: string;
+    try { raw=JSON.stringify(snapshot(),null,2); } catch { setError("本机摘要暂时无法读取，请重试。");return; }
+    if(new TextEncoder().encode(raw).length>524288) { setError("摘要超过 512 KiB，请先减少过长的本地记录再导出。");return; }
     const native=homeBridge();
     if(native) native.savePack(raw);
     else {

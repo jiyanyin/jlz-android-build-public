@@ -35,6 +35,9 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
+    // Existing installed date-based versionCode is already > 2 billion. Preserve upgradeability.
+    lint { disable += "HighAppVersionCode" }
+
     testOptions { unitTests.isIncludeAndroidResources = true }
 
     buildFeatures {

@@ -12,7 +12,14 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /** Installed only on the allowlisted WebShell. Never exports native credentials to JS. */
-class HomeWebBridge(private val context: Context, private val save: (String)->Unit, private val open: ()->Unit) {
+class HomeWebBridge(private val context: Context, private val save: (String)->Unit, private val open: ()->Unit, private val reply: (String,String)->Unit) {
+    private val io = java.util.concurrent.ThreadPoolExecutor(2,2,0L,java.util.concurrent.TimeUnit.MILLISECONDS,java.util.concurrent.ArrayBlockingQueue<Runnable>(16))
+    fun close() { io.shutdownNow() }
+    @JavascriptInterface fun requestAsync(id: String, path: String, method: String, body: String) {
+        require(id.length<=100)
+        try { io.execute { reply(id,request(path,method,body)) } }
+        catch (_: java.util.concurrent.RejectedExecutionException) { reply(id,"{\"status\":429,\"body\":\"{}\"}") }
+    }
     @JavascriptInterface fun available(): Boolean = runBlocking {
         val s = RuntimeSettingsRepository(context).load()
         s.baseUrl.isNotBlank() && s.token.isNotBlank() && s.bridgeName.startsWith("Home")
