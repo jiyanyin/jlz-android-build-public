@@ -21,6 +21,12 @@ data class CyclePrediction(
     val historyCount: Int
 )
 
+data class CyclePreferences(
+    val lastConfirmedStartEpochDay: Long?,
+    val typicalCycleDays: Int,
+    val typicalPeriodDays: Int
+)
+
 data class HydrationEntry(
     val id: String,
     val epochDay: Long,
@@ -45,6 +51,41 @@ class LifeHealthJournalStore(context: Context) :
         null,
         DB_VERSION
     ) {
+    // Kept on device. No dates or cycle settings are bundled into public source code.
+    private val cyclePrefs = context.applicationContext.getSharedPreferences(
+        "jlz_cycle_preferences", Context.MODE_PRIVATE
+    )
+
+    @Synchronized
+    fun cyclePreferences(): CyclePreferences {
+        val anchor = cyclePrefs.getLong("last_actual_start_epoch_day", Long.MIN_VALUE)
+        return CyclePreferences(
+            lastConfirmedStartEpochDay = anchor.takeIf { it != Long.MIN_VALUE },
+            typicalCycleDays = cyclePrefs.getInt("typical_cycle_days", 29),
+            typicalPeriodDays = cyclePrefs.getInt("typical_period_days", 3)
+        )
+    }
+
+    @Synchronized
+    fun saveCyclePreferences(
+        lastActualStart: LocalDate,
+        typicalCycleDays: Int,
+        typicalPeriodDays: Int
+    ) {
+        require(typicalCycleDays in 15..60) { "invalid_cycle_days" }
+        require(typicalPeriodDays in 1..14) { "invalid_period_days" }
+        cyclePrefs.edit()
+            .putLong("last_actual_start_epoch_day", lastActualStart.toEpochDay())
+            .putInt("typical_cycle_days", typicalCycleDays)
+            .putInt("typical_period_days", typicalPeriodDays)
+            .apply()
+    }
+
+    /** A feeling/forecast is never silently promoted into confirmed bleeding. */
+    @Synchronized
+    fun recordExpectedSoon(date: LocalDate = LocalDate.now()): Boolean =
+        markEventOnce("PERIOD_EXPECTED_SOON_SELF_REPORT:" + date.toEpochDay())
+
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -126,6 +167,9 @@ class LifeHealthJournalStore(context: Context) :
                 putNull("end_epoch_day")
             }
         )
+        cyclePrefs.edit()
+            .putLong("last_actual_start_epoch_day", period.startEpochDay)
+            .apply()
         return period
     }
 
@@ -239,20 +283,30 @@ class LifeHealthJournalStore(context: Context) :
             .map { it.startEpochDay }
             .sorted()
 
-        if (starts.size < 2) return null
+        val prefs = cyclePreferences()
+        val anchor = listOfNotNull(
+            starts.lastOrNull(), prefs.lastConfirmedStartEpochDay
+        ).maxOrNull() ?: return null
 
         val intervals = starts.zipWithNext { a, b -> b - a }
             .filter { it in 15L..60L }
+        val fromHistory = intervals.isNotEmpty()
+        val average = if (fromHistory) {
+            intervals.takeLast(4).average().roundToLong()
+        } else {
+            prefs.typicalCycleDays.toLong()
+        }
 
-        if (intervals.isEmpty()) return null
-
-        val recentIntervals = intervals.takeLast(4)
-        val average = recentIntervals.average().roundToLong()
-        val expected = starts.last() + average
+        var expected = anchor + average
+        // Stay on a slightly overdue prediction so an unconfirmed period
+        // is not incorrectly skipped into the following month immediately.
+        val today = LocalDate.now().toEpochDay()
+        while (expected < today - 3L) expected += average
 
         return CyclePrediction(
             expectedStartEpochDay = expected,
-            source = "recent_history_average",
+            source = if (fromHistory) "recent_history_average"
+                else "user_reported_cycle_estimate",
             averageCycleDays = average,
             historyCount = starts.size
         )
