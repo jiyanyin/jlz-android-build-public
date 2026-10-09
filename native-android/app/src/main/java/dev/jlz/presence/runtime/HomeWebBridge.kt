@@ -15,6 +15,10 @@ import java.net.URL
 class HomeWebBridge(private val context: Context, private val save: (String)->Unit, private val open: ()->Unit, private val reply: (String,String)->Unit) {
     private val io = java.util.concurrent.ThreadPoolExecutor(2,2,0L,java.util.concurrent.TimeUnit.MILLISECONDS,java.util.concurrent.ArrayBlockingQueue<Runnable>(16))
     fun close() { io.shutdownNow() }
+    @JavascriptInterface fun contentIdentity(): String = runBlocking {
+        val s=RuntimeSettingsRepository(context).load()
+        JSONObject().put("device_id",s.deviceId).put("device_scope",if(s.deviceId.contains("tablet")) "tablet" else "phone").toString()
+    }
     @JavascriptInterface fun requestAsync(id: String, path: String, method: String, body: String) {
         require(id.length<=100)
         try { io.execute { reply(id,request(path,method,body)) } }
@@ -43,6 +47,9 @@ class HomeWebBridge(private val context: Context, private val save: (String)->Un
             val code=c.responseCode
             val bytes=(if(code in 200..299) c.inputStream else c.errorStream)?.use { it.readBytes() } ?: byteArrayOf()
             s.bridge?.recordTransfer(received=bytes.size)
+            if(code in 200..299 && path.startsWith("/api/web/world-content") && !path.contains("/preview")) {
+                runCatching { JSONObject(bytes.toString(Charsets.UTF_8)).optJSONObject("content")?.let { WorldContentCache(context).save(it) } }
+            }
             JSONObject().put("status",code).put("body",bytes.toString(Charsets.UTF_8)).toString()
         } finally { c.disconnect() }
     }.getOrElse { JSONObject().put("status",0).put("body","{}").toString() }

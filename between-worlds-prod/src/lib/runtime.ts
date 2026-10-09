@@ -1,4 +1,5 @@
 import { nativeRequest } from "./nativeTransport";
+import type { WorldContent } from "./worldContent";
 import { normalizeDailyPlan, type DailyPlan } from "./dailyPlan";
 import { normalizeStudySummary, type StudySummary } from "./studySession";
 // Low-privilege Web client for the World Between Runtime.
@@ -69,6 +70,9 @@ async function request<T>(cfg: RuntimeConfig, path: string, init: { method?: "GE
 
 const q = `space_id=${encodeURIComponent(SPACE_ID)}`;
 export const runtime = {
+  worldContent: (cfg: RuntimeConfig, scope: string) => request<{content:WorldContent}>(cfg, `/api/web/world-content?${q}&device_scope=${encodeURIComponent(scope)}`),
+  changeContent: (cfg:RuntimeConfig, body:Record<string,unknown>, rollback=false) => request<{content:WorldContent}>(cfg, `/api/web/world-content${rollback?'/rollback':''}`, {method:'POST',body:{space_id:SPACE_ID,...body}}),
+  contentReceipt: (cfg:RuntimeConfig, body:Record<string,unknown>) => request(cfg, '/api/web/world-content/receipt', {method:'POST',body:{space_id:SPACE_ID,...body}}),
   exportContext: (cfg: RuntimeConfig) => request<{context_pack: Record<string,unknown>}>(cfg, `/api/web/export-context?${q}`),
   health: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, "/api/web/health"),
   state: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, `/api/web/state?${q}`),

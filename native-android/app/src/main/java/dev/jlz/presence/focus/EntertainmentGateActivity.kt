@@ -289,11 +289,12 @@ private fun IncomingGate(
         ),
         label = "pulse"
     )
-    val message = if (reason == "expired") {
+    val contentCache = dev.jlz.presence.runtime.WorldContentCache(androidx.compose.ui.platform.LocalContext.current)
+    val message = contentCache.text("gate.incoming", if (reason == "expired") {
         EntertainmentGateCopy.expired(appName, seed)
     } else {
         EntertainmentGateCopy.incoming(appName, seed)
-    }
+    })
 
     Column(
         Modifier.fillMaxSize(),
@@ -411,7 +412,7 @@ private fun ConnectedGate(
         Spacer(Modifier.height(14.dp))
         Text("CONNECTED · 纪临洲", color = Color(0xFFAFA9CC), style = MaterialTheme.typography.labelMedium)
         Text(
-            if (pending != null) "先把刚才那一步算清楚。" else "告诉我。你进去干什么？",
+            if (pending != null) "先把刚才那一步算清楚。" else dev.jlz.presence.runtime.WorldContentCache(androidx.compose.ui.platform.LocalContext.current).text("gate.connected", "告诉我。你进去干什么？"),
             color = Color(0xFFF5EFF5),
             style = MaterialTheme.typography.headlineSmall,
             textAlign = TextAlign.Center,

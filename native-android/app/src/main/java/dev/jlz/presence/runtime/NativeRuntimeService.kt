@@ -177,6 +177,7 @@ class NativeRuntimeService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private suspend fun runHeartbeatLoop() {
+        var contentCheckedAt = 0L
         val placeWeather = PlaceWeatherCoordinator(applicationContext)
         val cycleReminder = CycleReminderEngine(applicationContext)
 
@@ -195,6 +196,10 @@ class NativeRuntimeService : Service() {
 
             try {
                 val api = RuntimeApiClient(settings)
+                if(settings.bridgeName.startsWith("Home") && System.currentTimeMillis()-contentCheckedAt >= 300000L) {
+                    contentCheckedAt=System.currentTimeMillis()
+                    runCatching { WorldContentCache(applicationContext).save(api.worldContent()) }
+                }
                 runCatching { cycleReminder.evaluateToday() }
 
                 val placeWeatherSnapshot =

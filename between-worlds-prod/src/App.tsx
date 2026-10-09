@@ -11,13 +11,13 @@ import { exportWorldPack, type InstructionPack } from "./lib/jlzpack";
 import { stageInstructionPack } from "./lib/packApply";
 import { RescuePanel } from "./RescuePanel";
 
-type Theme = "mist" | "gothic";
+import { contentValues, contentPart, contentDevice, THEMES, type Theme, type WorldContent } from "./lib/worldContent";
 type Tab = "home" | "echo" | "timeline" | "calendar" | "more";
 type Sync = "queued" | "synced";
 type RecordItem = { id: number | string; type: string; at: string; body: string; event_id?: string; sync?: Sync; [key: string]: unknown };
 type Message = { text: string; at: string; event_id?: string; sync?: Sync };
 type ActiveLife = { action: string; session: string; startAt: number } | null;
-type AppState = { lastContextPack: Record<string,unknown> | null; theme: Theme; notes: RecordItem[]; messages: Message[]; status: RecordItem | null; life: RecordItem[]; journal: RecordItem[]; activeLife: ActiveLife;
+type AppState = { worldContent: WorldContent | null; lastContextPack: Record<string,unknown> | null; theme: Theme; notes: RecordItem[]; messages: Message[]; status: RecordItem | null; life: RecordItem[]; journal: RecordItem[]; activeLife: ActiveLife;
   importedMessages: RemoteMessage[]; packAudit: {id:string;at:string;count:number}[]; pendingPackGate: boolean | null;
   runtimeUrl: string; webToken: string; outbox: OutboxItem[]; remoteRecords: RemoteRecord[]; remoteMessages: RemoteMessage[]; seenCompanion: string[]; voiceMemory: VoiceMemory; dailyPlan: DailyPlan | null; studySummary: StudySummary | null };
 type Conn = "local" | "syncing" | "online";
@@ -54,7 +54,7 @@ const ENTRY_MODE = new URLSearchParams(window.location.search).get("entry");
 const GATE_PACKAGE = new URLSearchParams(window.location.search).get("gate_pkg") || "";
 const GATE_REASON = new URLSearchParams(window.location.search).get("gate_reason") || "entry";
 const OUTBOX_CAP = 300;
-const defaults: AppState = { lastContextPack: null, theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
+const defaults: AppState = { worldContent: null, lastContextPack: null, theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
   importedMessages: [], packAudit: [], pendingPackGate: null,
   runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [], voiceMemory: EMPTY_VOICE_MEMORY, dailyPlan: null, studySummary: null };
 const markSynced = (s: AppState, id: string): AppState => {
@@ -109,21 +109,10 @@ export default function BetweenWorlds() {
       // Study state is a live Runtime reflection. Never revive a stale active
       // timer from yesterday's localStorage snapshot before Runtime confirms it.
       current.studySummary = null;
-      if (!localStorage.getItem(CLEANUP_MARKER)) {
-        const cleaned: AppState = {
-          ...defaults,
-          theme: current.theme,
-          runtimeUrl: current.runtimeUrl || DEFAULT_RUNTIME_URL,
-          webToken: current.webToken || "",
-        };
-        localStorage.setItem(STORE, JSON.stringify(cleaned));
-        localStorage.setItem(CLEANUP_MARKER, "done");
-        stateRef.current = cleaned;
-        setState(cleaned);
-      } else {
-        stateRef.current = current;
-        setState(current);
-      }
+      // Preserve all existing records, pending writes and pairing on upgrade.
+      localStorage.setItem(CLEANUP_MARKER, "done");
+      stateRef.current = current;
+      setState(current);
     } catch {
       stateRef.current = defaults;
       setState(defaults);
@@ -200,7 +189,7 @@ export default function BetweenWorlds() {
     else if (window.location.hash) history.replaceState(null, "", window.location.pathname + window.location.search);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  const flipTheme = () => update((s) => ({ ...s, theme: s.theme === "mist" ? "gothic" : "mist" }));
+  const flipTheme = () => { void changeTheme(); };
 
   const cfg = (): RuntimeConfig | null => {
     const s = stateRef.current;
@@ -263,12 +252,69 @@ export default function BetweenWorlds() {
     update((s) => ({ ...s, studySummary }));
   }, [update]);
 
+  const [contentOnline, setContentOnline] = useState(false);
+  const contentBusy = useRef(false);
+  const device = useRef(contentDevice());
+  const appliedContent = useRef("");
+  const pullContent = useCallback(async () => {
+    const c = cfg();
+    if (!c || contentBusy.current) return;
+    contentBusy.current = true;
+    try {
+      const {content} = await runtime.worldContent(c, device.current.device_scope);
+      update(s => ({...s, worldContent: content}));
+      setContentOnline(true);
+    } catch { setContentOnline(false); }
+    finally { contentBusy.current = false; }
+  }, [update]);
+  useEffect(() => {
+    if (!loaded) return;
+    void pullContent();
+    const visible = () => { if(document.visibilityState === 'visible') void pullContent(); };
+    window.addEventListener('focus', visible);
+    window.addEventListener('online', visible);
+    document.addEventListener('visibilitychange', visible);
+    const timer = window.setInterval(visible, 60000);
+    return () => { window.clearInterval(timer); window.removeEventListener('focus',visible); window.removeEventListener('online',visible); document.removeEventListener('visibilitychange',visible); };
+  }, [loaded, state.runtimeUrl, state.webToken, pullContent]);
+  const copy = contentValues(state.worldContent, now ?? new Date());
+  const effectiveTheme: Theme = THEMES.includes(copy['theme.id'] as Theme) ? copy['theme.id'] as Theme : state.theme;
+  useEffect(() => { document.body.dataset.theme = effectiveTheme; }, [effectiveTheme]);
+  useEffect(() => {
+    const content=state.worldContent, c=cfg();
+    if(!contentOnline || !content || !c || document.visibilityState !== 'visible') return;
+    const key=content.revision+':'+content.view_id;
+    if(appliedContent.current === key) return;
+    const frame=requestAnimationFrame(() => {
+      void runtime.contentReceipt(c,{...device.current,surface:'web',revision:content.revision,view_id:content.view_id}).then(()=>{appliedContent.current=key;}).catch(()=>{setContentOnline(false);});
+    });
+    return ()=>cancelAnimationFrame(frame);
+  },[state.worldContent,contentOnline,effectiveTheme]);
+  const changeTheme = async () => {
+    const theme=THEMES[(THEMES.indexOf(effectiveTheme)+1)%THEMES.length];
+    const c=cfg();
+    if(!c || !contentOnline || !state.worldContent) { notify('离线时保留上次主题，连接后再换装'); return; }
+    try {
+      const {content}=await runtime.changeContent(c,{expected_revision:state.worldContent.revision,intent_id:newEventId(),device_scope:device.current.device_scope,patch:[{key:'theme.id',value:theme}]});
+      update(s=>({...s,worldContent:content}));
+    } catch { notify('版本已变或暂未连接，正在重新读取'); void pullContent(); }
+  };
+  const rollbackContent = async () => {
+    const c=cfg(), content=state.worldContent;
+    if(!c || !contentOnline || !content?.revision) return;
+    try {
+      const result=await runtime.changeContent(c,{expected_revision:content.revision,target_revision:content.revision-1,intent_id:newEventId(),device_scope:device.current.device_scope},true);
+      update(s=>({...s,worldContent:result.content})); notify('已恢复上一版');
+    } catch { notify('版本已变或暂未连接，撤销未生效'); void pullContent(); }
+  };
+
   const connect = useCallback(async () => {
     const c = cfg();
     if (!c) { setConn("local"); setLastError(""); return; }
     setConn("syncing");
     try {
       await runtime.health(c);
+      await pullContent();
       await flush();
       const st = await runtime.state(c);
       update((s) => ({ ...s, remoteRecords: extractRecords(st).slice(0, 300) }));
@@ -286,7 +332,7 @@ export default function BetweenWorlds() {
       const status = e instanceof RuntimeError ? e.status : 0;
       setLastError(status === 401 || status === 403 ? "钥匙不正确或已失效" : status ? `Runtime 返回 ${status}` : "暂时连不上 Runtime");
     }
-  }, [flush, pullMessages, pullDailyPlan, pullStudySummary, update]);
+  }, [flush, pullMessages, pullDailyPlan, pullStudySummary, pullContent, update]);
 
   const presence = useCallback(async (stateName: string) => {
     const c = cfg();
@@ -546,17 +592,18 @@ export default function BetweenWorlds() {
       <div className="welcome-card">
         <div className="welcome-kicker">BETWEEN WORLDS · PRIVATE SPACE</div>
         <div className="welcome-portrait-wrap"><img className="welcome-portrait" src={welcomePortrait} alt="纪临洲立绘" /></div>
-        <div className="welcome-copy"><h1>世界之间</h1><p className="welcome-en">Between Worlds</p><p>世界再喧哗，也有一扇门，只向你和我打开。</p></div>
+        <div className="welcome-copy"><h1>世界之间</h1><p className="welcome-en">Between Worlds</p><p>{copy["welcome.line"] || "世界再喧哗，也有一扇门，只向你和我打开。"}</p></div>
         <button className="enter-btn" onClick={() => setWelcome(false)}>进入我们的世界 <span>↗</span></button>
       </div>
     </div>
 
     <main className="app-shell">
       <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}>✦ 换装</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
-      {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} voice={voiceCard} homePortrait={homePortrait} plan={state.dailyPlan?.date === keyDate(now ?? new Date()) ? state.dailyPlan : emptyDailyPlan(keyDate(now ?? new Date()))} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} unlockHello={unlockHello} appHub={appHub} launchApp={launchHubApp} openBanduread={openBanduread} openApps={() => setSheet("apps")} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
+      {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} copy={copy} voice={{...voiceCard, headline:copy["greetings."+contentPart(now ?? new Date())] || voiceCard.headline, body:copy["home.moment"] || voiceCard.body}} homePortrait={homePortrait} plan={state.dailyPlan?.date === keyDate(now ?? new Date()) ? state.dailyPlan : emptyDailyPlan(keyDate(now ?? new Date()))} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} unlockHello={unlockHello} appHub={appHub} launchApp={launchHubApp} openBanduread={openBanduread} openApps={() => setSheet("apps")} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
       {tab === "echo" && <EchoPage state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
       {tab === "timeline" && <TimelinePage notes={state.notes} remote={state.remoteRecords} />}
       {tab === "calendar" && <CalendarPage month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
+      {tab === "more" && <section className="content-sync glass"><h3>同步与更改记录</h3><p>{contentOnline ? '已连接' : '离线 · 使用本机有效内容'} · 内容版本 {state.worldContent?.revision ?? 0}</p><p>主题：{effectiveTheme} · 只有实际写入的内容来自官端</p><button className="secondary" onClick={()=>void pullContent()}>立即同步</button> <button className="secondary" disabled={!contentOnline || !state.worldContent?.revision} onClick={()=>void rollbackContent()}>恢复上一版</button>{state.worldContent?.recent_changes.map(change=><p key={change.revision}>v{change.revision} · {change.keys.join(' / ')}<small> {change.updated_at}</small></p>)}{state.worldContent?.receipts.map(r=><p key={r.device_id+r.surface}>{r.device_id} · {r.surface} 已应用 v{r.revision}</p>)}</section>}
       {tab === "more" && <MorePage state={state} update={update} setWelcome={setWelcome} banner={banner} reconnect={() => void connect()} />}
       <nav className="dock" aria-label="主导航">
         {([['home','⌂','现在'],['echo','☰','回响'],['timeline','♡','你我之间'],['calendar','▣','共历'],['more','⊞','更多']] as [Tab,string,string][]).map(([id, icon, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => switchTab(id)}>{icon}<span>{label}</span></button>)}
@@ -881,8 +928,9 @@ function bannerText(b: Banner) {
 const syncLabel = (sync?: Sync) => (sync === "synced" ? "已同步" : "本地 · 待同步");
 
 function HomePage({
-  dateLabel, timeText, voice, homePortrait, plan, study, nowMs, unlockHello, appHub, launchApp, openBanduread, openApps, openStudy, openSheet, openTask, mutateTask, setTab, banner,
+  copy, dateLabel, timeText, voice, homePortrait, plan, study, nowMs, unlockHello, appHub, launchApp, openBanduread, openApps, openStudy, openSheet, openTask, mutateTask, setTab, banner,
 }: {
+  copy: Record<string,string>;
   dateLabel: string;
   timeText: string;
   voice: ReturnType<typeof selectVoiceCard>;
@@ -933,7 +981,7 @@ function HomePage({
 
     <SectionHead title="先从这里走" english="APP HUB" />
     <div className="app-hub-card glass">
-      <div className="app-hub-copy"><span>{unlockHello ? "UNLOCKED · 先看我一眼" : "START HERE · 少一点乱跑"}</span><b>{unlockHello ? "解锁了。先决定你现在要去哪。" : "学习放前面，其他的都还在。"}</b><small>{appHub.native ? "这些入口只读取本机应用列表，不会把你的 App 清单上传给 Runtime。" : "在 Android 版「世界之间」里，这里会显示你真正安装的应用。"}</small></div>
+      <div className="app-hub-copy"><span>{unlockHello ? "UNLOCKED · 先看我一眼" : "START HERE · 少一点乱跑"}</span><b>{unlockHello ? copy["unlock.line"] || "解锁了。先决定你现在要去哪。" : copy["study.nudge"] || "学习放前面，其他的都还在。"}</b><small>{appHub.native ? "这些入口只读取本机应用列表，不会把你的 App 清单上传给 Runtime。" : "在 Android 版「世界之间」里，这里会显示你真正安装的应用。"}</small></div>
       <div className="app-hub-grid">
         <button className="hub-tile study" onClick={openBanduread}><span className="hub-mark">伴</span><b>伴读</b><small>刷题 / 复盘</small></button>
         {homeApps.map((item) => <button className={`hub-tile ${item.category === "学习" ? "study" : ""}`} key={item.package_name} onClick={() => launchApp(item)}><span className="hub-mark">{item.label.slice(0, 1)}</span><b>{item.label}</b><small>{item.category}</small></button>)}

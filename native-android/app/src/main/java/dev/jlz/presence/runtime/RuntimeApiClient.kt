@@ -76,6 +76,7 @@ data class DeviceStateSnapshot(
 }
 
 class RuntimeApiClient(private val settings: RuntimeSettings) {
+    fun worldContent(): JSONObject = getJson("/api/world/content?space_id=world-between-primary&device_scope=" + if(settings.deviceId.contains("tablet")) "tablet" else "phone").getJSONObject("content")
     private fun connection(
         path: String,
         method: String,

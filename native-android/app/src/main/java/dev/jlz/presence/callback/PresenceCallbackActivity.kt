@@ -33,6 +33,7 @@ class PresenceCallbackActivity : ComponentActivity() {
         val eventId = intent.getStringExtra(EXTRA_EVENT_ID)
         val intentId = intent.getStringExtra(EXTRA_INTENT_ID)
         val reason = intent.getStringExtra(EXTRA_REASON).orEmpty().ifBlank { "\u6211\u60f3\u627e\u4f60\u3002" }
+        val contentCache = dev.jlz.presence.runtime.WorldContentCache(applicationContext)
         val topic = intent.getStringExtra(EXTRA_TOPIC).orEmpty()
         setContent {
             IceCrystalTheme {
@@ -46,6 +47,7 @@ class PresenceCallbackActivity : ComponentActivity() {
                         )
                         Text("\u7eaa\u4e34\u6d32\u6b63\u5728\u627e\u4f60", color = TextPrimary, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 22.dp))
                         if (topic.isNotBlank()) Text(topic, color = VioletGlow, modifier = Modifier.padding(top = 12.dp))
+                        Text(contentCache.text("callback.incoming", "") , color = TextPrimary, modifier = Modifier.padding(top = 10.dp))
                         Text(reason, color = TextSecondary, modifier = Modifier.padding(top = 10.dp, bottom = 28.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                             IceButton("\u7a0d\u540e", onClick = {
