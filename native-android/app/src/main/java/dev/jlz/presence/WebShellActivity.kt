@@ -159,6 +159,7 @@ class WebShellActivity : ComponentActivity() {
 
     private fun resolveWebUrl(intent: Intent?): String {
         val uri = intent?.data
+        if (uri?.scheme == "jlz" && uri.host == "world" && uri.path == "/echo") return WEB_URL + "#echo"
         if (uri?.scheme == "https" && uri.host in WEB_HOSTS) {
             return rewriteToPrimary(uri)
         }

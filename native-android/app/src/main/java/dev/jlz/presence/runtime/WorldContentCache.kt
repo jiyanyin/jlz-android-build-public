@@ -8,6 +8,22 @@ import java.time.ZoneOffset
 /** Text/theme only. Gate authorization and release rules never read this store. */
 class WorldContentCache(context: Context) {
     private val prefs = context.getSharedPreferences("world_content_v1", Context.MODE_PRIVATE)
+    fun displayed(keys: List<String>) {
+        runCatching {
+            val doc=JSONObject(prefs.getString("content","{}")!!)
+            if(!doc.has("revision")) return
+            val receipt=JSONObject().put("space_id","world-between-primary").put("surface","native")
+                .put("device_scope",doc.optString("device_scope","shared")).put("revision",doc.getLong("revision"))
+                .put("view_id",doc.getString("view_id")).put("applied_keys",org.json.JSONArray(keys))
+            prefs.edit().putString("pending_receipt",receipt.toString()).apply()
+        }
+    }
+    fun flushReceipt(api: RuntimeApiClient, deviceId:String) {
+        val raw=prefs.getString("pending_receipt",null) ?: return
+        val receipt=JSONObject(raw).put("device_id",deviceId)
+        try { api.contentReceipt(receipt); if(prefs.getString("pending_receipt",null)==raw) prefs.edit().remove("pending_receipt").apply() }
+        catch(e: IllegalStateException) { if(e.message?.contains("HTTP 409")==true) prefs.edit().remove("pending_receipt").apply() else throw e }
+    }
     fun save(content: JSONObject) {
         if (!content.has("revision") || !content.has("entries")) return
         val old = runCatching { JSONObject(prefs.getString("content", "{}")!!) }.getOrDefault(JSONObject())

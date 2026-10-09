@@ -1,7 +1,7 @@
 export const THEMES = ['mist', 'gothic', 'deepsea', 'rose'] as const;
 export type Theme = typeof THEMES[number];
 export type ContentEntry = { key: string; value: string; device_scope: string; effective_date: string; daypart: string; expires_at: string; revision: number; source: string; updated_at: string };
-export type WorldContent = { space_id: string; revision: number; view_id: string; device_scope: string; date: string; daypart: string; entries: ContentEntry[]; values: Record<string,string>; recent_changes: {revision:number; updated_at:string; keys:string[]}[]; receipts: {device_id:string;surface:string;revision:number;applied_at:string}[] };
+export type WorldContent = { space_id: string; revision: number; view_id: string; device_scope: string; date: string; daypart: string; entries: ContentEntry[]; values: Record<string,string>; recent_changes: {revision:number; updated_at:string; keys:string[]}[]; receipts: {device_id:string;surface:string;revision:number;applied_at:string;applied_keys?:string[]}[]; devices?:{device_id:string;device_type:string;online_state:string;last_seen_age_seconds:number}[] };
 export const contentDay = (now = new Date()) => new Date(now.getTime()+8*3600000).toISOString().slice(0,10);
 export const contentPart = (now = new Date()) => {
   const h = new Date(now.getTime()+8*3600000).getUTCHours();

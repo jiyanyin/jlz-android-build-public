@@ -12,6 +12,8 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -206,14 +208,7 @@ private fun EntertainmentGateScreen(
 
     BackHandler { onClose(if (phase == GatePhase.INCOMING) "incoming_back" else "connected_back") }
 
-    val background = Brush.verticalGradient(
-        listOf(
-            Color(0xFF101225),
-            Color(0xFF18152B),
-            Color(0xFF241925),
-            Color(0xFF0C0E19)
-        )
-    )
+    val background = Brush.verticalGradient(dev.jlz.presence.ui.components.worldCallColors())
     Surface(Modifier.fillMaxSize(), color = Color.Transparent) {
         Box(
             Modifier
@@ -279,6 +274,7 @@ private fun IncomingGate(
     onAccept: () -> Unit,
     onDecline: () -> Unit
 ) {
+    dev.jlz.presence.ui.components.ContentDisplayed("gate.incoming", "theme.id")
     val transition = rememberInfiniteTransition(label = "call")
     val pulse by transition.animateFloat(
         initialValue = 0.96f,
@@ -297,7 +293,7 @@ private fun IncomingGate(
     })
 
     Column(
-        Modifier.fillMaxSize(),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -321,12 +317,7 @@ private fun IncomingGate(
                     .border(1.dp, Color(0xFFD1B2C6), CircleShape)
                     .padding(7.dp)
             ) {
-                Image(
-                    painter = painterResource(R.drawable.jlz_chat_avatar),
-                    contentDescription = "纪临洲",
-                    modifier = Modifier.fillMaxSize().clip(CircleShape),
-                    contentScale = ContentScale.Crop
-                )
+                dev.jlz.presence.ui.components.WorldCallPortrait(Modifier.fillMaxSize().clip(CircleShape))
             }
         }
         Spacer(Modifier.height(20.dp))
@@ -396,19 +387,15 @@ private fun ConnectedGate(
         )
     } ?: 0L
     val stepDone = pending != null && !loadingStudy && remaining <= 0L
+    dev.jlz.presence.ui.components.ContentDisplayed("gate.connected", "theme.id")
     var selectedChoice by remember { mutableStateOf<EntertainmentIntentChoice?>(null) }
 
     Column(
-        Modifier.fillMaxSize(),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Image(
-            painter = painterResource(R.drawable.jlz_chat_avatar),
-            contentDescription = "纪临洲",
-            modifier = Modifier.size(78.dp).clip(CircleShape),
-            contentScale = ContentScale.Crop
-        )
+        dev.jlz.presence.ui.components.WorldCallPortrait(Modifier.size(100.dp).clip(RoundedCornerShape(28.dp)))
         Spacer(Modifier.height(14.dp))
         Text("CONNECTED · 纪临洲", color = Color(0xFFAFA9CC), style = MaterialTheme.typography.labelMedium)
         Text(

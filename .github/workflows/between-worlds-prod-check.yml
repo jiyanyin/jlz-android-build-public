@@ -38,5 +38,7 @@ jobs:
         run: node --experimental-strip-types --test tests/nativeStudy.test.ts
       - name: Typecheck and build
         run: npm run build
+      - name: World content expiry and current room views
+        run: node --experimental-strip-types --test tests/worldContent.test.ts tests/worldEntries.test.ts
       - name: Offline instruction pack validation and secret exclusion
         run: node --experimental-strip-types --test tests/jlzpack.test.ts tests/packApply.test.mjs tests/nativeTransport.test.mjs

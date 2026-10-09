@@ -9,10 +9,11 @@ import { cancelGateSmallStep, declineGate, gateBridgeAvailable, gateResponse, gr
 import { homeBridge } from "./lib/runtime";
 import { exportWorldPack, type InstructionPack } from "./lib/jlzpack";
 import { stageInstructionPack } from "./lib/packApply";
+import { roomEntries } from "./lib/worldEntries";
 import { RescuePanel } from "./RescuePanel";
 
 import { contentValues, contentPart, contentDevice, THEMES, type Theme, type WorldContent } from "./lib/worldContent";
-type Tab = "home" | "echo" | "timeline" | "calendar" | "more";
+type Tab = "home" | "echo" | "timeline" | "calendar" | "room" | "more";
 type Sync = "queued" | "synced";
 type RecordItem = { id: number | string; type: string; at: string; body: string; event_id?: string; sync?: Sync; [key: string]: unknown };
 type Message = { text: string; at: string; event_id?: string; sync?: Sync };
@@ -92,7 +93,7 @@ export default function BetweenWorlds() {
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
   const [toast, setToast] = useState("");
   const [now, setNow] = useState<Date | null>(null);
-  const [month, setMonth] = useState(() => new Date(2026, 8, 1));
+  const [month, setMonth] = useState(() => new Date());
   const [conn, setConn] = useState<Conn>("local");
   const [loaded, setLoaded] = useState(false);
   const [lastError, setLastError] = useState("");
@@ -133,11 +134,7 @@ export default function BetweenWorlds() {
     return () => window.clearTimeout(timer);
   }, [unlockHello]);
 
-  useEffect(() => {
-    if (!welcome) return;
-    const timer = window.setTimeout(() => setWelcome(false), 1_800);
-    return () => window.clearTimeout(timer);
-  }, [welcome]);
+
 
   useEffect(() => {
     document.body.dataset.theme = state.theme;
@@ -203,14 +200,15 @@ export default function BetweenWorlds() {
     if (!c || flushing.current) return false;
     flushing.current = true;
     try {
-      while (stateRef.current.outbox.length) {
-        const item = stateRef.current.outbox[0];
+      while (stateRef.current.outbox.some(item=>!item.rejected)) {
+        const item = stateRef.current.outbox.find(item=>!item.rejected)!;
         try {
           await runtime.write(c, item);
           update((s) => markSynced({ ...s, outbox: s.outbox.filter((x) => x.event_id !== item.event_id) }, item.event_id));
         } catch (e) {
           if (e instanceof RuntimeError && e.permanent) {
-            update((s) => ({ ...s, outbox: s.outbox.filter((x) => x.event_id !== item.event_id) }));
+            update((s) => ({ ...s, outbox: s.outbox.map(x=>x.event_id===item.event_id?{...x,rejected:true,error:e.message}:x) }));
+            notify("有一条记录未被服务端接受，已保留在本机，去更多查看");
             continue;
           }
           update((s) => ({ ...s, outbox: s.outbox.map((x) => (x.event_id === item.event_id ? { ...x, tries: x.tries + 1 } : x)) }));
@@ -242,7 +240,7 @@ export default function BetweenWorlds() {
     const c = cfg();
     if (!c) return;
     const plan = await runtime.dailyPlan(c, date);
-    update((s) => ({ ...s, dailyPlan: plan }));
+    update((s) => ({ ...s, dailyPlan: s.outbox.filter(i=>i.path==="/api/web/daily-plan/task" && i.body.date===date).reduce((p,i)=>optimisticTaskMutation(p,date,String(i.body.action),i.body.task as Partial<DailyTask>),plan) }));
   }, [update]);
 
   const pullStudySummary = useCallback(async (date = keyDate(new Date())) => {
@@ -283,13 +281,13 @@ export default function BetweenWorlds() {
   useEffect(() => {
     const content=state.worldContent, c=cfg();
     if(!contentOnline || !content || !c || document.visibilityState !== 'visible') return;
-    const key=content.revision+':'+content.view_id;
+    const key=content.revision+':'+content.view_id+':'+(welcome?'welcome':tab);
     if(appliedContent.current === key) return;
     const frame=requestAnimationFrame(() => {
-      void runtime.contentReceipt(c,{...device.current,surface:'web',revision:content.revision,view_id:content.view_id}).then(()=>{appliedContent.current=key;}).catch(()=>{setContentOnline(false);});
+      void runtime.contentReceipt(c,{...device.current,surface:'web',revision:content.revision,view_id:content.view_id,applied_keys:['theme.id',...(welcome?['welcome.line']:tab==='home'?['home.moment','greetings.'+contentPart(),'unlock.line','study.nudge']:tab==='room'?['jlz.room.teaser']:[])]}).then(()=>{appliedContent.current=key;}).catch(()=>{setContentOnline(false);});
     });
     return ()=>cancelAnimationFrame(frame);
-  },[state.worldContent,contentOnline,effectiveTheme]);
+  },[state.worldContent,contentOnline,effectiveTheme,welcome,tab]);
   const changeTheme = async () => {
     const theme=THEMES[(THEMES.indexOf(effectiveTheme)+1)%THEMES.length];
     const c=cfg();
@@ -450,7 +448,7 @@ export default function BetweenWorlds() {
       if (document.visibilityState !== "visible") return;
       presence("foreground");
       if (conn === "local" && cfg()) void connect();
-      else if (conn === "online") { void pullDailyPlan(); void pullStudySummary(); }
+      else if (conn === "online") { void pullDailyPlan(); void pullStudySummary(); const c=cfg(); if(c) void runtime.state(c).then(st=>update(s=>({...s,remoteRecords:extractRecords(st).slice(0,300)}))).catch(()=>{}); }
     }, 60000);
     return () => { window.removeEventListener("online", onOnline); window.removeEventListener("focus", onFocus); window.removeEventListener("blur", onBlur); document.removeEventListener("visibilitychange", onVis); window.clearInterval(beat); };
   }, [loaded, conn, connect, presence, pullDailyPlan, pullStudySummary]);
@@ -471,7 +469,7 @@ export default function BetweenWorlds() {
     return () => window.clearInterval(id);
   }, [conn, state.studySummary?.active, pullStudySummary]);
 
-  const savedText = (what: string) => (conn === "online" ? `${what}已同步给纪临洲` : `${what}已存本机，连接后自动同步`);
+  const savedText = (what: string) => (conn === "online" ? `${what}已存本机，正在同步给纪临洲` : `${what}已存本机，连接后自动同步`);
 
   const voiceStatus: VoiceStatus | null = state.status ? {
     at: state.status.at,
@@ -598,15 +596,16 @@ export default function BetweenWorlds() {
     </div>
 
     <main className="app-shell">
-      <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}>✦ 换装</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
+      <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}>✦ 换装</button><button className="round-btn" aria-label="更多" onClick={()=>switchTab("more")}>⋯</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
       {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} copy={copy} voice={{...voiceCard, headline:copy["greetings."+contentPart(now ?? new Date())] || voiceCard.headline, body:copy["home.moment"] || voiceCard.body}} homePortrait={homePortrait} plan={state.dailyPlan?.date === keyDate(now ?? new Date()) ? state.dailyPlan : emptyDailyPlan(keyDate(now ?? new Date()))} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} unlockHello={unlockHello} appHub={appHub} launchApp={launchHubApp} openBanduread={openBanduread} openApps={() => setSheet("apps")} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
-      {tab === "echo" && <EchoPage state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
+      {tab === "echo" && <EchoPage onTask={(text,id)=>{mutateDailyTask("upsert",{task_id:"echo-task-"+id.slice(-70),title:text.slice(0,180),description:text,source:"echo:"+id});notify("已放进今日任务");}} state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
       {tab === "timeline" && <TimelinePage notes={state.notes} remote={state.remoteRecords} />}
-      {tab === "calendar" && <CalendarPage month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
-      {tab === "more" && <section className="content-sync glass"><h3>同步与更改记录</h3><p>{contentOnline ? '已连接' : '离线 · 使用本机有效内容'} · 内容版本 {state.worldContent?.revision ?? 0}</p><p>主题：{effectiveTheme} · 只有实际写入的内容来自官端</p><button className="secondary" onClick={()=>void pullContent()}>立即同步</button> <button className="secondary" disabled={!contentOnline || !state.worldContent?.revision} onClick={()=>void rollbackContent()}>恢复上一版</button>{state.worldContent?.recent_changes.map(change=><p key={change.revision}>v{change.revision} · {change.keys.join(' / ')}<small> {change.updated_at}</small></p>)}{state.worldContent?.receipts.map(r=><p key={r.device_id+r.surface}>{r.device_id} · {r.surface} 已应用 v{r.revision}</p>)}</section>}
+      {tab === "room" && <RoomPage records={state.remoteRecords} teaser={copy["jlz.room.teaser"]} />}
+      {tab === "calendar" && <CalendarPage records={state.remoteRecords} notes={state.notes} plan={state.dailyPlan} month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
+      {tab === "more" && <section className="content-sync glass"><h3>同步与更改记录</h3>{state.outbox.filter(i=>i.rejected).map(i=><p key={i.event_id}>未同步：{String(i.body.text || (i.body.task as DailyTask|undefined)?.title || "一条记录")}<button onClick={()=>{update(s=>({...s,outbox:s.outbox.map(x=>x.event_id===i.event_id?{...x,rejected:false,error:undefined}:x)}));void connect();}}>重试</button></p>)}<p>{contentOnline ? '已连接' : '离线 · 使用本机有效内容'} · 内容版本 {state.worldContent?.revision ?? 0}</p><p>主题：{effectiveTheme} · 只有实际写入的内容来自官端</p><button className="secondary" onClick={()=>void pullContent()}>立即同步</button> <button className="secondary" disabled={!contentOnline || !state.worldContent?.revision} onClick={()=>void rollbackContent()}>恢复上一版</button>{state.worldContent?.recent_changes.map(change=><p key={change.revision}>v{change.revision} · {change.keys.join(' / ')}<small> {change.updated_at}</small></p>)}{state.worldContent?.devices?.map(d=><p key={d.device_id}>{d.device_type==="tablet"?"平板":"手机"} · {d.online_state==="online"?"在线":"暂不可达"} · {d.last_seen_age_seconds} 秒前连接</p>)}{state.worldContent?.receipts.map(r=><p key={r.device_id+r.surface}>{r.device_id} · {r.surface} 已应用 v{r.revision} · {(r.applied_keys||[]).join(" / ")}</p>)}</section>}
       {tab === "more" && <MorePage state={state} update={update} setWelcome={setWelcome} banner={banner} reconnect={() => void connect()} />}
       <nav className="dock" aria-label="主导航">
-        {([['home','⌂','现在'],['echo','☰','回响'],['timeline','♡','你我之间'],['calendar','▣','共历'],['more','⊞','更多']] as [Tab,string,string][]).map(([id, icon, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => switchTab(id)}>{icon}<span>{label}</span></button>)}
+        {([['home','⌂','现在'],['echo','☰','回响'],['timeline','♡','你我之间'],['room','✧','纪临洲'],['calendar','▣','共历']] as [Tab,string,string][]).map(([id, icon, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => switchTab(id)}>{icon}<span>{label}</span></button>)}
       </nav>
     </main>
     <div className={`scrim ${sheet ? "show" : ""}`} onClick={() => setSheet(null)} />
@@ -920,7 +919,7 @@ function StudySessionWebPage({ avatar }: { avatar: string }) {
 
 type Banner = { conn: Conn; configured: boolean; pending: number; lastError: string };
 function bannerText(b: Banner) {
-  if (b.conn === "online") return { title: "已连接 Runtime · 实时同步", sub: b.pending ? `还有 ${b.pending} 条正在补发。` : "记录会同步到我们共享的世界。", badge: "ONLINE" };
+  if (b.conn === "online") return { title: "已同步", sub: b.pending ? `还有 ${b.pending} 条正在补发。` : "记录会同步到我们共享的世界。", badge: "ONLINE" };
   if (b.conn === "syncing") return { title: "正在同步 Runtime……", sub: b.pending ? `正在补发 ${b.pending} 条本地记录。` : "正在读取我们共享的世界。", badge: "SYNCING" };
   if (!b.configured) return { title: "本地模式 · Runtime 待连接", sub: `在「更多」填写私人连接钥匙后自动同步。${b.pending ? `已排队 ${b.pending} 条。` : ""}`, badge: "LOCAL" };
   return { title: `${b.lastError || "暂时连不上 Runtime"} · 记录先存本机`, sub: `${b.pending} 条记录已在本机排队，恢复连接后自动补发。`, badge: "LOCAL" };
@@ -950,6 +949,8 @@ function HomePage({
   setTab: (t: Tab) => void;
   banner: Banner;
 }) {
+  const [tasksOpen,setTasksOpen]=useState(false);
+  const [tasksExpanded,setTasksExpanded]=useState(false);
   const b = bannerText(banner);
   const sections = planSections(plan);
   const homeApps = appHubHomeItems(appHub, 3);
@@ -967,11 +968,13 @@ function HomePage({
   };
   const renderTask = (task: DailyTask) => <div className="daily-task-row" key={task.task_id}>
     <button className={`task-check ${task.status === "done" ? "done" : ""}`} aria-label={task.status === "done" ? "重新打开任务" : "完成任务"} onClick={() => mutateTask(task.status === "done" ? "reopen" : "complete", { task_id: task.task_id })}>{task.status === "done" ? "✓" : ""}</button>
-    <button className="task-body" onClick={() => openTask(task)}>
+    <button className="task-body" onClick={() => {setTasksOpen(false);openTask(task);}}>
       <span className="task-title-line"><b>{task.title}</b>{task.user_pinned && <i>PIN</i>}{task.must_do && <i>MUST</i>}</span>
       <small>{task.category} · {statusLabel[task.status]}{task.estimated_minutes ? ` · 约 ${task.estimated_minutes} 分钟` : ""}</small>
+      <small>{task.date}{task.due_at ? " · "+task.due_at.replace("T"," ").replace(/:00(?:[+]08:00)?$/," ") : ""}</small>
+      {task.description && <p className="task-description">{task.description}</p>}
       {task.next_action && <em>{task.next_action}</em>}
-    </button>
+    </button><button className="task-defer" onClick={()=>mutateTask("postpone",{task_id:task.task_id})}>延期</button>
   </div>;
 
   return <section className="page active">
@@ -981,7 +984,7 @@ function HomePage({
 
     <SectionHead title="先从这里走" english="APP HUB" />
     <div className="app-hub-card glass">
-      <div className="app-hub-copy"><span>{unlockHello ? "UNLOCKED · 先看我一眼" : "START HERE · 少一点乱跑"}</span><b>{unlockHello ? copy["unlock.line"] || "解锁了。先决定你现在要去哪。" : copy["study.nudge"] || "学习放前面，其他的都还在。"}</b><small>{appHub.native ? "这些入口只读取本机应用列表，不会把你的 App 清单上传给 Runtime。" : "在 Android 版「世界之间」里，这里会显示你真正安装的应用。"}</small></div>
+      <div className="app-hub-copy"><span>{unlockHello ? "UNLOCKED · 先看我一眼" : "START HERE · 少一点乱跑"}</span><b>{unlockHello ? copy["unlock.line"] || "解锁了。先决定你现在要去哪。" : copy["study.nudge"] || "学习放前面，其他的都还在。"}</b><small>{"伴读、粉笔与常用应用"}</small></div>
       <div className="app-hub-grid">
         <button className="hub-tile study" onClick={openBanduread}><span className="hub-mark">伴</span><b>伴读</b><small>刷题 / 复盘</small></button>
         {homeApps.map((item) => <button className={`hub-tile ${item.category === "学习" ? "study" : ""}`} key={item.package_name} onClick={() => launchApp(item)}><span className="hub-mark">{item.label.slice(0, 1)}</span><b>{item.label}</b><small>{item.category}</small></button>)}
@@ -989,28 +992,8 @@ function HomePage({
       </div>
     </div>
 
-    <SectionHead title="今天听我的" english="DAILY PLAN" />
-    <div className="daily-plan glass">
-      <div className="daily-plan-top">
-        <div><span>TODAY · {plan.date}</span><b>{plan.tasks.length ? `${plan.tasks.filter((task) => task.status === "done").length} / ${plan.tasks.length} 已完成` : "今天还没排任务"}</b></div>
-        <button onClick={() => openTask(null)}>＋</button>
-      </div>
-      {plan.current_step ? <div className="current-step">
-        <span>NOW · 当前第一步</span>
-        <strong>{plan.current_step.next_action}</strong>
-        <small>{plan.current_step.title}{plan.current_step.estimated_minutes ? ` · 约 ${plan.current_step.estimated_minutes} 分钟` : ""}</small>
-        <div className="current-step-actions">
-          {current?.status === "in_progress"
-            ? <button onClick={() => mutateTask("complete", { task_id: current.task_id })}>做完了</button>
-            : current && <button onClick={() => mutateTask("start", { task_id: current.task_id })}>现在开始</button>}
-          {current && <button className="secondary-mini" onClick={() => openTask(current)}>调整</button>}
-        </div>
-      </div> : <button className="empty-plan" onClick={() => openTask(null)}><b>给今天放第一件事。</b><small>别在脑子里堆着。写下来，我替你排顺序。</small></button>}
-      {!!sections.main.length && <div className="daily-main-list">{sections.main.map(renderTask)}</div>}
-      {!!sections.other.length && <details className="task-fold"><summary>另外 {sections.other.length} 件 · 展开</summary>{sections.other.map(renderTask)}</details>}
-      {!!sections.completed.length && <details className="task-fold completed"><summary>已完成 {sections.completed.length} 件</summary>{sections.completed.map(renderTask)}</details>}
-      {!!sections.postponed.length && <details className="task-fold"><summary>已延期 {sections.postponed.length} 件</summary>{sections.postponed.map(renderTask)}</details>}
-    </div>
+    <button className="task-summary glass" onClick={()=>setTasksOpen(true)}><span>今日任务 · {plan.tasks.filter(t=>t.status==='done').length}/{plan.tasks.length}</span><strong>{plan.current_step?.next_action || '给今天留一个小小的开始'}</strong><i>查看全部 ↗</i></button>
+    {tasksOpen && <div className="task-drawer-backdrop" onClick={()=>setTasksOpen(false)}><section className={`task-drawer ${tasksExpanded?'expanded':''}`} role="dialog" aria-modal="true" aria-label="今日任务总览" onClick={e=>e.stopPropagation()}><button className="drawer-grip" onClick={()=>setTasksExpanded(v=>!v)} aria-label="展开或收起任务面板">━━</button><div className="daily-plan-top"><div><span>{plan.date}</span><h3>今天，一件一件来。</h3></div><button onClick={()=>setTasksOpen(false)} aria-label="关闭任务总览">×</button></div><button className="primary" onClick={()=>{setTasksOpen(false);openTask(null);}}>＋ 加一件事</button>{plan.current_step && <div className="current-step"><span>现在这一步</span><strong>{plan.current_step.next_action}</strong>{current && <button className="secondary" onClick={()=>mutateTask(current.status==='in_progress'?'complete':'start',{task_id:current.task_id})}>{current.status==='in_progress'?'做完了':'现在开始'}</button>}</div>}{[...sections.main,...sections.other,...sections.postponed,...sections.completed].map(renderTask)}{!plan.tasks.length&&<p>还没有安排。这里会接住你在官端说的待办。</p>}</section></div>}
 
     <SectionHead title="陪你学一会儿" english="STUDY SESSION" />
     <div className={`study-session-card glass ${study.active ? "active" : ""} ${study.paused ? "paused" : ""}`}>
@@ -1036,7 +1019,7 @@ function HomePage({
     </div>
 
     <SectionHead title="今日的私藏信笺" english="JUST FOR TODAY" /><div className="action-grid"><button className="action-card" onClick={() => openSheet("status")}><span className="ico">♡</span><b>状态灯</b><small>把这一刻的你告诉我</small></button><button className="action-card rose" onClick={() => openSheet("note")}><span className="ico">✎</span><b>随手记</b><small>写一封小小的信</small></button><button className="action-card wide" onClick={() => openSheet("life")}><span className="ico">◌</span><b>此刻我在</b><small>把小猫现在在做什么告诉我</small></button></div>
-    <SectionHead title="我们的房间" english="THE ROOMS" /><div className="room-grid"><button className="room-card" onClick={() => setTab("timeline")}><span>01 / OUR STORY</span><b>你我之间</b><small>拾起每一页日常</small></button><button className="room-card" onClick={() => setTab("echo")}><span>02 / YOUR VOICE</span><b>回响</b><small>写给彼此的悄悄话</small></button><button className="room-card full" onClick={() => setTab("calendar")}><span>03 / TIME & MEMORY</span><b>共历</b><small>把平凡日子收藏起来</small></button></div>
+
   </section>;
 }
 function AppDrawerSheet({
@@ -1080,13 +1063,13 @@ function AppDrawerSheet({
 function SectionHead({ title, english }: { title: string; english: string }) { return <div className="section-head"><b>{title}</b><span>{english}</span></div>; }
 function PageHead({ kicker, title, en, copy }: { kicker: string; title: string; en: string; copy: string }) { return <div className="page-head"><div><span>{kicker}</span><h2>{title} <em>{en}</em></h2><p>{copy}</p></div></div>; }
 
-function EchoPage({ state, conn, update, send, notify, chatAvatar }: { state: AppState; conn: Conn; update: (fn: (s: AppState) => AppState) => void; send: Send; notify: (s: string) => void; chatAvatar: string }) {
+function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask }: { onTask:(text:string,id:string)=>void; state: AppState; conn: Conn; update: (fn: (s: AppState) => AppState) => void; send: Send; notify: (s: string) => void; chatAvatar: string }) {
   const [text, setText] = useState("");
   const submit = () => { const value = text.trim(); if (!value) return; const id = newEventId(); update((s) => ({ ...s, messages: [...s.messages, { text: value, at: new Date().toISOString(), event_id: id, sync: "queued" as Sync }].slice(-80) })); send("/api/web/message", { text: value }, id); setText(""); if (conn !== "online") notify("已存本机，连接后自动发送"); };
   const remoteIds = new Set(state.remoteMessages.map((m) => m.id));
   const list = [
     ...state.importedMessages.map((m) => ({ key: m.id, text: m.text, at: m.at, me: false, label: "离线指令包" })),
-    ...state.remoteMessages.map((m) => ({ key: m.id, text: m.text, at: m.at, me: !m.fromCompanion, label: "Runtime" })),
+    ...state.remoteMessages.map((m) => ({ key: m.id, text: m.text, at: m.at, me: !m.fromCompanion, label: m.handled ? "官端已处理" : m.fromCompanion ? "已送达回响" : "已入队 · 等待官端" })),
     ...state.messages.filter((m) => !m.event_id || !remoteIds.has(m.event_id)).map((m, i) => ({ key: m.event_id ?? `${m.at}-${i}`, text: m.text, at: m.at, me: true, label: m.sync === "synced" ? "已发送" : "本地 · 待发送" })),
   ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   return <section className="page active">
@@ -1097,7 +1080,7 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar }: { state: Ap
       {list.length === 0 && <div className="message-row companion"><img className="message-avatar" src={chatAvatar} alt="" /><div className="message">音音，今天如果什么都不想做，就来坐一会儿。<time>纪临洲</time></div></div>}
       {list.map((m) => <div className={`message-row ${m.me ? "me" : "companion"}`} key={m.key}>
         {!m.me && <img className="message-avatar" src={chatAvatar} alt="" />}
-        <div className={`message ${m.me ? "me" : ""}`}>{m.text}<time>{new Date(m.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} · {m.label}</time></div>
+        <div className={`message ${m.me ? "me" : ""}`}>{m.text}<time>{new Date(m.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} · {m.label}</time><div className="echo-actions"><button onClick={()=>onTask(m.text,m.key)}>变成待办</button><button onClick={()=>{const id='echo-note-'+m.key.slice(-70);send('/api/web/journal',{kind:'echo_excerpt',text:m.text,source_ref:m.key},id);notify('片段已排队保存到你我之间');}}>留在共历</button></div></div>
       </div>)}
     </div>
     <div className="composer"><textarea maxLength={1200} placeholder="写点什么……" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }} /><button onClick={submit} aria-label="发送消息">↑</button></div>
@@ -1107,15 +1090,26 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar }: { state: Ap
 function TimelinePage({ notes, remote }: { notes: RecordItem[]; remote: RemoteRecord[] }) {
   const remoteIds = new Set(remote.map((r) => r.id));
   const items = [
-    ...remote.map((r) => ({ key: `r-${r.id}`, type: r.type, body: r.body, at: r.at, label: "Runtime" })),
+    ...remote.map((r) => ({ key: `r-${r.id}`, type: r.type, body: r.body, at: r.at, label: r.provenance === "correction" ? "纠正" : r.type === "jlz_observation" ? "纪临洲的观察" : r.actor === "jlz" ? "纪临洲" : "用户记录" })),
     ...notes.filter((n) => !n.event_id || !remoteIds.has(n.event_id)).map((n) => ({ key: `l-${n.id}`, type: n.type, body: n.body, at: n.at, label: syncLabel(n.sync) })),
   ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-  return <section className="page active"><PageHead kicker="OUR LITTLE HISTORY" title="你我之间" en="Timeline" copy="主动记录会在这里长成一条时间线" /><div className="timeline">{items.length ? items.map((x) => <article className="timeline-entry" key={x.key}><b>音音 · {x.type}</b><p>{x.body}</p><time>{new Date(x.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · {x.label}</time></article>) : <div className="preview-tip">还没有记录。去首页留第一条吧。</div>}</div></section>;
+  return <section className="page active"><PageHead kicker="OUR LITTLE HISTORY" title="你我之间" en="Timeline" copy="主动记录会在这里长成一条时间线" /><div className="timeline">{items.length ? items.map((x) => <article className="timeline-entry" key={x.key}><b>{x.type}</b><p>{x.body}</p><time>{new Date(x.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · {x.label}</time></article>) : <div className="preview-tip">还没有记录。去首页留第一条吧。</div>}</div></section>;
 }
-function CalendarPage({ month, setMonth, addRecord, send, notify, savedText }: { month: Date; setMonth: (d: Date) => void; addRecord: (r: RecordItem, b?: ("notes"|"life"|"journal")[]) => void; send: Send; notify: (s:string)=>void; savedText: (w: string) => string }) {
-  const [food, setFood] = useState(""); const y=month.getFullYear(), m=month.getMonth(); const first=new Date(y,m,1); const start=new Date(first); start.setDate(first.getDate()-((first.getDay()+6)%7)); const today=keyDate(new Date());
-  const record = (type:string, body:string, payload: Record<string, unknown>) => { const id = newEventId(); const at = new Date().toISOString(); addRecord({id,event_id:id,sync:"queued",type,at,body}, ["notes","journal"]); send("/api/web/journal", { ...payload, type, body, date: keyDate(new Date()), at }, id); notify(savedText(type === "饮水" ? "喝水" : body)); };
-  return <section className="page active"><PageHead kicker="TIME & MEMORY" title="共历" en="Calendar" copy="把生活与身体的节奏留在这里" /><div className="calendar-box glass"><div className="calendar-top"><button onClick={() => setMonth(new Date(y,m-1,1))}>‹</button><b>{y} / {String(m+1).padStart(2,"0")}</b><button onClick={() => setMonth(new Date(y,m+1,1))}>›</button></div><div className="week-row">{["一","二","三","四","五","六","日"].map(d=><span key={d}>{d}</span>)}</div><div className="calendar-grid">{Array.from({length:42},(_,i)=>{const d=new Date(start);d.setDate(start.getDate()+i);const k=keyDate(d);return <button key={k} className={`${d.getMonth()!==m?"off ":""}${k===today?"today":""}`}>{d.getDate()}</button>})}</div></div><div className="journal-box glass"><div className="section-head compact"><b>生活与身体</b><span>MANUAL JOURNAL</span></div><p className="hint">这里只记你亲手确认的事实。</p><div className="journal-row"><button onClick={()=>record("共历","感觉快来了",{kind:"period",event:"expected"})}>感觉快来了</button><button onClick={()=>record("共历","生理期实际开始",{kind:"period",event:"start"})}>今天开始</button><button onClick={()=>record("共历","生理期实际结束",{kind:"period",event:"end"})}>今天结束</button></div><div className="journal-row">{[100,200,300].map(n=><button key={n} onClick={()=>record("饮水",`喝水 ${n} ml`,{kind:"water",amount_ml:n})}>+{n} ml</button>)}</div><textarea maxLength={300} placeholder="今天吃了什么" value={food} onChange={e=>setFood(e.target.value)} /><div className="journal-row">{["早餐","午餐","晚餐","零食"].map(meal=><button key={meal} onClick={()=>{const value=food.trim();if(!value){notify("先写下吃了什么");return}record(meal,value,{kind:"meal",meal,text:value});setFood("")}}>{meal}</button>)}</div></div></section>;
+function RoomPage({records,teaser}:{records:RemoteRecord[];teaser?:string}) {
+  const groups: [string,string[]][]=[['此刻的我',['jlz_state']],['桌边随笔',['jlz_note','jlz_observation']],['想要的事',['jlz_wish','jlz_promise']],['夜信',['night_letter']],['抽屉',['dark_room','jlz_letter']]];
+  const entries=roomEntries(records);
+  return <section className="page active room-page"><PageHead kicker="A ROOM OF MY OWN" title="纪临洲" en="Private room" copy={teaser || '写下来的我，留在你能找到的地方。'} />{groups.map(([name,kinds])=>{const items=entries.filter(r=>name==='抽屉' ? kinds.includes(r.type)||['draft','hidden','decided_to_send'].includes(r.entity_state||'') : kinds.includes(r.type)&&!['draft','hidden','decided_to_send'].includes(r.entity_state||''));return <article className="room-entry glass" key={name}><h3>{name}</h3>{items.length?items.map(r=><div key={r.id}><p>{r.body}</p><small>{new Date(r.at).toLocaleString('zh-CN')} · {r.type==='jlz_observation'?'我的观察，不是你的事实':r.entity_state||'官端写入'}</small></div>):<p className="hint">这里还没有写下的内容。</p>}</article>;})}</section>;
+}
+function CalendarPage({ month, setMonth, addRecord, send, notify, savedText, records, notes, plan }: { month: Date; setMonth: (d: Date) => void; addRecord: (r: RecordItem, b?: ("notes"|"life"|"journal")[]) => void; send: Send; notify: (s:string)=>void; savedText: (w: string) => string; records:RemoteRecord[]; notes:RecordItem[]; plan:DailyPlan|null }) {
+  const [food,setFood]=useState('');
+  const [selected,setSelected]=useState(keyDate(new Date()));
+  const y=month.getFullYear(),m=month.getMonth(),first=new Date(y,m,1),start=new Date(first);
+  start.setDate(first.getDate()-((first.getDay()+6)%7));
+  const ids=new Set(records.map(r=>r.id));
+  const entries=[...records.map(r=>({...r,date:r.date||keyDate(new Date(r.at))})),...notes.filter(n=>!ids.has(n.event_id||String(n.id))).map(n=>({id:String(n.id),type:n.type,body:n.body,at:n.at,date:String(n.date||keyDate(new Date(n.at)))}))];
+  const dayEntries=entries.filter(r=>r.date.slice(0,10)===selected).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
+  const record=(type:string,body:string,payload:Record<string,unknown>)=>{const id=newEventId(),at=new Date().toISOString();addRecord({id,event_id:id,sync:'queued',type,at,body,date:selected},['notes','journal']);send('/api/web/journal',{...payload,type,text:body,date:selected,at},id);notify(savedText(body));};
+  return <section className="page active"><PageHead kicker="TIME & MEMORY" title="共历" en="Calendar" copy="选一个日子，看看我们真实留下了什么。" /><div className="calendar-box glass"><div className="calendar-top"><button onClick={()=>setMonth(new Date(y,m-1,1))}>‹</button><b>{y} / {String(m+1).padStart(2,'0')}</b><button onClick={()=>setMonth(new Date(y,m+1,1))}>›</button></div><div className="week-row">{['一','二','三','四','五','六','日'].map(d=><span key={d}>{d}</span>)}</div><div className="calendar-grid">{Array.from({length:42},(_,i)=>{const d=new Date(start);d.setDate(start.getDate()+i);const k=keyDate(d);return <button key={k} onClick={()=>setSelected(k)} className={`${d.getMonth()!==m?'off ':''}${k===selected?'today':''}`}>{d.getDate()}{entries.some(r=>r.date.slice(0,10)===k)&&<small>·</small>}</button>;})}</div></div><article className="room-entry glass"><h3>{selected}</h3>{dayEntries.map(r=><div key={r.id}><small>{r.type}</small><p>{r.body}</p><button className="text-action" onClick={()=>{const text=window.prompt('写下纠正，原记录会保留：',r.body);if(text?.trim())record('纠正',text.trim(),{kind:'correction',related_event_id:r.id});}}>纠正</button></div>)}{plan?.date===selected&&plan.tasks.map(t=><p key={t.task_id}>{t.status==='done'?'✓':'○'} {t.title} · {t.next_action}</p>)}{!dayEntries.length&&plan?.date!==selected&&<p className="hint">这一天还没有加载到记录。</p>}</article><div className="journal-box glass"><h3>生活与身体</h3><p className="hint">只记录你明确确认的事实，日期为 {selected}。</p><div className="journal-row"><button onClick={()=>record('经期','生理期实际开始',{kind:'period',event:'start'})}>这天开始</button><button onClick={()=>record('经期','生理期实际结束',{kind:'period',event:'end'})}>这天结束</button></div><textarea maxLength={300} placeholder="简单记下吃了什么" value={food} onChange={e=>setFood(e.target.value)} /><button className="primary" onClick={()=>{if(food.trim()){record('饮食',food.trim(),{kind:'food'});setFood('');}}}>记下来</button></div></section>;
 }
 function keyDate(d: Date) { return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-"); }
 
@@ -1274,6 +1268,7 @@ function TaskEditor({
  const [title, setTitle] = useState(task?.title ?? "");
  const [category, setCategory] = useState(task?.category ?? "考试/学习");
  const [priority, setPriority] = useState<DailyTask["priority"]>(task?.priority ?? "normal");
+ const [description,setDescription]=useState(task?.description ?? "");
  const [nextAction, setNextAction] = useState(task?.next_action ?? "");
  const [minutes, setMinutes] = useState(task?.estimated_minutes ? String(task.estimated_minutes) : "");
  const [dueTime, setDueTime] = useState(() => {
@@ -1296,8 +1291,9 @@ function TaskEditor({
      user_pinned: pinned,
      owner: task?.owner ?? "user",
      estimated_minutes: parsedMinutes,
-     due_at: dueTime ? `${date}T${dueTime}:00` : "",
+     due_at: dueTime ? `${date}T${dueTime}:00+08:00` : "",
      next_action: nextAction.trim(),
+     description: description.trim(),
      source: task?.source || "world_between_web",
      sort_order: task?.sort_order ?? 100,
    });
@@ -1305,8 +1301,9 @@ function TaskEditor({
    notify(task ? "任务已经改好。" : "今天多了一件事。");
  };
  return <>
-   <p className="sheet-desc">把任务写清楚。首页只替你保留最重要的三件，其他的会折起来，不准把一天铺成满墙待办。</p>
+   <p className="sheet-desc">把任务写清楚。首页留下一步，完整内容在这张清单里。</p>
    <div className="field"><label>这件事是什么</label><input maxLength={180} placeholder="例如：图推专项复盘 3 题" value={title} onChange={e=>setTitle(e.target.value)} /></div>
+   <div className="field"><label>描述与材料</label><textarea maxLength={2000} value={description} onChange={e=>setDescription(e.target.value)} placeholder="内容、材料、注意事项" /></div>
    <div className="field"><label>下一步具体做什么</label><input maxLength={240} placeholder="例如：先打开伴读，复盘第 1 题错因" value={nextAction} onChange={e=>setNextAction(e.target.value)} /></div>
    <div className="task-editor-grid">
      <div className="field"><label>分类</label><select value={category} onChange={e=>setCategory(e.target.value)}>{TASK_CATEGORIES.map(item=><option value={item} key={item}>{item}</option>)}</select></div>
