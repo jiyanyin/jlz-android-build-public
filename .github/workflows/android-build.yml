@@ -5,10 +5,12 @@ on:
     branches: [main, runtime-slim-20260930]
     paths:
       - 'native-android/**'
+      - 'between-worlds-prod/**'
       - '.github/workflows/android-build.yml'
   pull_request:
     paths:
       - 'native-android/**'
+      - 'between-worlds-prod/**'
       - '.github/workflows/android-build.yml'
   workflow_dispatch:
 
@@ -38,9 +40,40 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Package unchanged WebShell UI for offline startup
+        shell: bash
+        run: |
+          npm install --prefix between-worlds-prod --no-audit --no-fund
+          npm run build --prefix between-worlds-prod
+          mkdir -p native-android/app/src/main/assets/world-between
+          cp -R between-worlds-prod/dist/. native-android/app/src/main/assets/world-between/
+
       - name: Verify screenshot traffic policy
         working-directory: native-android
         run: gradle :app:testDebugUnitTest --no-daemon
+
+      - name: Android static checks
+        if: always()
+        working-directory: native-android
+        shell: bash
+        run: |
+          set +e
+          gradle :app:lintDebug --no-daemon
+          result=$?
+          cat app/build/reports/lint-results-debug.txt
+          exit $result
+
+      - name: Upload unit test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-unit-tests
+          path: native-android/app/build/test-results/testDebugUnitTest/*.xml
+          retention-days: 14
 
       - name: Build Debug APK
         working-directory: native-android

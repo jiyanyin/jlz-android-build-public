@@ -32,6 +32,7 @@ import dev.jlz.presence.life.CycleReminderEngine
 import dev.jlz.presence.life.NativeCalendarBridge
 import dev.jlz.presence.notification.NotificationAdapter
 import dev.jlz.presence.notification.NotificationIdentityMigration
+import dev.jlz.presence.notification.NativeConnectionNotification
 import dev.jlz.presence.notification.PendingReplyStore
 import dev.jlz.presence.usage.PendingActivityEventStore
 import dev.jlz.presence.overlay.FloatingPresenceMode
@@ -144,14 +145,11 @@ class NativeRuntimeService : Service() {
             acquire()
         }
 
+        // Full-colour app artwork belongs to the notification content,
+        // while the status-bar small icon remains Android monochrome.
         startForeground(
             FOREGROUND_ID,
-            NotificationCompat.Builder(this, SERVICE_CHANNEL)
-                .setSmallIcon(R.drawable.ic_notification_world_between_v3)
-                .setContentTitle("我在")
-                .setContentText("正在保持和 JLZ Runtime 的连接")
-                .setOngoing(true)
-                .build()
+            NativeConnectionNotification.build(this, SERVICE_CHANNEL)
         )
 
         NativeClientDiagnostics.update { it.copy(serviceRunning = true) }
@@ -263,8 +261,7 @@ class NativeRuntimeService : Service() {
                 ForegroundUsageTracker.flush()
                 val dayStart = LocalDate.now().atStartOfDay(ZoneId.systemDefault())
                     .toInstant().toEpochMilli()
-                val usageTotals = ForegroundUsageStore(applicationContext)
-                    .totalsSince(dayStart, 50)
+                val usageTotals = ForegroundUsageStore(applicationContext).use { it.totalsSince(dayStart, 50) }
                 val observedScreen = ScreenObservationBus.observations.value
                 val observedAt = observedScreen?.observedAtMs ?: 0L
                 val screenFresh = observedAt > 0L &&
@@ -294,6 +291,16 @@ class NativeRuntimeService : Service() {
                                     .put("duration_ms", total.durationMs))
                             }
                         })
+                }
+                if (ScreenObservationBus.isAvailable()) {
+                    val windowEnd = System.currentTimeMillis()
+                    val rolling = ForegroundUsageStore(applicationContext).use { it.totalsInWindow(windowEnd-3_600_000L,windowEnd,12) }
+                    usageJson.put("recent_window_minutes",60)
+                        .put("recent_window_source","android_accessibility_foreground_segments")
+                        .put("recent_window_end_ms",windowEnd)
+                        .put("recent_window_totals",JSONArray().apply { rolling.forEach { total ->
+                            put(JSONObject().put("package_name",total.packageName).put("duration_ms",total.durationMs))
+                        } })
                 }
                 // V2: Health Connect telemetry removed by product decision.
                 api.postDeviceState(
@@ -397,6 +404,7 @@ class NativeRuntimeService : Service() {
 
     private suspend fun runCommandLoop() {
         while (scope.isActive) {
+            BridgeStore(applicationContext).probePreferred()
             val settings = settingsRepository.load()
             if (settings.baseUrl.isBlank() || settings.token.isBlank()) {
                 delay(5_000L)
@@ -408,6 +416,13 @@ class NativeRuntimeService : Service() {
                 val command = api.pollCommand(COMMAND_LONG_POLL_MS)
                 if (command == null) {
                     delay(250L)
+                    continue
+                }
+
+                val previous = CommandExecutionLedger(applicationContext).use { it.reserve(command) }
+                settings.bridge?.recordCommand(command.id)
+                if(previous != null) {
+                    api.report(command,previous.first,previous.second)
                     continue
                 }
 
@@ -434,6 +449,7 @@ class NativeRuntimeService : Service() {
                     deviceId = command.deviceId
                 )
                 val execution = execute(command, api)
+                CommandExecutionLedger(applicationContext).use { it.finish(command,execution) }
                 val executedAtMs = System.currentTimeMillis()
                 val afterState = deviceSystem.systemState()
                 val parsedResult = runCatching { JSONObject(execution.second) }.getOrNull()

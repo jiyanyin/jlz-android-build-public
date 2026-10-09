@@ -15,14 +15,35 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
+import dev.jlz.presence.runtime.HomeWebBridge
+import org.json.JSONObject
 import dev.jlz.presence.launcher.AppHubBridge
 import dev.jlz.presence.focus.EntertainmentGateBridge
 import dev.jlz.presence.study.StudySessionBridge
 
 class WebShellActivity : ComponentActivity() {
     private lateinit var webView: WebView
+    private lateinit var homeWebBridge: HomeWebBridge
     private lateinit var studyBridge: StudySessionBridge
     private var nativeFallbackOpened = false
+    private var pendingPack = ""
+    private val savePack = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if(uri!=null && pendingPack.isNotBlank()) contentResolver.openOutputStream(uri)?.use { it.write(pendingPack.toByteArray()) }
+        pendingPack=""
+    }
+    private val openPack = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if(uri!=null) runCatching {
+            val bytes=contentResolver.openInputStream(uri)?.use { it.readBytesBounded(524288) } ?: return@runCatching
+            val raw=bytes.toString(Charsets.UTF_8)
+            webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('jlzpack-import',{detail:"+JSONObject.quote(raw)+"}));",null)
+        }
+    }
+    private fun java.io.InputStream.readBytesBounded(max: Int): ByteArray {
+        val out=java.io.ByteArrayOutputStream(); val buf=ByteArray(8192)
+        while(true) { val n=read(buf); if(n<0) break; require(out.size()+n<=max); out.write(buf,0,n) }
+        return out.toByteArray()
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,7 +69,32 @@ class WebShellActivity : ComponentActivity() {
                 "WorldBetweenGate"
             )
             addJavascriptInterface(studyBridge, "WorldBetweenStudy")
+            homeWebBridge = HomeWebBridge(this@WebShellActivity,
+                { raw -> runOnUiThread { pendingPack=raw; savePack.launch("world-between-"+java.text.SimpleDateFormat("yyyyMMdd-HHmm",java.util.Locale.ROOT).format(java.util.Date())+".jlzpack") } },
+                { runOnUiThread { openPack.launch(arrayOf("application/json","application/octet-stream","*/*")) } },
+                { id, response -> runOnUiThread {
+                    if(!isDestroyed && !isFinishing) {
+                        val detail=JSONObject().put("id",id).put("response",response).toString()
+                        webView.evaluateJavascript("window.dispatchEvent(new CustomEvent('home-node-response',{detail:"+detail+"}));",null)
+                    }
+                } })
+            addJavascriptInterface(homeWebBridge, "WorldBetweenHome")
             webViewClient = object : WebViewClient() {
+                override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+                    val uri=request?.url ?: return null
+                    if(uri.scheme!="https" || uri.host!=WEB_HOST) return null
+                    val path=uri.path.orEmpty().ifEmpty { "/" }
+                    if(path.contains("..") || path.contains('\\')) return null
+                    val asset="world-between"+(if(path=="/") "/index.html" else path)
+                    return runCatching {
+                        val mime=when(asset.substringAfterLast('.')) {
+                            "html"->"text/html"; "js"->"application/javascript"; "css"->"text/css";
+                            "svg"->"image/svg+xml"; "webp"->"image/webp"; "png"->"image/png";
+                            "json","webmanifest"->"application/json"; "woff2"->"font/woff2"; else->"application/octet-stream"
+                        }
+                        WebResourceResponse(mime,"UTF-8",assets.open(asset))
+                    }.getOrNull()
+                }
                 override fun shouldOverrideUrlLoading(
                     view: WebView?,
                     request: WebResourceRequest?
@@ -142,6 +188,7 @@ class WebShellActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (::homeWebBridge.isInitialized) homeWebBridge.close()
         if (::studyBridge.isInitialized) studyBridge.close()
         webView.stopLoading()
         webView.webChromeClient = null

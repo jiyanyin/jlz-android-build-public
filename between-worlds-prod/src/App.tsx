@@ -6,6 +6,10 @@ import { emptyStudySummary, formatStudyClock, formatStudyMinutes, liveStudyTotal
 import { appHubActions, appHubCategories, appHubHomeItems, emptyAppHubSnapshot, readNativeAppHub, type AppHubItem, type AppHubSnapshot } from "./lib/appHub";
 import { finishNativeStudy, liveNativeStudy, nativeStudyAvailable, openNativeBanduread, openNativeFenbi, pauseNativeStudy, readNativeStudy, resumeNativeStudy, startNativeStudy, type NativeStudySnapshot } from "./lib/nativeStudy";
 import { cancelGateSmallStep, declineGate, gateBridgeAvailable, gateResponse, grantGate, readGateSnapshot, startGateSmallStep, type EntertainmentGateSnapshot, type GateChoice } from "./lib/entertainmentGate";
+import { homeBridge } from "./lib/runtime";
+import { exportWorldPack, type InstructionPack } from "./lib/jlzpack";
+import { stageInstructionPack } from "./lib/packApply";
+import { RescuePanel } from "./RescuePanel";
 
 type Theme = "mist" | "gothic";
 type Tab = "home" | "echo" | "timeline" | "calendar" | "more";
@@ -13,7 +17,8 @@ type Sync = "queued" | "synced";
 type RecordItem = { id: number | string; type: string; at: string; body: string; event_id?: string; sync?: Sync; [key: string]: unknown };
 type Message = { text: string; at: string; event_id?: string; sync?: Sync };
 type ActiveLife = { action: string; session: string; startAt: number } | null;
-type AppState = { theme: Theme; notes: RecordItem[]; messages: Message[]; status: RecordItem | null; life: RecordItem[]; journal: RecordItem[]; activeLife: ActiveLife;
+type AppState = { lastContextPack: Record<string,unknown> | null; theme: Theme; notes: RecordItem[]; messages: Message[]; status: RecordItem | null; life: RecordItem[]; journal: RecordItem[]; activeLife: ActiveLife;
+  importedMessages: RemoteMessage[]; packAudit: {id:string;at:string;count:number}[]; pendingPackGate: boolean | null;
   runtimeUrl: string; webToken: string; outbox: OutboxItem[]; remoteRecords: RemoteRecord[]; remoteMessages: RemoteMessage[]; seenCompanion: string[]; voiceMemory: VoiceMemory; dailyPlan: DailyPlan | null; studySummary: StudySummary | null };
 type Conn = "local" | "syncing" | "online";
 type Send = (path: WritePath, body: Record<string, unknown>, eventId?: string) => string;
@@ -49,7 +54,8 @@ const ENTRY_MODE = new URLSearchParams(window.location.search).get("entry");
 const GATE_PACKAGE = new URLSearchParams(window.location.search).get("gate_pkg") || "";
 const GATE_REASON = new URLSearchParams(window.location.search).get("gate_reason") || "entry";
 const OUTBOX_CAP = 300;
-const defaults: AppState = { theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
+const defaults: AppState = { lastContextPack: null, theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
+  importedMessages: [], packAudit: [], pendingPackGate: null,
   runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [], voiceMemory: EMPTY_VOICE_MEMORY, dailyPlan: null, studySummary: null };
 const markSynced = (s: AppState, id: string): AppState => {
   const fix = <T extends { event_id?: string; sync?: Sync }>(arr: T[]) => arr.map((x) => (x.event_id === id ? { ...x, sync: "synced" as Sync } : x));
@@ -198,6 +204,7 @@ export default function BetweenWorlds() {
 
   const cfg = (): RuntimeConfig | null => {
     const s = stateRef.current;
+    if(homeBridge()?.available()) return {baseUrl:"native",token:"native-managed"};
     return s.webToken.trim() ? { baseUrl: s.runtimeUrl, token: s.webToken.trim() } : null;
   };
 
@@ -268,6 +275,10 @@ export default function BetweenWorlds() {
       await pullMessages();
       await pullDailyPlan();
       await pullStudySummary();
+      if(c.baseUrl === "native") {
+        // One bounded snapshot per reconnect, cached for offline export. Optional on older servers.
+        try { const snapshot=await runtime.exportContext(c); update(s=>({...s,lastContextPack:snapshot.context_pack})); } catch { /* retain last known snapshot */ }
+      }
       setConn("online");
       setLastError("");
     } catch (e) {
@@ -353,6 +364,29 @@ export default function BetweenWorlds() {
     setEditingTask(task);
     setSheet("task");
   }, []);
+
+  const applyInstructionPack = (pack: InstructionPack) => {
+    if(pack.actions.some(a=>a.type==="gate_config") && !homeBridge()) throw new Error("Gate 配置需要 Android 本机桥接。");
+    const oldAudit = JSON.parse(localStorage.getItem("world-between-pack-audit-v1") || "[]") as {id:string}[];
+    if(oldAudit.some(e=>e.id===pack.pack_id)) throw new Error("这个包已经应用过。");
+    const next = stageInstructionPack(stateRef.current, pack, keyDate(new Date()), new Date().toISOString());
+    // One durable write includes content, queue and replay guard. Failure changes nothing.
+    localStorage.setItem(STORE, JSON.stringify(next));
+    stateRef.current = next;
+    setState(next);
+    if(cfg()) void flush().catch(()=>setConn("local"));
+  };
+
+  useEffect(() => {
+    if(!loaded || state.pendingPackGate === null) return;
+    const bridge = homeBridge();
+    if(!bridge) return;
+    try {
+      // Idempotent native setting; pending intent survives interruption between stores.
+      bridge.setGateEnabled(state.pendingPackGate);
+      update(s=>({...s,pendingPackGate:null}));
+    } catch { setLastError("Gate 配置待重试，重新打开后会继续应用。"); }
+  }, [loaded, state.pendingPackGate, update]);
 
   // (Re)connect when the key or URL changes, on network return, and periodically.
   useEffect(() => { if (loaded) void connect(); }, [loaded, state.webToken, state.runtimeUrl, connect]);
@@ -494,6 +528,7 @@ export default function BetweenWorlds() {
   }
 
   return <div className="bw-root">
+    {tab==="more" && <RescuePanel snapshot={()=>exportWorldPack(stateRef.current,{...JSON.parse(homeBridge()?.snapshot()||"{}"),study_summary:nativeStudyAvailable()?readNativeStudy():undefined})} apply={applyInstructionPack}/>}
     {installGuide && <div className="install-guide-backdrop" role="dialog" aria-modal="true" aria-label="安装世界之间">
       <div className="install-guide-card">
         <img src="/icon-512.webp" alt="世界之间图标" />
@@ -1002,6 +1037,7 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar }: { state: Ap
   const submit = () => { const value = text.trim(); if (!value) return; const id = newEventId(); update((s) => ({ ...s, messages: [...s.messages, { text: value, at: new Date().toISOString(), event_id: id, sync: "queued" as Sync }].slice(-80) })); send("/api/web/message", { text: value }, id); setText(""); if (conn !== "online") notify("已存本机，连接后自动发送"); };
   const remoteIds = new Set(state.remoteMessages.map((m) => m.id));
   const list = [
+    ...state.importedMessages.map((m) => ({ key: m.id, text: m.text, at: m.at, me: false, label: "离线指令包" })),
     ...state.remoteMessages.map((m) => ({ key: m.id, text: m.text, at: m.at, me: !m.fromCompanion, label: "Runtime" })),
     ...state.messages.filter((m) => !m.event_id || !remoteIds.has(m.event_id)).map((m, i) => ({ key: m.event_id ?? `${m.at}-${i}`, text: m.text, at: m.at, me: true, label: m.sync === "synced" ? "已发送" : "本地 · 待发送" })),
   ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));

@@ -101,6 +101,8 @@ class DeviceLocationAdapter(private val context: Context) {
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
 
+    // hasPermission gates entry; runCatching handles a revoked permission during the request.
+    @android.annotation.SuppressLint("MissingPermission")
     suspend fun currentLocation(): Location? {
         if (!hasPermission()) return null
 
@@ -124,6 +126,8 @@ class DeviceLocationAdapter(private val context: Context) {
         return last
     }
 
+    // Only called by permission-checked currentLocation; failures resume with null.
+    @android.annotation.SuppressLint("MissingPermission")
     private suspend fun requestOnce(provider: String): Location? =
         suspendCancellableCoroutine { continuation ->
             val listener = object : LocationListener {

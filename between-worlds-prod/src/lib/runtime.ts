@@ -1,3 +1,4 @@
+import { nativeRequest } from "./nativeTransport";
 import { normalizeDailyPlan, type DailyPlan } from "./dailyPlan";
 import { normalizeStudySummary, type StudySummary } from "./studySession";
 // Low-privilege Web client for the World Between Runtime.
@@ -7,6 +8,16 @@ export const DEFAULT_RUNTIME_URL = "https://jlz-palm-server.onrender.com";
 export const SPACE_ID = "world-between-primary";
 
 export type RuntimeConfig = { baseUrl: string; token: string };
+export type HomeBridge = {
+  available(): boolean;
+  request(path: string, method: string, body: string): string;
+  requestAsync?(id: string, path: string, method: string, body: string): void;
+  snapshot(): string;
+  savePack(raw: string): void;
+  openPack(): void;
+  setGateEnabled(value: boolean): void;
+};
+export const homeBridge = () => (window as unknown as {WorldBetweenHome?: HomeBridge}).WorldBetweenHome;
 export type WritePath =
   | "/api/web/status"
   | "/api/web/moment"
@@ -29,6 +40,12 @@ export const newEventId = () =>
 const base = (cfg: RuntimeConfig) => (cfg.baseUrl.trim() || DEFAULT_RUNTIME_URL).replace(/\/+$/, "");
 
 async function request<T>(cfg: RuntimeConfig, path: string, init: { method?: "GET" | "POST"; body?: unknown } = {}): Promise<T> {
+  const native = homeBridge();
+  if(native?.available()) {
+    const reply=JSON.parse(await nativeRequest(native,path,init.method ?? "GET",JSON.stringify(init.body ?? {})));
+    if(reply.status<200 || reply.status>=300) throw new RuntimeError("Home Node unavailable",reply.status);
+    return JSON.parse(reply.body || "{}");
+  }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 15000);
   try {
@@ -52,6 +69,7 @@ async function request<T>(cfg: RuntimeConfig, path: string, init: { method?: "GE
 
 const q = `space_id=${encodeURIComponent(SPACE_ID)}`;
 export const runtime = {
+  exportContext: (cfg: RuntimeConfig) => request<{context_pack: Record<string,unknown>}>(cfg, `/api/web/export-context?${q}`),
   health: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, "/api/web/health"),
   state: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, `/api/web/state?${q}`),
   messages: (cfg: RuntimeConfig, limit = 80) => request<unknown>(cfg, `/api/web/messages?${q}&limit=${limit}`),

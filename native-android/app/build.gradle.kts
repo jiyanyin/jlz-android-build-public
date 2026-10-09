@@ -12,8 +12,8 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026100704
-        versionName = "0.4.1-webshell-recovery.4"
+        versionCode = 2026100805
+        versionName = "0.4.2-home-node.5"
         // 2026-10-07 recovery.4: restore HyperOS notification identity + branded small icon
     }
 
@@ -34,6 +34,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+
+    // Existing installed date-based versionCode is already > 2 billion. Preserve upgradeability.
+    lint { disable += "HighAppVersionCode" }
 
     testOptions { unitTests.isIncludeAndroidResources = true }
 

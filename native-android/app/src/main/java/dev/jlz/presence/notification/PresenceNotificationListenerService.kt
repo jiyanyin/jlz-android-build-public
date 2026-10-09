@@ -207,7 +207,7 @@ class PresenceNotificationListenerService :
         val actions = JSONArray()
         sbn.notification.actions?.forEachIndexed { index, action ->
             actions.put(JSONObject().put("index", index).put("title", action.title?.toString().orEmpty().take(120))
-                .put("semantic_action", action.semanticAction).put("has_remote_input", !action.remoteInputs.isNullOrEmpty()))
+                .put("semantic_action", if(android.os.Build.VERSION.SDK_INT >= 28) action.semanticAction else JSONObject.NULL).put("has_remote_input", !action.remoteInputs.isNullOrEmpty()))
         }
         val appName = runCatching {
             packageManager.getApplicationLabel(packageManager.getApplicationInfo(sbn.packageName, 0)).toString()

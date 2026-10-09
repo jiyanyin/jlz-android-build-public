@@ -24,7 +24,12 @@ import dev.jlz.presence.ui.theme.*
 class PresenceCallbackActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setShowWhenLocked(true); setTurnScreenOn(true)
+        if (android.os.Build.VERSION.SDK_INT >= 27) {
+            setShowWhenLocked(true); setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+        }
         val eventId = intent.getStringExtra(EXTRA_EVENT_ID)
         val intentId = intent.getStringExtra(EXTRA_INTENT_ID)
         val reason = intent.getStringExtra(EXTRA_REASON).orEmpty().ifBlank { "\u6211\u60f3\u627e\u4f60\u3002" }

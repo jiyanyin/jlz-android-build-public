@@ -894,6 +894,7 @@ fun SettingsScreen() {
         }
         item { OverlaySettingsPanel() }
         item { RuntimeIdentityPanel() }
+        item { BridgePanel() }
         item { PlaceSettingsPanel() }
         item { NotificationSourcesPanel() }
         item { UsageSettingsPanel() }
