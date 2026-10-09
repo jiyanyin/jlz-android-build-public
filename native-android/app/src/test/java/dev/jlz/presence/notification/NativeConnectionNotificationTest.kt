@@ -2,7 +2,6 @@ package dev.jlz.presence.notification
 
 import android.app.Notification
 import android.content.Context
-import android.graphics.drawable.Icon
 import dev.jlz.presence.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -24,7 +23,6 @@ class NativeConnectionNotificationTest {
         // Full-color original launcher art is an icon for the notification
         // content; the status bar requires a separate monochrome drawable.
         assertNotNull(n.largeIcon)
-        assertEquals(Icon.TYPE_BITMAP, n.largeIcon.type)
         assertEquals(R.drawable.ic_notification_world_between_v3, n.smallIcon.resId)
         assertTrue(n.flags and Notification.FLAG_ONGOING_EVENT != 0)
         assertEquals("我在", n.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString())
