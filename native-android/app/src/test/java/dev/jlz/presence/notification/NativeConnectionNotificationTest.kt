@@ -22,7 +22,7 @@ class NativeConnectionNotificationTest {
 
         // Full-color original launcher art is an icon for the notification
         // content; the status bar requires a separate monochrome drawable.
-        assertNotNull(n.largeIcon)
+        assertNotNull(n.getLargeIcon())
         assertEquals(R.drawable.ic_notification_world_between_v3, n.smallIcon.resId)
         assertTrue(n.flags and Notification.FLAG_ONGOING_EVENT != 0)
         assertEquals("我在", n.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString())
