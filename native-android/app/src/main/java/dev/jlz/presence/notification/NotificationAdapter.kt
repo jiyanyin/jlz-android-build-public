@@ -129,15 +129,12 @@ class NotificationAdapter(private val context: Context) {
             .setImportant(true)
             .build()
 
-        val style = NotificationCompat.MessagingStyle(user)
-            .addMessage(
-                message,
-                System.currentTimeMillis(),
-                companion
-            )
-        if (title.isNotBlank()) {
-            style.setConversationTitle(title)
-        }
+        // This is a private 1:1 chat, not a group with a "我在找你" room title.
+        // Some OEM notification layouts pick the local user's "你" monogram
+        // as the group avatar when a conversation title is supplied.
+        val style = JlzMessagingStyle.incoming(
+            user, companion, message, System.currentTimeMillis()
+        )
 
         val notification = NotificationCompat.Builder(
             context,
@@ -190,9 +187,9 @@ class NotificationAdapter(private val context: Context) {
             .build()
 
         val now = System.currentTimeMillis()
-        val style = NotificationCompat.MessagingStyle(user)
-            .addMessage(originalMessage, now - 1000L, companion)
-            .addMessage(reply, now, user)
+        val style = JlzMessagingStyle.afterReply(
+            user, companion, originalMessage, reply, now
+        )
 
         val openChat = PendingIntent.getActivity(
             context,
@@ -304,4 +301,38 @@ class NotificationAdapter(private val context: Context) {
         private const val AVATAR_SIZE = 128
         private val idLock = Any()
     }
+}
+
+/**
+ * A direct conversation between the user and 纪临洲.
+ *
+ * Do not set conversationTitle on MessagingStyle for a one-to-one chat:
+ * Android/OEM launchers may interpret it as a group conversation and show
+ * the local user's fallback monogram instead of the incoming sender's icon.
+ *
+ * The sender Person already has our user-chosen planet avatar; this code
+ * intentionally does NOT change drawable resources, Gate, or reply routing.
+ */
+internal object JlzMessagingStyle {
+    fun incoming(
+        user: Person,
+        companion: Person,
+        text: String,
+        atMs: Long
+    ): NotificationCompat.MessagingStyle =
+        NotificationCompat.MessagingStyle(user)
+            .setGroupConversation(false)
+            .addMessage(text, atMs, companion)
+
+    fun afterReply(
+        user: Person,
+        companion: Person,
+        original: String,
+        reply: String,
+        atMs: Long
+    ): NotificationCompat.MessagingStyle =
+        NotificationCompat.MessagingStyle(user)
+            .setGroupConversation(false)
+            .addMessage(original, atMs - 1000L, companion)
+            .addMessage(reply, atMs, user)
 }
