@@ -32,6 +32,7 @@ import dev.jlz.presence.life.CycleReminderEngine
 import dev.jlz.presence.life.NativeCalendarBridge
 import dev.jlz.presence.notification.NotificationAdapter
 import dev.jlz.presence.notification.NotificationIdentityMigration
+import dev.jlz.presence.notification.NativeConnectionNotification
 import dev.jlz.presence.notification.PendingReplyStore
 import dev.jlz.presence.usage.PendingActivityEventStore
 import dev.jlz.presence.overlay.FloatingPresenceMode
@@ -144,14 +145,11 @@ class NativeRuntimeService : Service() {
             acquire()
         }
 
+        // Full-colour app artwork belongs to the notification content,
+        // while the status-bar small icon remains Android monochrome.
         startForeground(
             FOREGROUND_ID,
-            NotificationCompat.Builder(this, SERVICE_CHANNEL)
-                .setSmallIcon(R.drawable.ic_notification_world_between_v3)
-                .setContentTitle("我在")
-                .setContentText("正在保持和 JLZ Runtime 的连接")
-                .setOngoing(true)
-                .build()
+            NativeConnectionNotification.build(this, SERVICE_CHANNEL)
         )
 
         NativeClientDiagnostics.update { it.copy(serviceRunning = true) }
