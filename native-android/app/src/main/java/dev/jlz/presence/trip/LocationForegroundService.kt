@@ -116,6 +116,7 @@ class LocationForegroundService : Service() {
             TripController.ACTION_STOP -> {
                 if (_trip.value.active) {
                     val endingSession = finishTrip()
+                    PendingTripStop.remember(applicationContext, endingSession.sessionId)
                     uploadJob?.cancel()
                     // GPS capture has stopped and its local raw buffer is gone.
                     // Stop message is small, bounded and cannot restart sharing.
@@ -124,7 +125,7 @@ class LocationForegroundService : Service() {
                             withTimeoutOrNull(5000) {
                                 val cfg = RuntimeSettingsRepository(applicationContext).load()
                                 if (cfg.baseUrl.isNotBlank() && cfg.token.isNotBlank() && endingSession.sessionId.isNotBlank())
-                                    RuntimeApiClient(cfg).stopTrip(endingSession.sessionId)
+                                    PendingTripStop.flush(applicationContext, RuntimeApiClient(cfg))
                             }
                         } catch (_: Exception) {
                             // A failed stop leaves a stale last fix, never fresh telemetry.
