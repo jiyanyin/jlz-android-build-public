@@ -514,7 +514,8 @@ class FloatingPresenceService : Service() {
         val offline = sync > 0L && System.currentTimeMillis() - sync > 120_000L
         val state = behavior.resolve(protected, modeNow == dev.jlz.presence.focus.DailyMode.SLEEP,
             dev.jlz.presence.cowatch.CoWatchState.active,
-            modeNow == dev.jlz.presence.focus.DailyMode.FOCUS || mode == FloatingPresenceMode.STUDY,
+            modeNow == dev.jlz.presence.focus.DailyMode.FOCUS || mode == FloatingPresenceMode.STUDY ||
+                (focusState.isActiveNow() && modeNow == dev.jlz.presence.focus.DailyMode.NORMAL),
             System.currentTimeMillis() < gateUntil, awakeEntertainment,
             modeNow == dev.jlz.presence.focus.DailyMode.BREAK, offline)
         val mood = when(state) {
