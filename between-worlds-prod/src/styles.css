@@ -517,3 +517,26 @@ body,button,input,select,textarea{font-size:var(--wb-body)}
   .room-collection-title h3{font-size:13px}
   .room-portrait{width:88px;height:120px}
 }
+
+
+/* Compact vector fallback for the selected vintage icon collection.
+   Keep bottom navigation legible at 28px; larger illustrations are for cards. */
+.vintage-icon{display:block;flex:none;max-width:100%;height:auto;filter:drop-shadow(0 2px 3px #60497920)}
+.dock button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:62px;padding:5px 2px}
+.dock button .vintage-icon{width:28px;height:28px}
+.dock button.active .vintage-icon{filter:drop-shadow(0 0 6px #c2a0e677)}
+.dock button span{margin-top:0;font-size:10px}
+.pill-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px}
+.pill-btn .vintage-icon{width:21px;height:21px}
+.hub-mark .vintage-icon{display:block;margin:auto}
+.task-summary-open{display:inline-flex;align-items:center;gap:5px}
+.task-summary-open .vintage-icon{width:23px;height:23px}
+.action-card .ico{display:grid;place-items:center;min-height:44px}
+.room-emblem{background:transparent;border:none;box-shadow:none;width:48px;height:48px;flex-basis:48px}
+.room-emblem:before,.room-emblem:after{content:none}
+.room-emblem .vintage-icon{width:48px;height:48px;max-width:none}
+@media(max-width:365px){
+  .dock button .vintage-icon{width:26px;height:26px}
+  .room-emblem{width:39px;height:39px;flex-basis:39px}
+  .room-emblem .vintage-icon{width:39px;height:39px}
+}
