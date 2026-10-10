@@ -106,7 +106,7 @@ export const runtime = {
 };
 
 // ---- defensive normalisers for Runtime payloads ----
-export type RemoteRecord = { id: string; type: string; at: string; body: string; actor?:string; provenance?:string; entity_id?:string; entity_state?:string; related_event_id?:string; date?:string };
+export type RemoteRecord = { id: string; type: string; at: string; body: string; actor?:string; provenance?:string; entity_id?:string; entity_state?:string; related_event_id?:string; date?:string; kind?:string; event?:string };
 export type RemoteMessage = { id: string; text: string; at: string; fromCompanion: boolean; handled?: boolean; reply_to?:string };
 
 const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
@@ -135,7 +135,7 @@ export function extractRecords(state: unknown): RemoteRecord[] {
         at: toIso(r.at ?? r.created_at ?? r.timestamp ?? r.client_at),
         body: str(r.body ?? r.text ?? meta.text ?? r.subtitle ?? r.content ?? r.summary ?? r.action ?? r.value) || "（记录）",
         actor:str(meta.actor ?? meta.between_actor) || (str(r.type).startsWith('jlz_') || ['night_letter','dark_room'].includes(str(r.type)) ? 'jlz':'user'),
-        provenance:str(meta.provenance_type), entity_id:str(meta.entity_id), entity_state:str(meta.entity_state), related_event_id:str(meta.related_event_id), date:str(meta.occurred_at ?? meta.date),
+        provenance:str(meta.provenance_type), entity_id:str(meta.entity_id), entity_state:str(meta.entity_state), related_event_id:str(meta.related_event_id), date:str(meta.occurred_at ?? meta.date), kind:str(meta.kind), event:str(meta.event),
       });
     }
   }
