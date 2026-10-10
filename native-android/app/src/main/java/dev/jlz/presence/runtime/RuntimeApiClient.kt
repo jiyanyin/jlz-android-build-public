@@ -76,6 +76,16 @@ data class DeviceStateSnapshot(
 }
 
 class RuntimeApiClient(private val settings: RuntimeSettings) {
+    // Live opt-in trips use existing authenticated Runtime route, never routine heartbeat.
+    fun startTrip(sessionId: String, startedAtMs: Long): JSONObject = postJson("/api/trips/start",
+        JSONObject().put("session_id", sessionId).put("device_id", settings.deviceId)
+            .put("started_at_ms", startedAtMs))
+    fun sendTripPoints(sessionId: String, points: JSONArray): JSONObject = postJson(
+        "/api/trips/" + URLEncoder.encode(sessionId, Charsets.UTF_8.name()) + "/points",
+        JSONObject().put("device_id", settings.deviceId).put("points", points))
+    fun stopTrip(sessionId: String): JSONObject = postJson(
+        "/api/trips/" + URLEncoder.encode(sessionId, Charsets.UTF_8.name()) + "/stop",
+        JSONObject().put("device_id", settings.deviceId))
     fun contentReceipt(receipt: JSONObject): JSONObject = postJson("/api/world/content/receipt",receipt)
     fun reminderCheck(payload: JSONObject): Boolean = postJson("/api/world/reminder-check",payload).optBoolean("allowed",false)
     fun worldContent(): JSONObject = getJson("/api/world/content?space_id=world-between-primary&device_scope=" + if(settings.deviceId.contains("tablet")) "tablet" else "phone").getJSONObject("content")
