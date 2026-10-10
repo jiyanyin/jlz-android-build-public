@@ -54,7 +54,6 @@ const ANDROID_SHELL = new URLSearchParams(window.location.search).get("shell") =
 const ENTRY_MODE = new URLSearchParams(window.location.search).get("entry");
 const GATE_PACKAGE = new URLSearchParams(window.location.search).get("gate_pkg") || "";
 const GATE_REASON = new URLSearchParams(window.location.search).get("gate_reason") || "entry";
-const OUTBOX_CAP = 300;
 const defaults: AppState = { worldContent: null, lastContextPack: null, theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
   importedMessages: [], packAudit: [], pendingPackGate: null,
   runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [], voiceMemory: EMPTY_VOICE_MEMORY, dailyPlan: null, studySummary: null };
@@ -162,7 +161,9 @@ export default function BetweenWorlds() {
   const update = useCallback((fn: (draft: AppState) => AppState) => {
     const next = fn(stateRef.current);
     stateRef.current = next;
-    try { localStorage.setItem(STORE, JSON.stringify(next)); } catch { /* storage may be unavailable */ }
+    try { localStorage.setItem(STORE, JSON.stringify(next)); } catch {
+      setToast("本机存储不足，最新内容尚未持久保存。请保持页面打开并连接 Home Node。");
+    }
     setState(next);
   }, []);
   const notify = useCallback((message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); }, []);
@@ -381,7 +382,7 @@ export default function BetweenWorlds() {
 
   const send: Send = useCallback((path, body, eventId = newEventId()) => {
     const item: OutboxItem = { event_id: eventId, path, body: { ...body, client_at: new Date().toISOString() }, queuedAt: new Date().toISOString(), tries: 0 };
-    update((s) => ({ ...s, outbox: [...s.outbox.filter((x) => x.event_id !== eventId), item].slice(-OUTBOX_CAP) }));
+    update((s) => ({ ...s, outbox: [...s.outbox.filter((x) => x.event_id !== eventId), item] }));
     if (cfg()) flush().then(() => setConn((c) => (c === "local" ? c : "online"))).catch(() => setConn("local"));
     return eventId;
   }, [update, flush]);
