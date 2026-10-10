@@ -60,6 +60,17 @@ const priority = (value: unknown): DailyTaskPriority =>
   ["high", "normal", "low"].includes(str(value))
     ? str(value) as DailyTaskPriority : "normal";
 
+/** Display legacy next_action text in the one visible task detail field.
+ * The storage schema still accepts next_action for old GPT clients, but the
+ * user-facing editor uses only title and concrete content.
+ */
+export const taskDetailText = (task: Pick<DailyTask, "description" | "next_action"> | null | undefined): string => {
+  const content = (task?.description ?? "").trim();
+  const legacyNext = (task?.next_action ?? "").trim();
+  if (!legacyNext || content.includes(legacyNext)) return content;
+  return content ? `${content}\n${legacyNext}` : legacyNext;
+};
+
 export const emptyDailyPlan = (date: string): DailyPlan => ({
   version: "daily-plan-1",
   space_id: "world-between-primary",
