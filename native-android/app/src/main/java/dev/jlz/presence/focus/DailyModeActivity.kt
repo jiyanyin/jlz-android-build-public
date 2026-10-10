@@ -27,6 +27,7 @@ class DailyModeActivity : Activity() {
     private fun change(mode: DailyMode, minutes: Int = 25) { scope.launch { repo.setDailyMode(mode, minutes); FloatingPresenceService.refreshArtworkAfterImport(); render() } }
     private fun render() {
         tick?.cancel()
+        window.attributes = window.attributes.apply { screenBrightness = -1f }
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(36, 44, 36, 36); setBackgroundColor(0xFFF5F3F8.toInt()) }
         setContentView(ScrollView(this).apply { addView(root) })
         root.addView(label("世界之间 · 作息", 22f))

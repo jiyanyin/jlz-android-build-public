@@ -58,7 +58,7 @@ class LocalAppClassifier(private val context: Context) {
                 pkg == context.getSystemService(TelecomManager::class.java)?.defaultDialerPackage ||
                 pkg == pm.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName ||
                 context.getSystemService(InputMethodManager::class.java).enabledInputMethodList.any { it.packageName == pkg } ||
-                ((info.flags and ApplicationInfo.FLAG_SYSTEM) != 0 && (pkg.contains("clock") || pkg.contains("alarm") || pkg.contains("permissioncontroller") || pkg.contains("packageinstaller") || pkg.contains("incall") || pkg.contains("emergency") || pkg == "com.google.android.gms")))
+                ((info.flags and ApplicationInfo.FLAG_SYSTEM) != 0 && (pkg.contains("clock") || pkg.contains("alarm") || pkg.contains("permissioncontroller") || pkg.contains("packageinstaller") || pkg.contains("incall") || pkg.contains("emergency") || pkg == "com.google.android.gms"))
             if (safe) LocalAppCategory.SYSTEM_SAFE
             else {
                 val correction = prefs.getString("class:$pkg", null)

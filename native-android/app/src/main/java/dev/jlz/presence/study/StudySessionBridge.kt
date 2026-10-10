@@ -103,6 +103,9 @@ class StudySessionBridge(context: Context) {
     @JavascriptInterface
     fun openFenbi(): String = StudyShortcuts.openFenbi(app)
 
+    @JavascriptInterface
+    fun calendarSnapshot(): String = dev.jlz.presence.life.NativeCalendarBridge(app).snapshot().toString()
+
     fun close() {
         scope.cancel()
     }

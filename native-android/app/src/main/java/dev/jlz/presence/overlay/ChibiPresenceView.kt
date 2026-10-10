@@ -127,15 +127,32 @@ class ChibiPresenceView(context: Context) : View(context) {
         invalidate()
     }
 
+    private var breathing: android.animation.ValueAnimator? = null
+    private fun updateMotion() {
+        breathing?.cancel(); breathing = null; translationY = 0f
+        val quiet = mood in setOf("watch", "watching", "sleep") ||
+            android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f ||
+            context.getSystemService(android.os.PowerManager::class.java)?.isPowerSaveMode == true
+        if (quiet || !isAttachedToWindow) return
+        breathing = android.animation.ValueAnimator.ofFloat(0f, -resources.displayMetrics.density * 1.3f).apply {
+            duration = 2400; repeatCount = android.animation.ValueAnimator.INFINITE; repeatMode = android.animation.ValueAnimator.REVERSE
+            addUpdateListener { translationY = it.animatedValue as Float }; start()
+        }
+    }
+    override fun onDetachedFromWindow() { breathing?.cancel(); breathing = null; animate().cancel(); super.onDetachedFromWindow() }
+    override fun onWindowVisibilityChanged(visibility: Int) { super.onWindowVisibilityChanged(visibility); if (visibility == VISIBLE) updateMotion() else { breathing?.cancel(); breathing = null } }
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         reloadArtwork()
+        updateMotion()
     }
 
     private var reactionUntil = 0L
     fun setMood(value: String) {
         if (System.currentTimeMillis() < reactionUntil || mood == value) return
         mood = value
+        updateMotion()
         invalidate()
     }
 

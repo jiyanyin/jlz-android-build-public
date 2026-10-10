@@ -245,7 +245,7 @@ class FloatingPresenceService : Service() {
             }
             actions.addView(button, item)
         }
-        action("专注模式") { closeMenu(); dev.jlz.presence.focus.DailyModeActivity.open(this) }
+        action("专注模式") { closeMenu(); scope.launch { FocusRepository(applicationContext).setDailyMode(dev.jlz.presence.focus.DailyMode.FOCUS, 25); dev.jlz.presence.focus.DailyModeActivity.open(this@FloatingPresenceService) } }
         action("视频通话") { closeMenu(); startActivity(Intent(this, dev.jlz.presence.cowatch.CoWatchActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         action("睡眠模式") { closeMenu(); scope.launch { FocusRepository(applicationContext).setDailyMode(dev.jlz.presence.focus.DailyMode.SLEEP); dev.jlz.presence.focus.DailyModeActivity.open(this@FloatingPresenceService) } }
         root.addView(actions)
@@ -363,6 +363,8 @@ class FloatingPresenceService : Service() {
             y = dp(68)
         }
 
+        var downAt = 0L
+        var suspended = false
         var downX = 0f
         var downY = 0f
         var startX = 0
@@ -370,6 +372,7 @@ class FloatingPresenceService : Service() {
         character.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    downAt = System.currentTimeMillis()
                     downX = event.rawX
                     downY = event.rawY
                     startX = lp.x
@@ -390,6 +393,11 @@ class FloatingPresenceService : Service() {
                     if (abs(event.rawX - downX) < dp(12) &&
                         abs(event.rawY - downY) < dp(12)
                     ) {
+                        if (System.currentTimeMillis() - downAt > 600L) {
+                            suspended = !suspended
+                            closeMenu(); character.setSizeDp(if (suspended) QAvatarScale.MIN_DP else QAvatarScale.get(this)); character.alpha = if (suspended) 0.6f else 1f
+                            return@setOnTouchListener true
+                        }
                         character.react("surprised", idleMood())
                         if (noteOpen) closeNote() else toggleMenu()
                     } else {

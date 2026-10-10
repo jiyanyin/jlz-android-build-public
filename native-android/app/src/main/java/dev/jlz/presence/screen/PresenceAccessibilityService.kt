@@ -36,6 +36,7 @@ class PresenceAccessibilityService : AccessibilityService() {
             intent?.data?.schemeSpecificPart?.let { classifier.invalidate(it) }
         }
     }
+    private val unknownNotified = mutableSetOf<String>()
     private val lastGateAtMs = mutableMapOf<String, Long>()
     private val observationCache = AccessibilityObservationCache()
     @Volatile private var contentChangePending = false
@@ -96,6 +97,10 @@ class PresenceAccessibilityService : AccessibilityService() {
         }
         val dailyMode = currentFocus.modeNow(now)
         val category = packageName?.let { classifier.classify(it) }
+        if (dailyMode == dev.jlz.presence.focus.DailyMode.BREAK && category == dev.jlz.presence.focus.LocalAppCategory.UNKNOWN && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && !packageName.isNullOrBlank() && unknownNotified.add(packageName)) {
+            if (unknownNotified.size > 200) unknownNotified.clear()
+            android.widget.Toast.makeText(this, "这个应用分类未确认，请在作息设置纠正；未知不等于已确认不是游戏。", android.widget.Toast.LENGTH_LONG).show()
+        }
         val dailyBlocked = packageName != null && category != null && dev.jlz.presence.focus.DailyModePolicy.blocks(dailyMode, category, packageName)
         val safe = category == dev.jlz.presence.focus.LocalAppCategory.SYSTEM_SAFE
         if (!safe && (dailyBlocked || (dailyMode == dev.jlz.presence.focus.DailyMode.NORMAL && currentFocus.blocks(packageName)))) {

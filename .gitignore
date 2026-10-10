@@ -15,3 +15,6 @@ local.properties
 **/build/
 **/.gradle/
 native-android/app/src/main/assets/world-between/
+
+# Private Q artwork is staged only by the private build workflow.
+native-android/app/src/main/assets/avatar/packs/
