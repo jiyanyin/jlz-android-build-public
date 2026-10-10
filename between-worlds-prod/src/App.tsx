@@ -966,6 +966,27 @@ function HomePage({
 }) {
   const [tasksOpen,setTasksOpen]=useState(false);
   const [tasksExpanded,setTasksExpanded]=useState(false);
+  const taskGripStartY = useRef<number | null>(null);
+  const closeTasks = () => { setTasksOpen(false); setTasksExpanded(false); };
+  const shiftTaskDate = (days: number) => {
+    const date = new Date(plan.date + "T12:00:00");
+    if (Number.isNaN(date.getTime())) return;
+    date.setDate(date.getDate() + days);
+    selectTaskDate(keyDate(date));
+  };
+  useEffect(() => {
+    if (!tasksOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setTasksOpen(false); setTasksExpanded(false); }
+    };
+    window.addEventListener("keydown", escape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", escape);
+    };
+  }, [tasksOpen]);
   const b = bannerText(banner);
   const sections = planSections(plan);
   const homeApps = appHubHomeItems(appHub, 3);
@@ -977,20 +998,52 @@ function HomePage({
   const studyDetail = studyCurrent
     ? `${studyDeviceLabel(studyCurrent.device_id)} · ${studyCurrent.module || studyCurrent.subject || "学习 Session"}`
     : `今天完成 ${study.completed_sessions} 轮`;
-  const current = plan.tasks.find((task) => task.task_id === plan.current_task_id) ?? null;
   const statusLabel: Record<DailyTask["status"], string> = {
     todo: "待开始", in_progress: "进行中", done: "完成", postponed: "已延期", incomplete: "未完成",
   };
-  const renderTask = (task: DailyTask) => <div className="daily-task-row" key={task.task_id}>
-    <button className={`task-check ${task.status === "done" ? "done" : ""}`} aria-label={task.status === "done" ? "重新打开任务" : "完成任务"} onClick={() => mutateTask(task.status === "done" ? "reopen" : "complete", { task_id: task.task_id })}>{task.status === "done" ? "✓" : ""}</button>
-    <button className="task-body" onClick={() => {setTasksOpen(false);openTask(task);}}>
-      <span className="task-title-line"><b>{task.title}</b>{task.user_pinned && <i>PIN</i>}{task.must_do && <i>MUST</i>}</span>
-      <small>{task.category} · {statusLabel[task.status]}{task.estimated_minutes ? ` · 约 ${task.estimated_minutes} 分钟` : ""}</small>
-      <small>{task.date}{task.due_at ? " · "+task.due_at.replace("T"," ").replace(/:00(?:[+]08:00)?$/," ") : ""}</small>
-      {task.description && <p className="task-description">{task.description}</p>}
-      {task.next_action && <em>{task.next_action}</em>}
-    </button><button className="task-defer" onClick={()=>mutateTask("postpone",{task_id:task.task_id})}>延期</button>
-  </div>;
+  // Old GPT tasks sometimes put an entire paragraph in title/next_action.
+  // Keep the original data intact while showing a concise heading in the list.
+  const shortTaskTitle = (title: string) => {
+    const clean = title.replace(/\s+/g, " ").trim();
+    if (clean.length <= 24) return clean;
+    const clause = clean.split(/[，,。；;：:\n]/)[0];
+    const short = clause.length >= 4 && clause.length <= 24 ? clause : clean.slice(0, 22);
+    return short + (short.length < clean.length ? "…" : "");
+  };
+  const recordDate = (raw: string) => {
+    const d = new Date(raw);
+    if (!raw || Number.isNaN(d.getTime())) return "未记录";
+    return d.toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" });
+  };
+  const completedCount = plan.tasks.filter(t => t.status === "done").length;
+  const renderTask = (task: DailyTask) => {
+    const detail = task.description?.trim() || (task.title.length > 24 ? task.title : "");
+    return <article className="task-entry" key={task.task_id}>
+      <div className="task-entry-heading">
+        <button className={`task-check ${task.status === "done" ? "done" : ""}`} aria-label={task.status === "done" ? "重新打开任务" : "完成任务"}
+          onClick={() => mutateTask(task.status === "done" ? "reopen" : "complete", { task_id: task.task_id, date: task.date })}>{task.status === "done" ? "✓" : ""}</button>
+        <button className="task-entry-title" onClick={() => { closeTasks(); openTask(task); }} aria-label={`编辑任务：${task.title}`}>
+          <strong>{shortTaskTitle(task.title)}</strong>
+          <span>编辑 ↗</span>
+        </button>
+        <button className="task-defer" onClick={() => mutateTask("postpone", { task_id: task.task_id, date: task.date })}>延期</button>
+      </div>
+      <div className="task-entry-dates">
+        <span>任务日期 {task.date}</span>
+        <span>记录于 {recordDate(task.created_at)}</span>
+      </div>
+      <div className="task-entry-meta">
+        {task.category} · {statusLabel[task.status]}{task.estimated_minutes ? ` · 约 ${task.estimated_minutes} 分钟` : ""}
+        {task.user_pinned ? " · 已固定" : ""}
+        {task.due_at ? ` · 截止 ${task.due_at.match(/T(\d{2}:\d{2})/)?.[1] || task.due_at}` : ""}
+      </div>
+      {(detail || task.next_action) && <details className="task-entry-details">
+        <summary>具体内容 <span>展开 / 收起</span></summary>
+        {detail && <p>{detail}</p>}
+        {task.next_action && <p className="task-entry-next"><b>下一步：</b>{task.next_action}</p>}
+      </details>}
+    </article>;
+  };
 
   return <section className="page active home-page">
     <div className="brand-block"><div className="cn">世界之间</div><div className="en">Between Worlds</div></div>
@@ -1007,8 +1060,41 @@ function HomePage({
       </div>
     </div>
 
-    <button className="task-summary glass" onClick={()=>setTasksOpen(true)}><span>{plan.date === keyDate(new Date()) ? "今日任务" : plan.date + " 的任务"} · {plan.tasks.filter(t=>t.status==='done').length}/{plan.tasks.length}</span><strong>{plan.current_step?.next_action || '给今天留一个小小的开始'}</strong><i>查看全部 ↗</i></button>
-    {tasksOpen && <div className="task-drawer-backdrop" onClick={()=>setTasksOpen(false)}><section className={`task-drawer ${tasksExpanded?'expanded':''}`} role="dialog" aria-modal="true" aria-label="今日任务总览" onClick={e=>e.stopPropagation()}><button className="drawer-grip" onClick={()=>setTasksExpanded(v=>!v)} aria-label="展开或收起任务面板">━━</button><div className="daily-plan-top"><div><label>任务日期<input type="date" aria-label="任务日期" value={plan.date} onChange={e=>selectTaskDate(e.target.value)} /></label><h3>一件一件来。</h3></div><button onClick={()=>setTasksOpen(false)} aria-label="关闭任务总览">×</button></div><button className="primary" onClick={()=>{setTasksOpen(false);openTask(null);}}>＋ 加一件事</button>{plan.current_step && <div className="current-step"><span>现在这一步</span><strong>{plan.current_step.next_action}</strong>{current && <button className="secondary" onClick={()=>mutateTask(current.status==='in_progress'?'complete':'start',{task_id:current.task_id})}>{current.status==='in_progress'?'做完了':'现在开始'}</button>}</div>}{[...sections.main,...sections.other,...sections.postponed,...sections.completed].map(renderTask)}{!plan.tasks.length&&<p>还没有安排。这里会接住你在官端说的待办。</p>}</section></div>}
+    <button className="task-summary glass" onClick={() => setTasksOpen(true)} aria-label="打开每日待办清单">
+      <span className="task-summary-copy"><strong>{plan.date === keyDate(new Date()) ? "今日待办" : plan.date + " · 待办"}</strong><small>{plan.tasks.length ? `已完成 ${completedCount} / ${plan.tasks.length} 项` : "今天还没有任务"}</small></span>
+      <span className="task-summary-open">查看待办 <span aria-hidden="true">↗</span></span>
+    </button>
+    {tasksOpen && <div className="task-drawer-backdrop" onClick={closeTasks} role="presentation">
+      <section className={`task-drawer ${tasksExpanded ? "expanded" : ""}`} role="dialog" aria-modal="true" aria-label="每日待办清单" onClick={e => e.stopPropagation()}>
+        <button className="drawer-grip" aria-label={tasksExpanded ? "收起待办面板" : "展开待办面板"} onClick={() => setTasksExpanded(v => !v)}
+          onTouchStart={e => { taskGripStartY.current = e.changedTouches[0]?.clientY ?? null; }}
+          onTouchEnd={e => {
+            if (taskGripStartY.current === null) return;
+            const delta = e.changedTouches[0].clientY - taskGripStartY.current;
+            taskGripStartY.current = null;
+            if (Math.abs(delta) <= 40) return;
+            e.preventDefault();
+            if (delta < 0) setTasksExpanded(true);
+            else if (tasksExpanded) setTasksExpanded(false);
+            else closeTasks();
+          }}>━━</button>
+        <div className="task-drawer-heading">
+          <div><span>DAILY PLAN</span><h3>每日待办</h3><small>{completedCount} / {plan.tasks.length} 项完成</small></div>
+          <button className="task-drawer-close" onClick={closeTasks} aria-label="关闭待办">×</button>
+        </div>
+        <div className="task-date-navigation">
+          <button onClick={() => shiftTaskDate(-1)} aria-label="前一天">‹</button>
+          <input type="date" value={plan.date} aria-label="查看哪一天的待办" onChange={e => selectTaskDate(e.target.value)} />
+          <button onClick={() => shiftTaskDate(1)} aria-label="后一天">›</button>
+          <button className="task-date-today" onClick={() => selectTaskDate(keyDate(new Date()))}>今天</button>
+        </div>
+        <div className="task-drawer-list">
+          {[...sections.main, ...sections.other, ...sections.postponed, ...sections.completed].map(renderTask)}
+          {!plan.tasks.length && <div className="task-drawer-empty"><b>这一天还没有待办。</b><small>从官端聊天或者这里添加，都可以同步进来。</small></div>}
+        </div>
+        <button className="task-drawer-add" onClick={() => { closeTasks(); openTask(null); }}>＋ 添加待办</button>
+      </section>
+    </div>}
 
     <SectionHead title="陪你学一会儿" english="STUDY SESSION" />
     <div className={`study-session-card glass ${study.active ? "active" : ""} ${study.paused ? "paused" : ""}`}>
