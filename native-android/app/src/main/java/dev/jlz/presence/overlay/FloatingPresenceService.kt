@@ -702,6 +702,13 @@ class FloatingPresenceService : Service() {
         @Volatile private var liveService: FloatingPresenceService? = null
 
         fun gateReaction() { liveService?.let { it.gateUntil = System.currentTimeMillis() + 5000; it.avatar?.setMood("gate") } }
+        fun localCelebration() {
+            liveService?.let { live ->
+                val mode = live.focusState.modeNow()
+                if (mode == dev.jlz.presence.focus.DailyMode.SLEEP || dev.jlz.presence.cowatch.CoWatchState.active) return
+                live.avatar?.react("proud", if (mode == dev.jlz.presence.focus.DailyMode.FOCUS) "watch" else live.idleMood())
+            }
+        }
 
         suspend fun <T> withoutOverlay(block: suspend () -> T): T {
             withContext(Dispatchers.Main) { captureHidden = true; liveService?.panel?.visibility = View.INVISIBLE }

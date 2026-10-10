@@ -27,6 +27,13 @@ class StudySessionBridge(context: Context) {
     fun version(): String = "study-bridge-2"
 
     @JavascriptInterface
+    fun taskCompleted() {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            dev.jlz.presence.overlay.FloatingPresenceService.localCelebration()
+        }
+    }
+
+    @JavascriptInterface
     fun snapshot(): String = runBlocking {
         val now = System.currentTimeMillis()
         val recovery = repository.recoverStaleSession(now)

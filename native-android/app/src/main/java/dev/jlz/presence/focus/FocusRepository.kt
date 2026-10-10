@@ -11,6 +11,7 @@ import dev.jlz.presence.data.LocalLifeStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 private val Context.focusDataStore by preferencesDataStore(name = "jlz_focus")
 
@@ -53,6 +54,9 @@ data class FocusState(
 }
 
 class FocusRepository(private val context: Context) {
+    companion object {
+        private val reportingScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+    }
     private val lifeStore = LocalLifeStore(context.applicationContext)
 
     private object Keys {
@@ -145,11 +149,13 @@ class FocusRepository(private val context: Context) {
         else dev.jlz.presence.study.StudyTimerService.stop(context)
         lifeStore.recordTimeline("daily_mode", "切换作息模式", mode.name)
         // Offline reporting must never delay the local gate, timer or sleep transition.
+        reportingScope.launch {
         finished?.let { metrics ->
             dev.jlz.presence.study.StudyRuntimeReporter.post(context, "finish", metrics.sessionId,
                 dev.jlz.presence.study.StudyRuntimeReporter.finishPayload(metrics))
         }
         started?.let { sid -> dev.jlz.presence.study.StudyRuntimeReporter.post(context, "start", sid, org.json.JSONObject()) }
+        }
     }
 
     suspend fun pauseDaily() {

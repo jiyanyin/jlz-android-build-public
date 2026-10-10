@@ -419,6 +419,7 @@ export default function BetweenWorlds() {
       ),
     }));
     send("/api/web/daily-plan/task", { date, action, task: taskPayload });
+    if (action === "complete") { try { window.WorldBetweenStudy?.taskCompleted?.(); } catch { /* Local artwork never blocks task persistence. */ } }
   }, [send, update]);
 
   const openTaskEditor = useCallback((task: DailyTask | null = null) => {
