@@ -288,18 +288,20 @@ export default function BetweenWorlds() {
     return () => { window.clearInterval(timer); window.removeEventListener('focus',visible); window.removeEventListener('online',visible); document.removeEventListener('visibilitychange',visible); };
   }, [loaded, state.runtimeUrl, state.webToken, pullContent]);
   const copy = contentValues(state.worldContent, now ?? new Date());
+  const displayedPart = contentPart(now ?? new Date());
   const effectiveTheme: Theme = THEMES.includes(copy['theme.id'] as Theme) ? copy['theme.id'] as Theme : state.theme;
   useEffect(() => { document.body.dataset.theme = effectiveTheme; }, [effectiveTheme]);
   useEffect(() => {
     const content=state.worldContent, c=cfg();
     if(!contentOnline || !content || !c || document.visibilityState !== 'visible') return;
-    const key=content.revision+':'+content.view_id+':'+(welcome?'welcome':tab);
+    const appliedKeys=['theme.id',...(welcome?['welcome.line']:tab==='home'?['home.moment','greetings.'+displayedPart,unlockHello?'unlock.line':'study.nudge']:tab==='room'?['jlz.room.teaser']:[])].filter(k=>!!copy[k]);
+    const key=content.revision+':'+content.view_id+':'+(welcome?'welcome':tab)+':'+appliedKeys.join(',');
     if(appliedContent.current === key) return;
     const frame=requestAnimationFrame(() => {
-      void runtime.contentReceipt(c,{...device.current,surface:'web',revision:content.revision,view_id:content.view_id,applied_keys:['theme.id',...(welcome?['welcome.line']:tab==='home'?['home.moment','greetings.'+contentPart(),'unlock.line','study.nudge']:tab==='room'?['jlz.room.teaser']:[])]}).then(()=>{appliedContent.current=key;}).catch(()=>{setContentOnline(false);});
+      void runtime.contentReceipt(c,{...device.current,surface:'web',revision:content.revision,view_id:content.view_id,applied_keys:appliedKeys}).then(()=>{appliedContent.current=key;}).catch(()=>{setContentOnline(false);});
     });
     return ()=>cancelAnimationFrame(frame);
-  },[state.worldContent,contentOnline,effectiveTheme,welcome,tab]);
+  },[state.worldContent,contentOnline,effectiveTheme,welcome,tab,unlockHello,displayedPart]);
   const changeTheme = async () => {
     const theme=THEMES[(THEMES.indexOf(effectiveTheme)+1)%THEMES.length];
     const c=cfg();

@@ -25,9 +25,10 @@ class WorldContentCacheTest {
         cache.save(JSONObject().put("revision",1).put("entries",JSONArray().put(row("stale"))))
         assertEquals("base",WorldContentCache(context).text("gate.incoming","built-in"))
         assertEquals("safe",cache.text("gate.connected","safe"))
-        cache.displayed(listOf("gate.incoming"))
+        cache.displayed(listOf("gate.incoming", "gate.connected"))
         val receipt=JSONObject(context.getSharedPreferences("world_content_v1",Context.MODE_PRIVATE).getString("pending_receipt","{}")!!)
         assertEquals(2,receipt.getInt("revision"))
         assertEquals("gate.incoming",receipt.getJSONArray("applied_keys").getString(0))
+        assertEquals(1,receipt.getJSONArray("applied_keys").length())
     }
 }

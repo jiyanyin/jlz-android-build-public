@@ -14,7 +14,7 @@ class WorldContentCache(context: Context) {
             if(!doc.has("revision")) return
             val receipt=JSONObject().put("space_id","world-between-primary").put("surface","native")
                 .put("device_scope",doc.optString("device_scope","shared")).put("revision",doc.getLong("revision"))
-                .put("view_id",doc.getString("view_id")).put("applied_keys",org.json.JSONArray(keys))
+                .put("view_id",doc.getString("view_id")).put("applied_keys",org.json.JSONArray(keys.filter { text(it, "").isNotBlank() }))
             prefs.edit().putString("pending_receipt",receipt.toString()).apply()
         }
     }
