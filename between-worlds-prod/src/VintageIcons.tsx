@@ -40,6 +40,7 @@ export function VintageIcon({ name, size = 36 }: { name: VintageIconName; size?:
       stroke="#e2c591" strokeWidth="1.5" fill="none"/>
     <path d="M11 32h4m34 0h4M32 10v4m0 36v4" stroke="#aa829a" strokeWidth="1"/>
     {motif(name)}
+    {(name === "study" || name === "todo") && <g transform="translate(28 28) scale(.43)">{cat}</g>}
     <path d="M12 50Q24 46 32 52Q40 46 52 50" fill="none" stroke="#b78b9d" strokeWidth="2"/>
     <circle cx="13" cy="15" r="2" fill="#a95671" stroke="#f0dbbd"/>
     <circle cx="51" cy="46" r="2" fill="#a95671" stroke="#f0dbbd"/>
