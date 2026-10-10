@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DEFAULT_RUNTIME_URL, extractMessages, extractRecords, newEventId, runtime, RuntimeError, type OutboxItem, type RemoteMessage, type RemoteRecord, type RuntimeConfig, type WritePath } from "./lib/runtime";
 import { EMPTY_VOICE_MEMORY, formatVoiceClock, formatVoiceDate, selectVoiceCard, type VoiceMemory, type VoiceStatus } from "./lib/voiceEngine";
-import { emptyDailyPlan, optimisticTaskMutation, planSections, TASK_CATEGORIES, type DailyPlan, type DailyTask } from "./lib/dailyPlan";
+import { emptyDailyPlan, optimisticTaskMutation, planSections, taskDetailText, TASK_CATEGORIES, type DailyPlan, type DailyTask } from "./lib/dailyPlan";
 import { emptyStudySummary, formatStudyClock, formatStudyMinutes, liveStudyTotals, studyDeviceLabel, type StudySummary } from "./lib/studySession";
 import { appHubActions, appHubCategories, appHubHomeItems, emptyAppHubSnapshot, readNativeAppHub, type AppHubItem, type AppHubSnapshot } from "./lib/appHub";
 import { finishNativeStudy, liveNativeStudy, nativeStudyAvailable, openNativeBanduread, openNativeFenbi, pauseNativeStudy, readNativeStudy, resumeNativeStudy, startNativeStudy, type NativeStudySnapshot } from "./lib/nativeStudy";
@@ -1018,7 +1018,7 @@ function HomePage({
   };
   const completedCount = plan.tasks.filter(t => t.status === "done").length;
   const renderTask = (task: DailyTask) => {
-    const detail = task.description?.trim() || (task.title.length > 24 ? task.title : "");
+    const detail = taskDetailText(task) || (task.title.length > 24 ? task.title : "");
     return <article className="task-entry" key={task.task_id}>
       <div className="task-entry-heading">
         <button className={`task-check ${task.status === "done" ? "done" : ""}`} aria-label={task.status === "done" ? "重新打开任务" : "完成任务"}
@@ -1039,10 +1039,9 @@ function HomePage({
         {task.user_pinned ? " · 已固定" : ""}
         {task.due_at ? ` · 截止 ${task.due_at.match(/T(\d{2}:\d{2})/)?.[1] || task.due_at}` : ""}
       </div>
-      {(detail || task.next_action) && <details className="task-entry-details">
+      {detail && <details className="task-entry-details">
         <summary>具体内容 <span>展开 / 收起</span></summary>
-        {detail && <p>{detail}</p>}
-        {task.next_action && <p className="task-entry-next"><b>下一步：</b>{task.next_action}</p>}
+        <p>{detail}</p>
       </details>}
     </article>;
   };
@@ -1263,7 +1262,7 @@ function CalendarPage({ month, setMonth, addRecord, send, notify, savedText, rec
   const prediction=cycleWindow(entries.filter(r=>cycleIds.has(r.id)||cycleIds.has(r.related_event_id||"")));
   const dayEntries=entries.filter(r=>r.date.slice(0,10)===selected).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
   const record=(type:string,body:string,payload:Record<string,unknown>)=>{const id=newEventId(),at=new Date().toISOString();addRecord({id,event_id:id,sync:'queued',type,at,body,date:selected,...payload},['notes','journal']);send('/api/web/journal',{...payload,type,text:body,date:selected,at},id);notify(savedText(body));};
-  return <section className="page active"><PageHead kicker="TIME & MEMORY" title="共历" en="Calendar" copy="选一个日子，看看我们真实留下了什么。" /><div className="calendar-box glass"><div className="calendar-top"><button onClick={()=>setMonth(new Date(y,m-1,1))}>‹</button><b>{y} / {String(m+1).padStart(2,'0')}</b><button onClick={()=>setMonth(new Date(y,m+1,1))}>›</button></div><div className="week-row">{['一','二','三','四','五','六','日'].map(d=><span key={d}>{d}</span>)}</div><div className="calendar-grid">{Array.from({length:42},(_,i)=>{const d=new Date(start);d.setDate(start.getDate()+i);const k=keyDate(d);return <button key={k} onClick={()=>setSelected(k)} className={`${d.getMonth()!==m?'off ':''}${k===selected?'today':''}`}>{d.getDate()}{entries.some(r=>r.date.slice(0,10)===k)&&<small>·</small>}</button>;})}</div></div><article className="room-entry glass"><h3>{selected}</h3>{dayEntries.map(r=><div key={r.id}><small>{r.type}</small><p>{r.body}</p><button className="text-action" onClick={()=>{const text=window.prompt('写下纠正，原记录会保留：',r.body);if(text?.trim())record('纠正',text.trim(),{kind:'correction',related_event_id:r.id});}}>纠正</button></div>)}{plan?.date===selected&&plan.tasks.map(t=><p key={t.task_id}>{t.status==='done'?'✓':'○'} {t.title} · {t.next_action}</p>)}{!dayEntries.length&&plan?.date!==selected&&<p className="hint">这一天还没有加载到记录。</p>}</article><div className="journal-box glass"><h3>生活与身体</h3>{prediction ? <p className="hint">根据已加载的 {prediction.intervals} 个历史间隔估计：{prediction.from} — {prediction.to}。仅为记录推算，不是确认日期或医学判断。</p> : <p className="hint">至少有三次未被纠正的开始记录后，才显示历史间隔估计；不预设固定周期。</p>}<p className="hint">只记录你明确确认的事实，日期为 {selected}。</p><div className="journal-row"><button onClick={()=>record('经期','生理期实际开始',{kind:'period',event:'start'})}>这天开始</button><button onClick={()=>record('经期','生理期实际结束',{kind:'period',event:'end'})}>这天结束</button></div><textarea maxLength={300} placeholder="简单记下吃了什么" value={food} onChange={e=>setFood(e.target.value)} /><button className="primary" onClick={()=>{if(food.trim()){record('饮食',food.trim(),{kind:'food'});setFood('');}}}>记下来</button></div></section>;
+  return <section className="page active"><PageHead kicker="TIME & MEMORY" title="共历" en="Calendar" copy="选一个日子，看看我们真实留下了什么。" /><div className="calendar-box glass"><div className="calendar-top"><button onClick={()=>setMonth(new Date(y,m-1,1))}>‹</button><b>{y} / {String(m+1).padStart(2,'0')}</b><button onClick={()=>setMonth(new Date(y,m+1,1))}>›</button></div><div className="week-row">{['一','二','三','四','五','六','日'].map(d=><span key={d}>{d}</span>)}</div><div className="calendar-grid">{Array.from({length:42},(_,i)=>{const d=new Date(start);d.setDate(start.getDate()+i);const k=keyDate(d);return <button key={k} onClick={()=>setSelected(k)} className={`${d.getMonth()!==m?'off ':''}${k===selected?'today':''}`}>{d.getDate()}{entries.some(r=>r.date.slice(0,10)===k)&&<small>·</small>}</button>;})}</div></div><article className="room-entry glass"><h3>{selected}</h3>{dayEntries.map(r=><div key={r.id}><small>{r.type}</small><p>{r.body}</p><button className="text-action" onClick={()=>{const text=window.prompt('写下纠正，原记录会保留：',r.body);if(text?.trim())record('纠正',text.trim(),{kind:'correction',related_event_id:r.id});}}>纠正</button></div>)}{plan?.date===selected&&plan.tasks.map(t=><p key={t.task_id}>{t.status==='done'?'✓':'○'} {t.title}</p>)}{!dayEntries.length&&plan?.date!==selected&&<p className="hint">这一天还没有加载到记录。</p>}</article><div className="journal-box glass"><h3>生活与身体</h3>{prediction ? <p className="hint">根据已加载的 {prediction.intervals} 个历史间隔估计：{prediction.from} — {prediction.to}。仅为记录推算，不是确认日期或医学判断。</p> : <p className="hint">至少有三次未被纠正的开始记录后，才显示历史间隔估计；不预设固定周期。</p>}<p className="hint">只记录你明确确认的事实，日期为 {selected}。</p><div className="journal-row"><button onClick={()=>record('经期','生理期实际开始',{kind:'period',event:'start'})}>这天开始</button><button onClick={()=>record('经期','生理期实际结束',{kind:'period',event:'end'})}>这天结束</button></div><textarea maxLength={300} placeholder="简单记下吃了什么" value={food} onChange={e=>setFood(e.target.value)} /><button className="primary" onClick={()=>{if(food.trim()){record('饮食',food.trim(),{kind:'food'});setFood('');}}}>记下来</button></div></section>;
 }
 function keyDate(d: Date) { return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-"); }
 
@@ -1422,8 +1421,7 @@ function TaskEditor({
  const [title, setTitle] = useState(task?.title ?? "");
  const [category, setCategory] = useState(task?.category ?? "考试/学习");
  const [priority, setPriority] = useState<DailyTask["priority"]>(task?.priority ?? "normal");
- const [description,setDescription]=useState(task?.description ?? "");
- const [nextAction, setNextAction] = useState(task?.next_action ?? "");
+ const [description,setDescription]=useState(() => taskDetailText(task));
  const [minutes, setMinutes] = useState(task?.estimated_minutes ? String(task.estimated_minutes) : "");
  const [dueTime, setDueTime] = useState(() => {
    const raw = task?.due_at ?? "";
@@ -1434,6 +1432,9 @@ function TaskEditor({
  const save = () => {
    const value = title.trim();
    if (!value) { notify("先写清楚这件事是什么。"); return; }
+   const detail = description.trim();
+   // Never silently drop older GPT-supplied next_action content during migration.
+   if (detail.length > 2000) { notify("具体内容最多 2000 字。原有内容已保留，请精简后再保存。"); return; }
    const parsedMinutes = Math.max(0, Math.min(1440, Number(minutes) || 0));
    mutateTask("upsert", {
      task_id: task?.task_id || newEventId(),
@@ -1446,8 +1447,8 @@ function TaskEditor({
      owner: task?.owner ?? "user",
      estimated_minutes: parsedMinutes,
      due_at: dueTime ? `${date}T${dueTime}:00+08:00` : "",
-     next_action: nextAction.trim(),
-     description: description.trim(),
+     next_action: "", // Preserve legacy API shape while writing one visible content field.
+     description: detail,
      source: task?.source || "world_between_web",
      sort_order: task?.sort_order ?? 100,
    });
@@ -1457,8 +1458,7 @@ function TaskEditor({
  return <>
    <p className="sheet-desc">每件待办分成一句简短标题和一段具体内容。首页只保留「今日待办」入口，完整内容在清单中展开查看。</p>
    <div className="field"><label>待办小标题 · 简短概括</label><input maxLength={180} placeholder="例如：修复小红书拦截页" value={title} onChange={e=>setTitle(e.target.value)} /></div>
-   <div className="field"><label>具体内容</label><textarea maxLength={2000} value={description} onChange={e=>setDescription(e.target.value)} placeholder="详细要求、需要做的事、参考材料等" /></div>
-   <div className="field"><label>下一步具体做什么</label><input maxLength={240} placeholder="例如：先打开伴读，复盘第 1 题错因" value={nextAction} onChange={e=>setNextAction(e.target.value)} /></div>
+   <div className="field"><label>具体内容</label><textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="详细要求、要做的事情、参考材料，都写在这里" aria-describedby="task-description-hint" /><small id="task-description-hint" className="hint">可选。旧版「下一步」文字也会合并到这里。</small></div>
    <div className="task-editor-grid">
      <div className="field"><label>分类</label><select value={category} onChange={e=>setCategory(e.target.value)}>{TASK_CATEGORIES.map(item=><option value={item} key={item}>{item}</option>)}</select></div>
      <div className="field"><label>优先级</label><select value={priority} onChange={e=>setPriority(e.target.value as DailyTask["priority"])}><option value="high">高</option><option value="normal">普通</option><option value="low">低</option></select></div>
