@@ -706,7 +706,7 @@ class FloatingPresenceService : Service() {
             liveService?.let { live ->
                 val mode = live.focusState.modeNow()
                 if (mode == dev.jlz.presence.focus.DailyMode.SLEEP || dev.jlz.presence.cowatch.CoWatchState.active) return
-                live.avatar?.react("proud", if (mode == dev.jlz.presence.focus.DailyMode.FOCUS) "watch" else live.idleMood())
+                live.avatar?.react("celebrate", if (mode == dev.jlz.presence.focus.DailyMode.FOCUS) "watch" else live.idleMood())
             }
         }
 

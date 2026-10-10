@@ -71,8 +71,11 @@ class ChibiPresenceView(context: Context) : View(context) {
     private val artworkPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val sleepingPose = listOf("sleep_hug", "sleep_blanket", "sleep_sitting")[Random.nextInt(3)]
     private val studyingPose = listOf("study_watch", "study_crouch", "study_read")[Random.nextInt(3)]
+    private val posePicker = QAvatarStateMachine()
+    private var pickedMood = ""
+    private var pickedSprite = "idle"
 
-    private fun spriteName(): String = when (mood) {
+    private fun baseSpriteName(): String = when (mood) {
         "watch", "watching" -> studyingPose
         "break", "wake" -> "sleep_wave"
         "sleepy" -> "sleep_drowsy"
@@ -91,6 +94,22 @@ class ChibiPresenceView(context: Context) : View(context) {
         "proud" -> "react_proud"
         "idle", "thinking" -> listOf("idle", "idle_crouch", "idle_arms")[pose]
         else -> "idle"
+    }
+
+    private fun spriteName(): String {
+        if (pickedMood != mood) {
+            val pool = when (mood) {
+                "watch", "watching" -> listOf("study_watch", "study_read", "study_note", "study_think", "study_arms", "study_stand")
+                "idle", "thinking" -> listOf("idle", "idle_crouch", "idle_think", "idle_smile", "idle_wave", "idle_arms")
+                "sleep" -> listOf("sleep_hug", "sleep_blanket", "sleep_sitting", "sleep_curl", "sleep_nest")
+                "break" -> listOf("idle_wave", "idle_smile", "idle_crouch")
+                "celebrate" -> listOf("study_encourage", "react_proud", "idle_smile")
+                else -> listOf(baseSpriteName())
+            }
+            pickedSprite = posePicker.pickAsset(pool) ?: "idle"
+            pickedMood = mood
+        }
+        return pickedSprite
     }
 
     private fun spriteFor(name: String): Bitmap? {
