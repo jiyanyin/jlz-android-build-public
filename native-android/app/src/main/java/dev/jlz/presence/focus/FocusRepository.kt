@@ -95,6 +95,8 @@ class FocusRepository(private val context: Context) {
         val now = System.currentTimeMillis()
         context.focusDataStore.edit { prefs ->
             prefs[Keys.active] = true
+            prefs[Keys.dailyMode] = DailyMode.NORMAL.name
+            prefs[Keys.pausedAt] = 0L
             prefs[Keys.blocked] = blockedPackages.filter { it.isNotBlank() }.toSet()
             prefs[Keys.temporaryReleases] = emptySet()
             prefs[Keys.startedAt] = now
@@ -123,11 +125,7 @@ class FocusRepository(private val context: Context) {
     suspend fun setDailyMode(mode: DailyMode, minutes: Int = 25) {
         val study = dev.jlz.presence.study.StudySessionRepository(context)
         val old = study.state.first()
-        if (old.active) {
-            val metrics = study.finish()
-            dev.jlz.presence.study.StudyRuntimeReporter.post(context, "finish", metrics.sessionId,
-                dev.jlz.presence.study.StudyRuntimeReporter.finishPayload(metrics))
-        }
+        val finished = if (old.active) study.finish() else null
         val now = System.currentTimeMillis()
         context.focusDataStore.edit { prefs ->
             prefs[Keys.dailyMode] = mode.name
@@ -142,13 +140,16 @@ class FocusRepository(private val context: Context) {
                 else -> ""
             }
         }
-        if (mode == DailyMode.FOCUS) {
-            val sid = study.start()
-            dev.jlz.presence.study.StudyRuntimeReporter.post(context, "start", sid, org.json.JSONObject())
-        }
+        val started = if (mode == DailyMode.FOCUS) study.start() else null
         if (mode in setOf(DailyMode.FOCUS, DailyMode.BREAK)) dev.jlz.presence.study.StudyTimerService.sync(context)
         else dev.jlz.presence.study.StudyTimerService.stop(context)
         lifeStore.recordTimeline("daily_mode", "切换作息模式", mode.name)
+        // Offline reporting must never delay the local gate, timer or sleep transition.
+        finished?.let { metrics ->
+            dev.jlz.presence.study.StudyRuntimeReporter.post(context, "finish", metrics.sessionId,
+                dev.jlz.presence.study.StudyRuntimeReporter.finishPayload(metrics))
+        }
+        started?.let { sid -> dev.jlz.presence.study.StudyRuntimeReporter.post(context, "start", sid, org.json.JSONObject()) }
     }
 
     suspend fun pauseDaily() {

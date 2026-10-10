@@ -1052,6 +1052,7 @@ function HomePage({
     <div className="brand-block"><div className="cn">世界之间</div><div className="en">Between Worlds</div></div>
     <article className="hero"><img src={homePortrait} alt="纪临洲" /><div className="hero-fade" /><div className="hero-copy"><div className="micro">{dateLabel}</div><div className="hero-clock">{timeText}</div><div className="hero-context">{voice.contextLabel}</div><h2>{voice.headline}</h2><p>{voice.body}</p><em>For you, in all worlds.</em></div></article>
     <div className="runtime-banner"><div><b>{b.title}</b><span>{b.sub}</span></div><span className="badge">{b.badge}</span></div>
+    <button className="task-summary glass" onClick={() => { window.location.href = 'jlz://native/modes'; }} aria-label="打开作息与专注模式"><span className="task-summary-copy"><strong>作息与专注</strong><small>专注 · 短休 · 睡眠 · 闹钟</small></span><span className="task-summary-open">进入 ↗</span></button>
 
     <SectionHead title="先从这里走" english="APP HUB" />
     <div className="app-hub-card glass">
