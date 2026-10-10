@@ -11,6 +11,7 @@ import { exportWorldPack, type InstructionPack } from "./lib/jlzpack";
 import { stageInstructionPack } from "./lib/packApply";
 import { roomEntries, cycleWindow } from "./lib/worldEntries";
 import { RescuePanel } from "./RescuePanel";
+import { VintageIcon, type VintageIconName } from "./VintageIcons";
 
 import { contentValues, contentPart, contentDevice, THEMES, type Theme, type WorldContent } from "./lib/worldContent";
 type Tab = "home" | "echo" | "timeline" | "calendar" | "room" | "more";
@@ -610,7 +611,7 @@ export default function BetweenWorlds() {
     </div>
 
     <main className="app-shell">
-      <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}>✦ 换装</button><button className="round-btn" aria-label="更多" onClick={()=>switchTab("more")}>⋯</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
+      <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}><VintageIcon name="theme" size={22} /> 换装</button><button className="round-btn" aria-label="更多" onClick={()=>switchTab("more")}>⋯</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
       {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} copy={copy} voice={{...voiceCard, headline:copy["greetings."+contentPart(now ?? new Date())] || voiceCard.headline, body:copy["home.moment"] || voiceCard.body}} homePortrait={homePortrait} selectTaskDate={selectTaskDate} plan={state.dailyPlan?.date === taskDate ? state.dailyPlan : emptyDailyPlan(taskDate)} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} unlockHello={unlockHello} appHub={appHub} launchApp={launchHubApp} openBanduread={openBanduread} openApps={() => setSheet("apps")} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
       {tab === "echo" && <EchoPage onTask={(text,id)=>{mutateDailyTask("upsert",{date:keyDate(new Date()),task_id:"echo-task-"+id.slice(-70),title:text.slice(0,180),description:text,source:"echo:"+id});notify("已放进今日任务");}} state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
       {tab === "timeline" && <TimelinePage notes={state.notes} remote={state.remoteRecords} />}
@@ -619,7 +620,7 @@ export default function BetweenWorlds() {
       {tab === "more" && <section className="content-sync glass"><h3>同步与更改记录</h3>{state.outbox.filter(i=>i.rejected).map(i=><p key={i.event_id}>未同步：{String(i.body.text || (i.body.task as DailyTask|undefined)?.title || "一条记录")}<button onClick={()=>{update(s=>({...s,outbox:s.outbox.map(x=>x.event_id===i.event_id?{...x,rejected:false,error:undefined}:x)}));void connect();}}>重试</button></p>)}<p>{contentOnline ? '已连接' : '离线 · 使用本机有效内容'} · 内容版本 {state.worldContent?.revision ?? 0}</p><p>主题：{effectiveTheme} · 只有实际写入的内容来自官端</p><button className="secondary" onClick={()=>void pullContent()}>立即同步</button> <button className="secondary" disabled={!contentOnline || !state.worldContent?.revision} onClick={()=>void rollbackContent()}>恢复上一版</button>{state.worldContent?.recent_changes.map(change=><p key={change.revision}>v{change.revision} · {change.keys.join(' / ')}<small> {change.updated_at}</small></p>)}{state.worldContent?.devices?.map(d=><p key={d.device_id}>{d.device_type==="tablet"?"平板":"手机"} · {d.online_state==="online"?"在线":"暂不可达"} · {d.last_seen_age_seconds} 秒前连接</p>)}{state.worldContent?.receipts.map(r=><p key={r.device_id+r.surface}>{r.device_id} · {r.surface} 已应用 v{r.revision} · {(r.applied_keys||[]).join(" / ")}</p>)}</section>}
       {tab === "more" && <MorePage state={state} update={update} setWelcome={setWelcome} banner={banner} reconnect={() => void connect()} />}
       <nav className="dock" aria-label="主导航">
-        {([['home','⌂','现在'],['echo','☰','回响'],['timeline','♡','你我之间'],['room','✧','纪临洲'],['calendar','▣','共历']] as [Tab,string,string][]).map(([id, icon, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => switchTab(id)}>{icon}<span>{label}</span></button>)}
+        {([["home","now","现在"],["echo","echo","回响"],["timeline","between","你我之间"],["room","jilinzhou","纪临洲"],["calendar","calendar","共历"]] as [Tab,VintageIconName,string][]).map(([id, icon, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => switchTab(id)}><VintageIcon name={icon} size={29}/><span>{label}</span></button>)}
       </nav>
     </main>
     <div className={`scrim ${sheet ? "show" : ""}`} onClick={() => setSheet(null)} />
@@ -1055,7 +1056,7 @@ function HomePage({
     <div className="app-hub-card glass">
       <div className="app-hub-copy"><span>{unlockHello ? "UNLOCKED · 先看我一眼" : "START HERE · 少一点乱跑"}</span><b>{unlockHello ? copy["unlock.line"] || "解锁了。先决定你现在要去哪。" : copy["study.nudge"] || "学习放前面，其他的都还在。"}</b><small>{"伴读、粉笔与常用应用"}</small></div>
       <div className="app-hub-grid">
-        <button className="hub-tile study" onClick={openBanduread}><span className="hub-mark">伴</span><b>伴读</b><small>刷题 / 复盘</small></button>
+        <button className="hub-tile study" onClick={openBanduread}><span className="hub-mark"><VintageIcon name="study" size={36}/></span><b>伴读</b><small>刷题 / 复盘</small></button>
         {homeApps.map((item) => <button className={`hub-tile ${item.category === "学习" ? "study" : ""}`} key={item.package_name} onClick={() => launchApp(item)}><span className="hub-mark">{item.label.slice(0, 1)}</span><b>{item.label}</b><small>{item.category}</small></button>)}
         <button className="hub-tile more" onClick={openApps}><span className="hub-mark">＋</span><b>全部</b><small>App 抽屉</small></button>
       </div>
@@ -1063,7 +1064,7 @@ function HomePage({
 
     <button className="task-summary glass" onClick={() => setTasksOpen(true)} aria-label="打开每日待办清单">
       <span className="task-summary-copy"><strong>{plan.date === keyDate(new Date()) ? "今日待办" : plan.date + " · 待办"}</strong><small>{plan.tasks.length ? `已完成 ${completedCount} / ${plan.tasks.length} 项` : "今天还没有任务"}</small></span>
-      <span className="task-summary-open">查看待办 <span aria-hidden="true">↗</span></span>
+      <span className="task-summary-open"><VintageIcon name="todo" size={26}/> 查看待办 <span aria-hidden="true">↗</span></span>
     </button>
     {tasksOpen && <div className="task-drawer-backdrop" onClick={closeTasks} role="presentation">
       <section className={`task-drawer ${tasksExpanded ? "expanded" : ""}`} role="dialog" aria-modal="true" aria-label="每日待办清单" onClick={e => e.stopPropagation()}>
@@ -1123,7 +1124,7 @@ function HomePage({
       </div>
     </div>
 
-    <SectionHead title="今日的私藏信笺" english="JUST FOR TODAY" /><div className="action-grid"><button className="action-card" onClick={() => openSheet("status")}><span className="ico">♡</span><b>状态灯</b><small>把这一刻的你告诉我</small></button><button className="action-card rose" onClick={() => openSheet("note")}><span className="ico">✎</span><b>随手记</b><small>写一封小小的信</small></button><button className="action-card wide" onClick={() => openSheet("life")}><span className="ico">◌</span><b>此刻我在</b><small>把小猫现在在做什么告诉我</small></button></div>
+    <SectionHead title="今日的私藏信笺" english="JUST FOR TODAY" /><div className="action-grid"><button className="action-card" onClick={() => openSheet("status")}><span className="ico"><VintageIcon name="status" size={42}/></span><b>状态灯</b><small>把这一刻的你告诉我</small></button><button className="action-card rose" onClick={() => openSheet("note")}><span className="ico"><VintageIcon name="note" size={42}/></span><b>随手记</b><small>写一封小小的信</small></button><button className="action-card wide" onClick={() => openSheet("life")}><span className="ico"><VintageIcon name="presence" size={42}/></span><b>此刻我在</b><small>把小猫现在在做什么告诉我</small></button></div>
 
   </section>;
 }
@@ -1231,7 +1232,7 @@ function RoomPage({ records, teaser, portrait }: { records: RemoteRecord[]; teas
         const latest = items[0];
         return <article className={`room-collection-card ${items.length ? "has-content" : "is-empty"}`} key={name}>
           <div className="room-collection-top">
-            <span className={`room-emblem room-emblem-${icon}`} aria-hidden="true"><i>{icon === "state" ? "✧" : icon === "note" ? "✎" : icon === "between" ? "♡" : icon === "letter" ? "✉" : "⚝"}</i></span>
+            <span className={`room-emblem room-emblem-${icon}`} aria-hidden="true"><VintageIcon name={icon === "state" ? "status" : icon === "note" ? "note" : icon === "between" ? "between" : icon === "letter" ? "echo" : "calendar"} size={48}/></span>
             <div className="room-collection-title"><small>{subtitle}</small><h3>{name}</h3></div>
             <span className="room-card-star" aria-hidden="true">✦</span>
           </div>
