@@ -859,14 +859,14 @@ fun TripScreen() {
         IceGlassCard {
             Text("同行 GPS 行程", color = TextPrimary, style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
-            Text("开始后本地记录位置，自动过滤漂移，Timeline 只写摘要，不自动上传。", color = TextSecondary)
+            Text("只有你手动开始，才会上报本次 GPS 行程。通知栏会显示共享状态，结束后停止并清除本地精确轨迹。", color = TextSecondary)
             Spacer(Modifier.height(16.dp))
             if (active) {
                 Text("行程进行中…", color = BlueGlow)
                 Spacer(Modifier.height(12.dp))
-                IceButton("结束行程", onClick = { TripController.stop(context) }, primary = true)
+                IceButton("停止同行与位置共享", onClick = { TripController.stop(context) }, primary = true)
             } else {
-                IceButton("开始行程", onClick = { TripController.start(context) }, primary = true)
+                IceButton("开始同行 · 共享本次行程", onClick = { TripController.start(context) }, primary = true)
             }
         }
     }
