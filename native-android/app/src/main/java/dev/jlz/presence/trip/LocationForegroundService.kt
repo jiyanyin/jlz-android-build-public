@@ -213,9 +213,12 @@ class LocationForegroundService : Service() {
                                 .put("provider", point.provider))
                         }
                         val ack = client.sendTripPoints(snap.sessionId, batch)
-                        if (ack.optBoolean("ok", false) && ack.optJSONArray("point_ids")?.length() == points.size) {
-                            uploadedPoints += points.size
-                        }
+                        check(ack.optBoolean("ok", false) && ack.optJSONArray("point_ids")?.length() == points.size) { "trip_points_not_acknowledged" }
+                        uploadedPoints += points.size
+                    } else {
+                        // No new GPS fix still needs a real authenticated network receipt.
+                        // Local configuration alone is never proof that the link is alive.
+                        check(client.sendTripPoints(snap.sessionId, JSONArray()).optBoolean("ok", false)) { "trip_link_not_acknowledged" }
                     }
                     lastSuccessAt = System.currentTimeMillis()
                 }
