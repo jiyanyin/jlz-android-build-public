@@ -984,7 +984,7 @@ class NativeRuntimeService : Service() {
         )
         if (plan == null || due.isEmpty()) return
 
-          due.forEach { step ->
+        due.forEach { step ->
               val reminderPayload=runCatching { JSONObject(step.payloadJson) }.getOrDefault(JSONObject())
               if(reminderPayload.optString("task_id").isNotBlank() || reminderPayload.optString("reply_to").isNotBlank()) {
                   // Check only a due reminder, never each idle timer tick. Offline is silent.
