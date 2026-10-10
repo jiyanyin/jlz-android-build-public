@@ -9,6 +9,10 @@ export const DEFAULT_RUNTIME_URL = "https://jlz-palm-server.onrender.com";
 export const SPACE_ID = "world-between-primary";
 
 export type RuntimeConfig = { baseUrl: string; token: string };
+export type TripPoint = { point_id:string; observed_at_ms:number; lat:number; lng:number; accuracy_m:number; speed_m_s:number; bearing_deg:number; provider:string };
+export type TripSummary = { session_id:string; device_id:string; status:"active"|"stopped"; sharing:boolean; fresh:boolean; stale:boolean; sample_count:number; started_at_ms:number; stopped_at_ms:number|null; last_point:TripPoint|null; last_observed_at_ms:number|null; last_accuracy_m:number|null; retention_hours:number };
+export type TripTrace = {ok:boolean;session:TripSummary;points:TripPoint[];next_cursor:number|null;total:number};
+
 export type HomeBridge = {
   available(): boolean;
   request(path: string, method: string, body: string): string;
@@ -70,6 +74,13 @@ async function request<T>(cfg: RuntimeConfig, path: string, init: { method?: "GE
 
 const q = `space_id=${encodeURIComponent(SPACE_ID)}`;
 export const runtime = {
+  // Explicit trip sessions are read only when the user visits the trip panel.
+  recentTrip: (cfg: RuntimeConfig, deviceId = "android-phone-native-n0") =>
+    request<{ok:boolean;session:TripSummary|null}>(cfg,
+      "/api/web/trips/recent?device_id=" + encodeURIComponent(deviceId)),
+  tripTrace: (cfg: RuntimeConfig, sessionId: string, cursor=0, limit=200) =>
+    request<TripTrace>(cfg, "/api/web/trips/" + encodeURIComponent(sessionId) + "/trace?" +
+      new URLSearchParams({cursor:String(cursor),limit:String(limit)})),
   worldContent: (cfg: RuntimeConfig, scope: string) => request<{content:WorldContent}>(cfg, `/api/web/world-content?${q}&device_scope=${encodeURIComponent(scope)}`),
   changeContent: (cfg:RuntimeConfig, body:Record<string,unknown>, rollback=false) => request<{content:WorldContent}>(cfg, `/api/web/world-content${rollback?'/rollback':''}`, {method:'POST',body:{space_id:SPACE_ID,...body}}),
   contentReceipt: (cfg:RuntimeConfig, body:Record<string,unknown>) => request(cfg, '/api/web/world-content/receipt', {method:'POST',body:{space_id:SPACE_ID,...body}}),
