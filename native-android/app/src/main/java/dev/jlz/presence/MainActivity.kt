@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
                 "/diagnostics" -> PresenceRouteBus.open(PresenceRoute.Diagnostics)
                 "/today" -> PresenceRouteBus.open(PresenceRoute.Today)
                 "/study" -> PresenceRouteBus.open(PresenceRoute.Study)
+                "/trip" -> PresenceRouteBus.open(PresenceRoute.Trip)
                 else -> PresenceRouteBus.open(PresenceRoute.Home)
             }
             return

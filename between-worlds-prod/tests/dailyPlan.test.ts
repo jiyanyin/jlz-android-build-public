@@ -5,6 +5,7 @@ import {
   normalizeDailyPlan,
   optimisticTaskMutation,
   planSections,
+  taskDetailText,
 } from "../src/lib/dailyPlan.ts";
 
 test("normalizes Runtime DailyPlan payload", () => {
@@ -65,4 +66,32 @@ test("home exposes at most three main open tasks", () => {
   const sections = planSections(plan);
   assert.equal(sections.main.length, 3);
   assert.equal(sections.other.length, 2);
+});
+
+test("tracks completion timestamps without guessing dates for legacy tasks", () => {
+  const date = "2026-10-10";
+  let plan = emptyDailyPlan(date);
+  plan = optimisticTaskMutation(plan,date,"upsert",{task_id:"a",title:"学习"});
+  assert.equal(plan.tasks[0].completed_at, "");
+  plan = optimisticTaskMutation(plan,date,"complete",{task_id:"a"});
+  const stamp = plan.tasks[0].completed_at;
+  assert.ok(stamp && !Number.isNaN(Date.parse(stamp)));
+  plan = optimisticTaskMutation(plan,date,"upsert",{task_id:"a",description:"已整理"});
+  assert.equal(plan.tasks[0].completed_at,stamp);
+  plan = optimisticTaskMutation(plan,date,"reopen",{task_id:"a"});
+  assert.equal(plan.tasks[0].completed_at, "");
+
+  const old = normalizeDailyPlan({plan:{date,tasks:[{
+    task_id:"legacy",date,title:"旧已完成事项",status:"done",
+    created_at:"2026-09-29T12:00:00+08:00"
+  }]}},date);
+  assert.equal(old.tasks[0].completed_at, "");
+});
+
+test("legacy next action appears in the single concrete content field without duplicate text", () => {
+  assert.equal(taskDetailText({ description: "", next_action: "先打开伴读" }), "先打开伴读");
+  assert.equal(taskDetailText({ description: "整理材料", next_action: "先列清单" }), "整理材料\n先列清单");
+  assert.equal(taskDetailText({ description: "整理材料：先列清单", next_action: "先列清单" }), "整理材料：先列清单");
+  assert.equal(taskDetailText({ description: "详细内容", next_action: "" }), "详细内容");
+  assert.equal(taskDetailText(null), "");
 });

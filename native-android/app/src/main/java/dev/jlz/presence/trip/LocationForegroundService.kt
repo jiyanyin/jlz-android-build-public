@@ -18,6 +18,19 @@ import android.os.Looper
 import dev.jlz.presence.R
 import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.notification.NotificationIdentityMigration
+import dev.jlz.presence.runtime.RuntimeApiClient
+import dev.jlz.presence.runtime.RuntimeSettingsRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -31,6 +44,7 @@ data class TripPoint(
 data class TripSession(
     val active: Boolean = false,
     val startedAtMs: Long = 0L,
+    val sessionId: String = "",
     val points: List<TripPoint> = emptyList(),
     val tracking: Boolean = true
 )
@@ -66,6 +80,10 @@ class LocationForegroundService : Service() {
     val trip: StateFlow<TripSession> = _trip
     inner class LocalBinder : Binder() { fun getService(): LocationForegroundService = this@LocationForegroundService }
 
+    private val tripScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var uploadJob: Job? = null
+    private var uploadedPoints = 0
+    private val tripPreferences by lazy { getSharedPreferences("jlz_manual_trip_cache", MODE_PRIVATE) }
     private val maxPoints = 2000
     private val maxAccuracyM = 60f
     private val minDisplacementM = 8f
@@ -81,6 +99,9 @@ class LocationForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
         locationManager = getSystemService(LocationManager::class.java)
+        // Never auto-resume an interrupted precision-sharing session.
+        // A dead service's leftover local GPS buffer is not a sharing consent.
+        tripPreferences.edit().remove("points").remove("session_id").apply()
         NotificationIdentityMigration.ensureFresh(applicationContext)
         createChannel()
     }
@@ -93,13 +114,34 @@ class LocationForegroundService : Service() {
                 startTrip()
             }
             TripController.ACTION_STOP -> {
-                finishTrip()
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
+                if (_trip.value.active) {
+                    val endingSession = finishTrip()
+                    PendingTripStop.remember(applicationContext, endingSession.sessionId)
+                    uploadJob?.cancel()
+                    // GPS capture has stopped and its local raw buffer is gone.
+                    // Stop message is small, bounded and cannot restart sharing.
+                    tripScope.launch {
+                        try {
+                            withTimeoutOrNull(5000) {
+                                val cfg = RuntimeSettingsRepository(applicationContext).load()
+                                if (cfg.baseUrl.isNotBlank() && cfg.token.isNotBlank() && endingSession.sessionId.isNotBlank())
+                                    PendingTripStop.flush(applicationContext, RuntimeApiClient(cfg))
+                            }
+                        } catch (_: Exception) {
+                            // A failed stop leaves a stale last fix, never fresh telemetry.
+                        } finally {
+                            stopForeground(STOP_FOREGROUND_REMOVE)
+                            stopSelf()
+                        }
+                    }
+                } else {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
                 return START_NOT_STICKY
             }
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun hasLocationPermission(): Boolean =
@@ -109,12 +151,19 @@ class LocationForegroundService : Service() {
     // Guarded by hasLocationPermission; runCatching also handles revocation between check and call.
     @android.annotation.SuppressLint("MissingPermission")
     private fun startTrip() {
-        _trip.value = TripSession(active = true, startedAtMs = System.currentTimeMillis())
-        TripController.setActive(true)
-        if (!hasLocationPermission()) {
-            _trip.update { it.copy(tracking = false) }
+        if (_trip.value.active) return
+        // Fine location is explicitly required for the precise trail feature.
+        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            _trip.value = TripSession()
+            TripController.setActive(false)
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
             return
         }
+        _trip.value = TripSession(active = true,
+            startedAtMs = System.currentTimeMillis(), sessionId = UUID.randomUUID().toString())
+        uploadedPoints = 0
+        TripController.setActive(true)
         runCatching {
             // Coarse/fine, GPS + network; drift is filtered in ingest().
             if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
@@ -125,6 +174,49 @@ class LocationForegroundService : Service() {
             }
             _trip.update { it.copy(tracking = true) }
         }.onFailure { _trip.update { it.copy(tracking = false) } }
+        if (_trip.value.tracking) {
+            uploadJob?.cancel()
+            uploadJob = tripScope.launch { uploadWhileActive() }
+        }
+    }
+
+    // Authentication stays on the existing paired Runtime; no extra SDK/paid API.
+    private suspend fun uploadWhileActive() {
+        var remoteStarted = false
+        while (_trip.value.active) {
+            try {
+                val snap = _trip.value
+                val cfg = RuntimeSettingsRepository(applicationContext).load()
+                if (cfg.baseUrl.isNotBlank() && cfg.token.isNotBlank()) {
+                    val client = RuntimeApiClient(cfg)
+                    if (!remoteStarted) {
+                        client.startTrip(snap.sessionId, snap.startedAtMs)
+                        remoteStarted = true
+                    }
+                    val points = snap.points.drop(uploadedPoints).take(60)
+                    if (points.isNotEmpty()) {
+                        val batch = JSONArray()
+                        points.forEachIndexed { index, point ->
+                            batch.put(JSONObject()
+                                .put("point_id", "p-" + snap.sessionId + "-" + (uploadedPoints + index))
+                                .put("observed_at_ms", point.timestampMs)
+                                .put("lat", point.lat).put("lng", point.lng)
+                                .put("accuracy_m", point.accuracy)
+                                .put("speed_m_s", point.speed)
+                                .put("bearing_deg", point.bearing)
+                                .put("provider", point.provider))
+                        }
+                        val ack = client.sendTripPoints(snap.sessionId, batch)
+                        if (ack.optBoolean("ok", false) && ack.optJSONArray("point_ids")?.length() == points.size) {
+                            uploadedPoints += points.size
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                // Keep bounded local points during outages. Retry after 20 s.
+            }
+            delay(20_000)
+        }
     }
 
     private fun ingest(location: Location) {
@@ -132,6 +224,7 @@ class LocationForegroundService : Service() {
         if (!current.active) return
         // Drift / noise filter: reject poor accuracy and jitter below min move.
         if (location.hasAccuracy() && location.accuracy > maxAccuracyM) return
+        if (current.points.size >= maxPoints) return
         val last = current.points.lastOrNull()
         if (last != null) {
             val moved = FloatArray(1)
@@ -147,11 +240,19 @@ class LocationForegroundService : Service() {
             location.provider ?: "gps"
         )
         // Bounded raw buffer: oldest points are dropped (cleanup strategy).
-        val merged = (current.points + point).takeLast(maxPoints)
+        val merged = current.points + point
         _trip.value = current.copy(points = merged)
+        // The raw cache is strictly local and cleared on stop. It is not heartbeat.
+        val json = JSONArray()
+        merged.forEach { p ->
+            json.put(JSONArray().put(p.lat).put(p.lng).put(p.accuracy)
+                .put(p.speed).put(p.bearing).put(p.timestampMs).put(p.provider))
+        }
+        tripPreferences.edit().putString("session_id", current.sessionId)
+            .putString("points", json.toString()).apply()
     }
 
-    private fun finishTrip() {
+    private fun finishTrip(): TripSession {
         val session = _trip.value
         runCatching { locationManager.removeUpdates(locationListener) }
         if (session.active) {
@@ -172,11 +273,15 @@ class LocationForegroundService : Service() {
         // Raw points cleared after summarisation.
         _trip.value = TripSession()
         TripController.setActive(false)
+        tripPreferences.edit().remove("points").remove("session_id").apply()
+        return session
     }
 
     override fun onDestroy() {
         runCatching { locationManager.removeUpdates(locationListener) }
         if (_trip.value.active) finishTrip()
+        uploadJob?.cancel()
+        tripScope.cancel()
         super.onDestroy()
     }
 

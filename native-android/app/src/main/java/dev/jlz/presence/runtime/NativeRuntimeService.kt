@@ -196,6 +196,10 @@ class NativeRuntimeService : Service() {
 
             try {
                 val api = RuntimeApiClient(settings)
+                // Only a stopped session ID is retried; no GPS coordinates in routine state.
+                if (settings.bridgeName.startsWith("Home")) runCatching {
+                    dev.jlz.presence.trip.PendingTripStop.flush(applicationContext, api)
+                }
                 if(settings.bridgeName.startsWith("Home")) runCatching { WorldContentCache(applicationContext).flushReceipt(api,settings.deviceId) }
                 if(settings.bridgeName.startsWith("Home") && System.currentTimeMillis()-contentCheckedAt >= 300000L) {
                     contentCheckedAt=System.currentTimeMillis()

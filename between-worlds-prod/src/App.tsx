@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { TripMapPanel } from "./TripMapPanel";
 import { DEFAULT_RUNTIME_URL, extractMessages, extractRecords, newEventId, runtime, RuntimeError, type OutboxItem, type RemoteMessage, type RemoteRecord, type RuntimeConfig, type WritePath } from "./lib/runtime";
 import { EMPTY_VOICE_MEMORY, formatVoiceClock, formatVoiceDate, selectVoiceCard, type VoiceMemory, type VoiceStatus } from "./lib/voiceEngine";
-import { emptyDailyPlan, optimisticTaskMutation, planSections, TASK_CATEGORIES, type DailyPlan, type DailyTask } from "./lib/dailyPlan";
+import { emptyDailyPlan, optimisticTaskMutation, planSections, taskDetailText, TASK_CATEGORIES, type DailyPlan, type DailyTask } from "./lib/dailyPlan";
 import { emptyStudySummary, formatStudyClock, formatStudyMinutes, liveStudyTotals, studyDeviceLabel, type StudySummary } from "./lib/studySession";
 import { appHubActions, appHubCategories, appHubHomeItems, emptyAppHubSnapshot, readNativeAppHub, type AppHubItem, type AppHubSnapshot } from "./lib/appHub";
 import { finishNativeStudy, liveNativeStudy, nativeStudyAvailable, openNativeBanduread, openNativeFenbi, pauseNativeStudy, readNativeStudy, resumeNativeStudy, startNativeStudy, type NativeStudySnapshot } from "./lib/nativeStudy";
@@ -11,6 +12,7 @@ import { exportWorldPack, type InstructionPack } from "./lib/jlzpack";
 import { stageInstructionPack } from "./lib/packApply";
 import { roomEntries, cycleWindow } from "./lib/worldEntries";
 import { RescuePanel } from "./RescuePanel";
+import { VintageIcon, type VintageIconName } from "./VintageIcons";
 
 import { contentValues, contentPart, contentDevice, THEMES, type Theme, type WorldContent } from "./lib/worldContent";
 type Tab = "home" | "echo" | "timeline" | "calendar" | "room" | "more";
@@ -610,16 +612,16 @@ export default function BetweenWorlds() {
     </div>
 
     <main className="app-shell">
-      <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}>✦ 换装</button><button className="round-btn" aria-label="更多" onClick={()=>switchTab("more")}>⋯</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
+      <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}><VintageIcon name="theme" size={22} /> 换装</button><button className="round-btn" aria-label="更多" onClick={()=>switchTab("more")}>⋯</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
       {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} copy={copy} voice={{...voiceCard, headline:copy["greetings."+contentPart(now ?? new Date())] || voiceCard.headline, body:copy["home.moment"] || voiceCard.body}} homePortrait={homePortrait} selectTaskDate={selectTaskDate} plan={state.dailyPlan?.date === taskDate ? state.dailyPlan : emptyDailyPlan(taskDate)} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} unlockHello={unlockHello} appHub={appHub} launchApp={launchHubApp} openBanduread={openBanduread} openApps={() => setSheet("apps")} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
       {tab === "echo" && <EchoPage onTask={(text,id)=>{mutateDailyTask("upsert",{date:keyDate(new Date()),task_id:"echo-task-"+id.slice(-70),title:text.slice(0,180),description:text,source:"echo:"+id});notify("已放进今日任务");}} state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
       {tab === "timeline" && <TimelinePage notes={state.notes} remote={state.remoteRecords} />}
-      {tab === "room" && <RoomPage records={state.remoteRecords} teaser={copy["jlz.room.teaser"]} />}
+      {tab === "room" && <RoomPage records={state.remoteRecords} teaser={copy["jlz.room.teaser"]} portrait={homePortrait} />}
       {tab === "calendar" && <CalendarPage records={state.remoteRecords} notes={state.notes} plan={state.dailyPlan} month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
       {tab === "more" && <section className="content-sync glass"><h3>同步与更改记录</h3>{state.outbox.filter(i=>i.rejected).map(i=><p key={i.event_id}>未同步：{String(i.body.text || (i.body.task as DailyTask|undefined)?.title || "一条记录")}<button onClick={()=>{update(s=>({...s,outbox:s.outbox.map(x=>x.event_id===i.event_id?{...x,rejected:false,error:undefined}:x)}));void connect();}}>重试</button></p>)}<p>{contentOnline ? '已连接' : '离线 · 使用本机有效内容'} · 内容版本 {state.worldContent?.revision ?? 0}</p><p>主题：{effectiveTheme} · 只有实际写入的内容来自官端</p><button className="secondary" onClick={()=>void pullContent()}>立即同步</button> <button className="secondary" disabled={!contentOnline || !state.worldContent?.revision} onClick={()=>void rollbackContent()}>恢复上一版</button>{state.worldContent?.recent_changes.map(change=><p key={change.revision}>v{change.revision} · {change.keys.join(' / ')}<small> {change.updated_at}</small></p>)}{state.worldContent?.devices?.map(d=><p key={d.device_id}>{d.device_type==="tablet"?"平板":"手机"} · {d.online_state==="online"?"在线":"暂不可达"} · {d.last_seen_age_seconds} 秒前连接</p>)}{state.worldContent?.receipts.map(r=><p key={r.device_id+r.surface}>{r.device_id} · {r.surface} 已应用 v{r.revision} · {(r.applied_keys||[]).join(" / ")}</p>)}</section>}
       {tab === "more" && <MorePage state={state} update={update} setWelcome={setWelcome} banner={banner} reconnect={() => void connect()} />}
       <nav className="dock" aria-label="主导航">
-        {([['home','⌂','现在'],['echo','☰','回响'],['timeline','♡','你我之间'],['room','✧','纪临洲'],['calendar','▣','共历']] as [Tab,string,string][]).map(([id, icon, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => switchTab(id)}>{icon}<span>{label}</span></button>)}
+        {([["home","now","现在"],["echo","echo","回响"],["timeline","between","你我之间"],["room","jilinzhou","纪临洲"],["calendar","calendar","共历"]] as [Tab,VintageIconName,string][]).map(([id, icon, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => switchTab(id)}><VintageIcon name={icon} size={29}/><span>{label}</span></button>)}
       </nav>
     </main>
     <div className={`scrim ${sheet ? "show" : ""}`} onClick={() => setSheet(null)} />
@@ -966,6 +968,27 @@ function HomePage({
 }) {
   const [tasksOpen,setTasksOpen]=useState(false);
   const [tasksExpanded,setTasksExpanded]=useState(false);
+  const taskGripStartY = useRef<number | null>(null);
+  const closeTasks = () => { setTasksOpen(false); setTasksExpanded(false); };
+  const shiftTaskDate = (days: number) => {
+    const date = new Date(plan.date + "T12:00:00");
+    if (Number.isNaN(date.getTime())) return;
+    date.setDate(date.getDate() + days);
+    selectTaskDate(keyDate(date));
+  };
+  useEffect(() => {
+    if (!tasksOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setTasksOpen(false); setTasksExpanded(false); }
+    };
+    window.addEventListener("keydown", escape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", escape);
+    };
+  }, [tasksOpen]);
   const b = bannerText(banner);
   const sections = planSections(plan);
   const homeApps = appHubHomeItems(appHub, 3);
@@ -977,20 +1000,52 @@ function HomePage({
   const studyDetail = studyCurrent
     ? `${studyDeviceLabel(studyCurrent.device_id)} · ${studyCurrent.module || studyCurrent.subject || "学习 Session"}`
     : `今天完成 ${study.completed_sessions} 轮`;
-  const current = plan.tasks.find((task) => task.task_id === plan.current_task_id) ?? null;
   const statusLabel: Record<DailyTask["status"], string> = {
     todo: "待开始", in_progress: "进行中", done: "完成", postponed: "已延期", incomplete: "未完成",
   };
-  const renderTask = (task: DailyTask) => <div className="daily-task-row" key={task.task_id}>
-    <button className={`task-check ${task.status === "done" ? "done" : ""}`} aria-label={task.status === "done" ? "重新打开任务" : "完成任务"} onClick={() => mutateTask(task.status === "done" ? "reopen" : "complete", { task_id: task.task_id })}>{task.status === "done" ? "✓" : ""}</button>
-    <button className="task-body" onClick={() => {setTasksOpen(false);openTask(task);}}>
-      <span className="task-title-line"><b>{task.title}</b>{task.user_pinned && <i>PIN</i>}{task.must_do && <i>MUST</i>}</span>
-      <small>{task.category} · {statusLabel[task.status]}{task.estimated_minutes ? ` · 约 ${task.estimated_minutes} 分钟` : ""}</small>
-      <small>{task.date}{task.due_at ? " · "+task.due_at.replace("T"," ").replace(/:00(?:[+]08:00)?$/," ") : ""}</small>
-      {task.description && <p className="task-description">{task.description}</p>}
-      {task.next_action && <em>{task.next_action}</em>}
-    </button><button className="task-defer" onClick={()=>mutateTask("postpone",{task_id:task.task_id})}>延期</button>
-  </div>;
+  // Old GPT tasks sometimes put an entire paragraph in title/next_action.
+  // Keep the original data intact while showing a concise heading in the list.
+  const shortTaskTitle = (title: string) => {
+    const clean = title.replace(/\s+/g, " ").trim();
+    if (clean.length <= 24) return clean;
+    const clause = clean.split(/[，,。；;：:\n]/)[0];
+    const short = clause.length >= 4 && clause.length <= 24 ? clause : clean.slice(0, 22);
+    return short + (short.length < clean.length ? "…" : "");
+  };
+  const recordDate = (raw: string) => {
+    const d = new Date(raw);
+    if (!raw || Number.isNaN(d.getTime())) return "未记录";
+    return d.toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" });
+  };
+  const completedCount = plan.tasks.filter(t => t.status === "done").length;
+  const renderTask = (task: DailyTask) => {
+    const detail = taskDetailText(task) || (task.title.length > 24 ? task.title : "");
+    return <article className="task-entry" key={task.task_id}>
+      <div className="task-entry-heading">
+        <button className={`task-check ${task.status === "done" ? "done" : ""}`} aria-label={task.status === "done" ? "重新打开任务" : "完成任务"}
+          onClick={() => mutateTask(task.status === "done" ? "reopen" : "complete", { task_id: task.task_id, date: task.date })}>{task.status === "done" ? "✓" : ""}</button>
+        <button className="task-entry-title" onClick={() => { closeTasks(); openTask(task); }} aria-label={`编辑任务：${task.title}`}>
+          <strong>{shortTaskTitle(task.title)}</strong>
+          <span>编辑 ↗</span>
+        </button>
+        <button className="task-defer" onClick={() => mutateTask("postpone", { task_id: task.task_id, date: task.date })}>延期</button>
+      </div>
+      <div className="task-entry-dates">
+        <span>任务日期 {task.date}</span>
+        <span>记录于 {recordDate(task.created_at)}</span>
+        {task.status === "done" && <span>完成于 {task.completed_at ? recordDate(task.completed_at) : "未记录具体日期"}</span>}
+      </div>
+      <div className="task-entry-meta">
+        {task.category} · {statusLabel[task.status]}{task.estimated_minutes ? ` · 约 ${task.estimated_minutes} 分钟` : ""}
+        {task.user_pinned ? " · 已固定" : ""}
+        {task.due_at ? ` · 截止 ${task.due_at.match(/T(\d{2}:\d{2})/)?.[1] || task.due_at}` : ""}
+      </div>
+      {detail && <details className="task-entry-details">
+        <summary>具体内容 <span>展开 / 收起</span></summary>
+        <p>{detail}</p>
+      </details>}
+    </article>;
+  };
 
   return <section className="page active home-page">
     <div className="brand-block"><div className="cn">世界之间</div><div className="en">Between Worlds</div></div>
@@ -1001,14 +1056,50 @@ function HomePage({
     <div className="app-hub-card glass">
       <div className="app-hub-copy"><span>{unlockHello ? "UNLOCKED · 先看我一眼" : "START HERE · 少一点乱跑"}</span><b>{unlockHello ? copy["unlock.line"] || "解锁了。先决定你现在要去哪。" : copy["study.nudge"] || "学习放前面，其他的都还在。"}</b><small>{"伴读、粉笔与常用应用"}</small></div>
       <div className="app-hub-grid">
-        <button className="hub-tile study" onClick={openBanduread}><span className="hub-mark">伴</span><b>伴读</b><small>刷题 / 复盘</small></button>
+        <button className="hub-tile study" onClick={openBanduread}><span className="hub-mark"><VintageIcon name="study" size={36}/></span><b>伴读</b><small>刷题 / 复盘</small></button>
         {homeApps.map((item) => <button className={`hub-tile ${item.category === "学习" ? "study" : ""}`} key={item.package_name} onClick={() => launchApp(item)}><span className="hub-mark">{item.label.slice(0, 1)}</span><b>{item.label}</b><small>{item.category}</small></button>)}
         <button className="hub-tile more" onClick={openApps}><span className="hub-mark">＋</span><b>全部</b><small>App 抽屉</small></button>
       </div>
     </div>
 
-    <button className="task-summary glass" onClick={()=>setTasksOpen(true)}><span>{plan.date === keyDate(new Date()) ? "今日任务" : plan.date + " 的任务"} · {plan.tasks.filter(t=>t.status==='done').length}/{plan.tasks.length}</span><strong>{plan.current_step?.next_action || '给今天留一个小小的开始'}</strong><i>查看全部 ↗</i></button>
-    {tasksOpen && <div className="task-drawer-backdrop" onClick={()=>setTasksOpen(false)}><section className={`task-drawer ${tasksExpanded?'expanded':''}`} role="dialog" aria-modal="true" aria-label="今日任务总览" onClick={e=>e.stopPropagation()}><button className="drawer-grip" onClick={()=>setTasksExpanded(v=>!v)} aria-label="展开或收起任务面板">━━</button><div className="daily-plan-top"><div><label>任务日期<input type="date" aria-label="任务日期" value={plan.date} onChange={e=>selectTaskDate(e.target.value)} /></label><h3>一件一件来。</h3></div><button onClick={()=>setTasksOpen(false)} aria-label="关闭任务总览">×</button></div><button className="primary" onClick={()=>{setTasksOpen(false);openTask(null);}}>＋ 加一件事</button>{plan.current_step && <div className="current-step"><span>现在这一步</span><strong>{plan.current_step.next_action}</strong>{current && <button className="secondary" onClick={()=>mutateTask(current.status==='in_progress'?'complete':'start',{task_id:current.task_id})}>{current.status==='in_progress'?'做完了':'现在开始'}</button>}</div>}{[...sections.main,...sections.other,...sections.postponed,...sections.completed].map(renderTask)}{!plan.tasks.length&&<p>还没有安排。这里会接住你在官端说的待办。</p>}</section></div>}
+    <button className="task-summary glass" onClick={() => setTasksOpen(true)} aria-label="打开每日待办清单">
+      <span className="task-summary-copy"><strong>{plan.date === keyDate(new Date()) ? "今日待办" : plan.date + " · 待办"}</strong><small>{plan.tasks.length ? `已完成 ${completedCount} / ${plan.tasks.length} 项` : "今天还没有任务"}</small></span>
+      <span className="task-summary-open"><VintageIcon name="todo" size={26}/> 查看待办 <span aria-hidden="true">↗</span></span>
+    </button>
+    {tasksOpen && <div className="task-drawer-backdrop" onClick={closeTasks} role="presentation">
+      <section className={`task-drawer ${tasksExpanded ? "expanded" : ""}`} role="dialog" aria-modal="true" aria-label="每日待办清单" onClick={e => e.stopPropagation()}>
+        <button className="drawer-grip" aria-label={tasksExpanded ? "收起待办面板" : "展开待办面板"} onClick={() => setTasksExpanded(v => !v)}
+          onTouchStart={e => { taskGripStartY.current = e.changedTouches[0]?.clientY ?? null; }}
+          onTouchEnd={e => {
+            if (taskGripStartY.current === null) return;
+            const delta = e.changedTouches[0].clientY - taskGripStartY.current;
+            taskGripStartY.current = null;
+            if (Math.abs(delta) <= 40) return;
+            e.preventDefault();
+            if (delta < 0) setTasksExpanded(true);
+            else if (tasksExpanded) setTasksExpanded(false);
+            else closeTasks();
+          }}>━━</button>
+        <div className="task-drawer-heading">
+          <div><span>DAILY PLAN</span><h3>每日待办</h3><small>{completedCount} / {plan.tasks.length} 项完成</small></div>
+          <button className="task-drawer-close" onClick={closeTasks} aria-label="关闭待办">×</button>
+        </div>
+        <div className="task-date-navigation">
+          <button onClick={() => shiftTaskDate(-1)} aria-label="前一天">‹</button>
+          <input type="date" value={plan.date} aria-label="查看哪一天的待办" onChange={e => selectTaskDate(e.target.value)} />
+          <button onClick={() => shiftTaskDate(1)} aria-label="后一天">›</button>
+          <button className="task-date-today" onClick={() => selectTaskDate(keyDate(new Date()))}>今天</button>
+        </div>
+        <div className="task-drawer-list">
+          {[...sections.main, ...sections.other, ...sections.postponed].length > 0 && <div className="task-group-label">待办中 <span>{plan.tasks.length - completedCount} 项</span></div>}
+          {[...sections.main, ...sections.other, ...sections.postponed].map(renderTask)}
+          {sections.completed.length > 0 && <div className="task-group-label task-group-complete">已完成 <span>{sections.completed.length} 项</span></div>}
+          {sections.completed.map(renderTask)}
+          {!plan.tasks.length && <div className="task-drawer-empty"><b>这一天还没有待办。</b><small>从官端聊天或者这里添加，都可以同步进来。</small></div>}
+        </div>
+        <button className="task-drawer-add" onClick={() => { closeTasks(); openTask(null); }}>＋ 添加待办</button>
+      </section>
+    </div>}
 
     <SectionHead title="陪你学一会儿" english="STUDY SESSION" />
     <div className={`study-session-card glass ${study.active ? "active" : ""} ${study.paused ? "paused" : ""}`}>
@@ -1033,7 +1124,7 @@ function HomePage({
       </div>
     </div>
 
-    <SectionHead title="今日的私藏信笺" english="JUST FOR TODAY" /><div className="action-grid"><button className="action-card" onClick={() => openSheet("status")}><span className="ico">♡</span><b>状态灯</b><small>把这一刻的你告诉我</small></button><button className="action-card rose" onClick={() => openSheet("note")}><span className="ico">✎</span><b>随手记</b><small>写一封小小的信</small></button><button className="action-card wide" onClick={() => openSheet("life")}><span className="ico">◌</span><b>此刻我在</b><small>把小猫现在在做什么告诉我</small></button></div>
+    <SectionHead title="今日的私藏信笺" english="JUST FOR TODAY" /><div className="action-grid"><button className="action-card" onClick={() => openSheet("status")}><span className="ico"><VintageIcon name="status" size={42}/></span><b>状态灯</b><small>把这一刻的你告诉我</small></button><button className="action-card rose" onClick={() => openSheet("note")}><span className="ico"><VintageIcon name="note" size={42}/></span><b>随手记</b><small>写一封小小的信</small></button><button className="action-card wide" onClick={() => openSheet("life")}><span className="ico"><VintageIcon name="presence" size={42}/></span><b>此刻我在</b><small>把小猫现在在做什么告诉我</small></button></div>
 
   </section>;
 }
@@ -1112,11 +1203,55 @@ function TimelinePage({ notes, remote }: { notes: RecordItem[]; remote: RemoteRe
   ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   return <section className="page active"><PageHead kicker="OUR LITTLE HISTORY" title="你我之间" en="Timeline" copy="主动记录会在这里长成一条时间线" /><div className="timeline">{items.length ? items.map((x) => <article className="timeline-entry" key={x.key}><b>{x.type}</b><p>{x.body}</p><time>{new Date(x.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · {x.label}</time></article>) : <div className="preview-tip">还没有记录。去首页留第一条吧。</div>}</div></section>;
 }
-function RoomPage({records,teaser}:{records:RemoteRecord[];teaser?:string}) {
-  const groups: [string,string[]][]=[['此刻的我',['jlz_state']],['桌边随笔',['jlz_note','jlz_observation']],['想要的事',['jlz_wish','jlz_promise']],['夜信',['night_letter']],['抽屉',['dark_room','jlz_letter']]];
-  const entries=roomEntries(records);
-  return <section className="page active room-page"><PageHead kicker="A ROOM OF MY OWN" title="纪临洲" en="Private room" copy={teaser || '写下来的我，留在你能找到的地方。'} />{groups.map(([name,kinds])=>{const items=entries.filter(r=>name==='抽屉' ? kinds.includes(r.type)||['draft','hidden','decided_to_send'].includes(r.entity_state||'') : kinds.includes(r.type)&&!['draft','hidden','decided_to_send'].includes(r.entity_state||''));return <article className="room-entry glass" key={name}><h3>{name}</h3>{items.length?items.map(r=><div key={r.id}><p>{r.body}</p><small>{new Date(r.at).toLocaleString('zh-CN')} · {r.type==='jlz_observation'?'我的观察，不是你的事实':r.entity_state||'官端写入'}</small></div>):<p className="hint">这里还没有写下的内容。</p>}</article>;})}</section>;
+function RoomPage({ records, teaser, portrait }: { records: RemoteRecord[]; teaser?: string; portrait: string }) {
+  const groups = [
+    { name: "此刻的我", subtitle: "NOW & HERE", hint: "最近的一句真话", icon: "state", kinds: ["jlz_state"] },
+    { name: "桌边随笔", subtitle: "DESK NOTES", hint: "一些没说完的话", icon: "note", kinds: ["jlz_note", "jlz_observation"] },
+    { name: "想要的事", subtitle: "WISHES", hint: "写下想留下的事", icon: "between", kinds: ["jlz_wish", "jlz_promise"] },
+    { name: "夜信", subtitle: "NIGHT LETTER", hint: "夜里留下的信", icon: "letter", kinds: ["night_letter"] },
+    { name: "抽屉", subtitle: "THE DRAWER", hint: "私藏与未寄出的信", icon: "key", kinds: ["dark_room", "jlz_letter"] },
+  ] as const;
+  const entries = roomEntries(records);
+  const shortPreview = (value: string) => value.replace(/\s+/g, " ").trim().slice(0, 88);
+  return <section className="page active room-page room-reimagined">
+    <div className="room-hero">
+      <div className="room-hero-text">
+        <span className="room-kicker">A ROOM OF MY OWN · PRIVATE</span>
+        <h1>纪临洲 <em>Private room</em></h1>
+        <p>{teaser || "写下来的我，留在你能找到的地方。"}</p>
+        <span className="room-hero-deco" aria-hidden="true">✦ ─── ☾ ─── ✦</span>
+      </div>
+      <img className="room-portrait" src={portrait} alt="纪临洲肖像" />
+    </div>
+    <div className="room-archive-heading"><span>PRIVATE COLLECTION</span><h2>我的收藏室</h2><p>有些话适合收好，再慢慢给你看。</p></div>
+    <div className="room-collection">
+      {groups.map(({ name, subtitle, hint, icon, kinds }) => {
+        const items = entries.filter(r => name === "抽屉"
+          ? kinds.some(k => k === r.type) || ["draft", "hidden", "decided_to_send"].includes(r.entity_state || "")
+          : kinds.some(k => k === r.type) && !["draft", "hidden", "decided_to_send"].includes(r.entity_state || ""));
+        const latest = items[0];
+        return <article className={`room-collection-card ${items.length ? "has-content" : "is-empty"}`} key={name}>
+          <div className="room-collection-top">
+            <span className={`room-emblem room-emblem-${icon}`} aria-hidden="true"><VintageIcon name={icon === "state" ? "status" : icon === "note" ? "note" : icon === "between" ? "between" : icon === "letter" ? "echo" : "calendar"} size={48}/></span>
+            <div className="room-collection-title"><small>{subtitle}</small><h3>{name}</h3></div>
+            <span className="room-card-star" aria-hidden="true">✦</span>
+          </div>
+          <p className="room-card-preview">{latest ? shortPreview(latest.body) + (latest.body.length > 88 ? "…" : "") : hint}</p>
+          <div className="room-card-foot"><small>{latest ? new Date(latest.at).toLocaleDateString("zh-CN") : "尚无记录"}</small><span>{items.length ? `${items.length} 条记录` : "等待真实记录"}</span></div>
+          {items.length > 0 && <details className="room-card-reveal">
+            <summary>展开内容 <span aria-hidden="true">⌄</span></summary>
+            {items.map(r => <div className="room-card-record" key={r.id}>
+              <p>{r.body}</p>
+              <small>{new Date(r.at).toLocaleString("zh-CN")} · {r.type === "jlz_observation" ? "我的观察，不是你的事实" : r.entity_state || "官端写入"}</small>
+            </div>)}
+          </details>}
+        </article>;
+      })}
+    </div>
+    <div className="room-ending" aria-hidden="true">✧　Some things are meant to be kept.　✧</div>
+  </section>;
 }
+
 function CalendarPage({ month, setMonth, addRecord, send, notify, savedText, records, notes, plan }: { month: Date; setMonth: (d: Date) => void; addRecord: (r: RecordItem, b?: ("notes"|"life"|"journal")[]) => void; send: Send; notify: (s:string)=>void; savedText: (w: string) => string; records:RemoteRecord[]; notes:RecordItem[]; plan:DailyPlan|null }) {
   const [food,setFood]=useState('');
   const [selected,setSelected]=useState(keyDate(new Date()));
@@ -1128,7 +1263,7 @@ function CalendarPage({ month, setMonth, addRecord, send, notify, savedText, rec
   const prediction=cycleWindow(entries.filter(r=>cycleIds.has(r.id)||cycleIds.has(r.related_event_id||"")));
   const dayEntries=entries.filter(r=>r.date.slice(0,10)===selected).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
   const record=(type:string,body:string,payload:Record<string,unknown>)=>{const id=newEventId(),at=new Date().toISOString();addRecord({id,event_id:id,sync:'queued',type,at,body,date:selected,...payload},['notes','journal']);send('/api/web/journal',{...payload,type,text:body,date:selected,at},id);notify(savedText(body));};
-  return <section className="page active"><PageHead kicker="TIME & MEMORY" title="共历" en="Calendar" copy="选一个日子，看看我们真实留下了什么。" /><div className="calendar-box glass"><div className="calendar-top"><button onClick={()=>setMonth(new Date(y,m-1,1))}>‹</button><b>{y} / {String(m+1).padStart(2,'0')}</b><button onClick={()=>setMonth(new Date(y,m+1,1))}>›</button></div><div className="week-row">{['一','二','三','四','五','六','日'].map(d=><span key={d}>{d}</span>)}</div><div className="calendar-grid">{Array.from({length:42},(_,i)=>{const d=new Date(start);d.setDate(start.getDate()+i);const k=keyDate(d);return <button key={k} onClick={()=>setSelected(k)} className={`${d.getMonth()!==m?'off ':''}${k===selected?'today':''}`}>{d.getDate()}{entries.some(r=>r.date.slice(0,10)===k)&&<small>·</small>}</button>;})}</div></div><article className="room-entry glass"><h3>{selected}</h3>{dayEntries.map(r=><div key={r.id}><small>{r.type}</small><p>{r.body}</p><button className="text-action" onClick={()=>{const text=window.prompt('写下纠正，原记录会保留：',r.body);if(text?.trim())record('纠正',text.trim(),{kind:'correction',related_event_id:r.id});}}>纠正</button></div>)}{plan?.date===selected&&plan.tasks.map(t=><p key={t.task_id}>{t.status==='done'?'✓':'○'} {t.title} · {t.next_action}</p>)}{!dayEntries.length&&plan?.date!==selected&&<p className="hint">这一天还没有加载到记录。</p>}</article><div className="journal-box glass"><h3>生活与身体</h3>{prediction ? <p className="hint">根据已加载的 {prediction.intervals} 个历史间隔估计：{prediction.from} — {prediction.to}。仅为记录推算，不是确认日期或医学判断。</p> : <p className="hint">至少有三次未被纠正的开始记录后，才显示历史间隔估计；不预设固定周期。</p>}<p className="hint">只记录你明确确认的事实，日期为 {selected}。</p><div className="journal-row"><button onClick={()=>record('经期','生理期实际开始',{kind:'period',event:'start'})}>这天开始</button><button onClick={()=>record('经期','生理期实际结束',{kind:'period',event:'end'})}>这天结束</button></div><textarea maxLength={300} placeholder="简单记下吃了什么" value={food} onChange={e=>setFood(e.target.value)} /><button className="primary" onClick={()=>{if(food.trim()){record('饮食',food.trim(),{kind:'food'});setFood('');}}}>记下来</button></div></section>;
+  return <section className="page active"><PageHead kicker="TIME & MEMORY" title="共历" en="Calendar" copy="选一个日子，看看我们真实留下了什么。" /><div className="calendar-box glass"><div className="calendar-top"><button onClick={()=>setMonth(new Date(y,m-1,1))}>‹</button><b>{y} / {String(m+1).padStart(2,'0')}</b><button onClick={()=>setMonth(new Date(y,m+1,1))}>›</button></div><div className="week-row">{['一','二','三','四','五','六','日'].map(d=><span key={d}>{d}</span>)}</div><div className="calendar-grid">{Array.from({length:42},(_,i)=>{const d=new Date(start);d.setDate(start.getDate()+i);const k=keyDate(d);return <button key={k} onClick={()=>setSelected(k)} className={`${d.getMonth()!==m?'off ':''}${k===selected?'today':''}`}>{d.getDate()}{entries.some(r=>r.date.slice(0,10)===k)&&<small>·</small>}</button>;})}</div></div><article className="room-entry glass"><h3>{selected}</h3>{dayEntries.map(r=><div key={r.id}><small>{r.type}</small><p>{r.body}</p><button className="text-action" onClick={()=>{const text=window.prompt('写下纠正，原记录会保留：',r.body);if(text?.trim())record('纠正',text.trim(),{kind:'correction',related_event_id:r.id});}}>纠正</button></div>)}{plan?.date===selected&&plan.tasks.map(t=><p key={t.task_id}>{t.status==='done'?'✓':'○'} {t.title}</p>)}{!dayEntries.length&&plan?.date!==selected&&<p className="hint">这一天还没有加载到记录。</p>}</article><div className="journal-box glass"><h3>生活与身体</h3>{prediction ? <p className="hint">根据已加载的 {prediction.intervals} 个历史间隔估计：{prediction.from} — {prediction.to}。仅为记录推算，不是确认日期或医学判断。</p> : <p className="hint">至少有三次未被纠正的开始记录后，才显示历史间隔估计；不预设固定周期。</p>}<p className="hint">只记录你明确确认的事实，日期为 {selected}。</p><div className="journal-row"><button onClick={()=>record('经期','生理期实际开始',{kind:'period',event:'start'})}>这天开始</button><button onClick={()=>record('经期','生理期实际结束',{kind:'period',event:'end'})}>这天结束</button></div><textarea maxLength={300} placeholder="简单记下吃了什么" value={food} onChange={e=>setFood(e.target.value)} /><button className="primary" onClick={()=>{if(food.trim()){record('饮食',food.trim(),{kind:'food'});setFood('');}}}>记下来</button></div></section>;
 }
 function keyDate(d: Date) { return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-"); }
 
@@ -1249,6 +1384,7 @@ function MorePage({ state, update, setWelcome, banner, reconnect }: { state: App
  const label = banner.conn === "online" ? "ONLINE · 已连接" : banner.conn === "syncing" ? "SYNCING · 同步中" : banner.configured ? `LOCAL · ${banner.lastError || "连不上"}` : "LOCAL · 未填写钥匙";
  return <section className="page active">
    <PageHead kicker="OUR LITTLE ROOMS" title="更多" en="The Rooms" copy="一扇扇门，通向我们的小世界" />
+   <TripMapPanel cfg={currentCfg()} />
    <div className="glass settings-card"><b>✦ 风格衣橱 · Theme Wardrobe</b><small>两套风格，一个世界。换装不会清掉记录。</small><div className="theme-grid"><button className={state.theme==="mist"?"active":""} onClick={()=>update(s=>({...s,theme:"mist"}))}><i className="swatch mist"/><b>冰雾玻璃</b><small>Mist & Glass</small></button><button className={state.theme==="gothic"?"active":""} onClick={()=>update(s=>({...s,theme:"gothic"}))}><i className="swatch gothic"/><b>暗夜童话</b><small>Dark Fairytale</small></button></div></div>
    <div className="glass settings-card"><b>网页与 Runtime</b><p className="hint">钥匙只保存在这个浏览器里。留空就保持本地模式，记录会排队等待同步。</p><div className="field"><label>私人连接钥匙</label><input type="password" autoComplete="off" placeholder="留空则仅本地" value={key} onChange={e=>setKey(e.target.value)} /></div><div className="field"><label>Runtime 地址</label><input type="url" value={url} onChange={e=>setUrl(e.target.value)} /></div><div className="sheet-actions"><button className="secondary" onClick={()=>{setKey("");update(s=>({...s,webToken:""}))}}>清除钥匙</button><button className="primary" onClick={()=>{update(s=>({...s,webToken:key.trim(),runtimeUrl:url.trim()||DEFAULT_RUNTIME_URL}));reconnect()}}>保存并连接</button></div><div className="runtime-line"><span>连接状态</span><b>{label}</b></div><div className="runtime-line"><span>待同步记录</span><b>{banner.pending} 条</b></div><div className="runtime-line"><span>Android 主控制</span><b>未暴露给网页</b></div></div>
    {ANDROID_SHELL ? <div className="glass settings-card">
@@ -1287,8 +1423,7 @@ function TaskEditor({
  const [title, setTitle] = useState(task?.title ?? "");
  const [category, setCategory] = useState(task?.category ?? "考试/学习");
  const [priority, setPriority] = useState<DailyTask["priority"]>(task?.priority ?? "normal");
- const [description,setDescription]=useState(task?.description ?? "");
- const [nextAction, setNextAction] = useState(task?.next_action ?? "");
+ const [description,setDescription]=useState(() => taskDetailText(task));
  const [minutes, setMinutes] = useState(task?.estimated_minutes ? String(task.estimated_minutes) : "");
  const [dueTime, setDueTime] = useState(() => {
    const raw = task?.due_at ?? "";
@@ -1299,6 +1434,9 @@ function TaskEditor({
  const save = () => {
    const value = title.trim();
    if (!value) { notify("先写清楚这件事是什么。"); return; }
+   const detail = description.trim();
+   // Never silently drop older GPT-supplied next_action content during migration.
+   if (detail.length > 2000) { notify("具体内容最多 2000 字。原有内容已保留，请精简后再保存。"); return; }
    const parsedMinutes = Math.max(0, Math.min(1440, Number(minutes) || 0));
    mutateTask("upsert", {
      task_id: task?.task_id || newEventId(),
@@ -1311,8 +1449,8 @@ function TaskEditor({
      owner: task?.owner ?? "user",
      estimated_minutes: parsedMinutes,
      due_at: dueTime ? `${date}T${dueTime}:00+08:00` : "",
-     next_action: nextAction.trim(),
-     description: description.trim(),
+     next_action: "", // Preserve legacy API shape while writing one visible content field.
+     description: detail,
      source: task?.source || "world_between_web",
      sort_order: task?.sort_order ?? 100,
    });
@@ -1320,10 +1458,9 @@ function TaskEditor({
    notify(task ? "任务已经改好。" : "今天多了一件事。");
  };
  return <>
-   <p className="sheet-desc">把任务写清楚。首页留下一步，完整内容在这张清单里。</p>
-   <div className="field"><label>这件事是什么</label><input maxLength={180} placeholder="例如：图推专项复盘 3 题" value={title} onChange={e=>setTitle(e.target.value)} /></div>
-   <div className="field"><label>描述与材料</label><textarea maxLength={2000} value={description} onChange={e=>setDescription(e.target.value)} placeholder="内容、材料、注意事项" /></div>
-   <div className="field"><label>下一步具体做什么</label><input maxLength={240} placeholder="例如：先打开伴读，复盘第 1 题错因" value={nextAction} onChange={e=>setNextAction(e.target.value)} /></div>
+   <p className="sheet-desc">每件待办分成一句简短标题和一段具体内容。首页只保留「今日待办」入口，完整内容在清单中展开查看。</p>
+   <div className="field"><label>待办小标题 · 简短概括</label><input maxLength={180} placeholder="例如：修复小红书拦截页" value={title} onChange={e=>setTitle(e.target.value)} /></div>
+   <div className="field"><label>具体内容</label><textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="详细要求、要做的事情、参考材料，都写在这里" aria-describedby="task-description-hint" /><small id="task-description-hint" className="hint">可选。旧版「下一步」文字也会合并到这里。</small></div>
    <div className="task-editor-grid">
      <div className="field"><label>分类</label><select value={category} onChange={e=>setCategory(e.target.value)}>{TASK_CATEGORIES.map(item=><option value={item} key={item}>{item}</option>)}</select></div>
      <div className="field"><label>优先级</label><select value={priority} onChange={e=>setPriority(e.target.value as DailyTask["priority"])}><option value="high">高</option><option value="normal">普通</option><option value="low">低</option></select></div>
