@@ -1406,9 +1406,9 @@ function TaskEditor({
    notify(task ? "任务已经改好。" : "今天多了一件事。");
  };
  return <>
-   <p className="sheet-desc">把任务写清楚。首页留下一步，完整内容在这张清单里。</p>
-   <div className="field"><label>这件事是什么</label><input maxLength={180} placeholder="例如：图推专项复盘 3 题" value={title} onChange={e=>setTitle(e.target.value)} /></div>
-   <div className="field"><label>描述与材料</label><textarea maxLength={2000} value={description} onChange={e=>setDescription(e.target.value)} placeholder="内容、材料、注意事项" /></div>
+   <p className="sheet-desc">每件待办分成一句简短标题和一段具体内容。首页只保留「今日待办」入口，完整内容在清单中展开查看。</p>
+   <div className="field"><label>待办小标题 · 简短概括</label><input maxLength={180} placeholder="例如：修复小红书拦截页" value={title} onChange={e=>setTitle(e.target.value)} /></div>
+   <div className="field"><label>具体内容</label><textarea maxLength={2000} value={description} onChange={e=>setDescription(e.target.value)} placeholder="详细要求、需要做的事、参考材料等" /></div>
    <div className="field"><label>下一步具体做什么</label><input maxLength={240} placeholder="例如：先打开伴读，复盘第 1 题错因" value={nextAction} onChange={e=>setNextAction(e.target.value)} /></div>
    <div className="task-editor-grid">
      <div className="field"><label>分类</label><select value={category} onChange={e=>setCategory(e.target.value)}>{TASK_CATEGORIES.map(item=><option value={item} key={item}>{item}</option>)}</select></div>
