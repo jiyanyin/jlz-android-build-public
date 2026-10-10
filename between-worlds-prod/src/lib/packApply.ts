@@ -3,7 +3,7 @@ import type { InstructionPack } from "./jlzpack";
 import type { OutboxItem, RemoteMessage } from "./runtime";
 
 export type PackState = {
-  theme: "mist" | "gothic";
+  theme: "mist" | "gothic" | "deepsea" | "rose";
   dailyPlan: DailyPlan | null;
   outbox: OutboxItem[];
   notes: {id: number | string; type: string; at: string; body: string}[];

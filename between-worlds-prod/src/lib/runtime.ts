@@ -1,4 +1,5 @@
 import { nativeRequest } from "./nativeTransport";
+import type { WorldContent } from "./worldContent";
 import { normalizeDailyPlan, type DailyPlan } from "./dailyPlan";
 import { normalizeStudySummary, type StudySummary } from "./studySession";
 // Low-privilege Web client for the World Between Runtime.
@@ -26,7 +27,7 @@ export type WritePath =
   | "/api/web/message"
   | "/api/web/presence"
   | "/api/web/daily-plan/task";
-export type OutboxItem = { event_id: string; path: WritePath; body: Record<string, unknown>; queuedAt: string; tries: number };
+export type OutboxItem = { event_id: string; path: WritePath; body: Record<string, unknown>; queuedAt: string; tries: number; rejected?: boolean; error?: string };
 
 export class RuntimeError extends Error {
   constructor(message: string, public status: number) { super(message); }
@@ -69,6 +70,9 @@ async function request<T>(cfg: RuntimeConfig, path: string, init: { method?: "GE
 
 const q = `space_id=${encodeURIComponent(SPACE_ID)}`;
 export const runtime = {
+  worldContent: (cfg: RuntimeConfig, scope: string) => request<{content:WorldContent}>(cfg, `/api/web/world-content?${q}&device_scope=${encodeURIComponent(scope)}`),
+  changeContent: (cfg:RuntimeConfig, body:Record<string,unknown>, rollback=false) => request<{content:WorldContent}>(cfg, `/api/web/world-content${rollback?'/rollback':''}`, {method:'POST',body:{space_id:SPACE_ID,...body}}),
+  contentReceipt: (cfg:RuntimeConfig, body:Record<string,unknown>) => request(cfg, '/api/web/world-content/receipt', {method:'POST',body:{space_id:SPACE_ID,...body}}),
   exportContext: (cfg: RuntimeConfig) => request<{context_pack: Record<string,unknown>}>(cfg, `/api/web/export-context?${q}`),
   health: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, "/api/web/health"),
   state: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, `/api/web/state?${q}`),
@@ -102,8 +106,8 @@ export const runtime = {
 };
 
 // ---- defensive normalisers for Runtime payloads ----
-export type RemoteRecord = { id: string; type: string; at: string; body: string };
-export type RemoteMessage = { id: string; text: string; at: string; fromCompanion: boolean };
+export type RemoteRecord = { id: string; type: string; at: string; body: string; actor?:string; provenance?:string; entity_id?:string; entity_state?:string; related_event_id?:string; date?:string; kind?:string; event?:string };
+export type RemoteMessage = { id: string; text: string; at: string; fromCompanion: boolean; handled?: boolean; reply_to?:string };
 
 const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
 const toIso = (v: unknown) => {
@@ -114,20 +118,24 @@ const toIso = (v: unknown) => {
 const asObj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" ? (v as Record<string, unknown>) : {});
 
 export function extractRecords(state: unknown): RemoteRecord[] {
-  const s = asObj(asObj(state).state ?? state);
+  const root=asObj(state);
+  const s = asObj(root.between ?? root.state ?? state);
   const out: RemoteRecord[] = [];
-  for (const key of ["timeline", "records", "moments", "events", "notes", "life", "journal", "statuses"]) {
+  for (const key of ["timeline", "records", "moments", "events", "notes", "life", "journal", "statuses", "status_history", "life_actions", "journal_events", "world_events"]) {
     const arr = s[key];
     if (!Array.isArray(arr)) continue;
     for (const raw of arr) {
       const r = asObj(raw);
+      const meta=asObj(r.metadata_json);
       const id = str(r.event_id ?? r.id);
       if (!id) continue;
       out.push({
         id,
         type: str(r.type ?? r.kind ?? r.category) || key,
         at: toIso(r.at ?? r.created_at ?? r.timestamp ?? r.client_at),
-        body: str(r.body ?? r.text ?? r.content ?? r.summary ?? r.action ?? r.value) || "（记录）",
+        body: str(r.body ?? r.text ?? meta.text ?? r.subtitle ?? r.content ?? r.summary ?? r.action ?? r.value) || "（记录）",
+        actor:str(meta.actor ?? meta.between_actor) || (str(r.type).startsWith('jlz_') || ['night_letter','dark_room'].includes(str(r.type)) ? 'jlz':'user'),
+        provenance:str(meta.provenance_type), entity_id:str(meta.entity_id), entity_state:str(meta.entity_state), related_event_id:str(meta.related_event_id), date:str(meta.occurred_at ?? meta.date), kind:str(meta.kind), event:str(meta.event),
       });
     }
   }
@@ -147,6 +155,7 @@ export function extractMessages(payload: unknown): RemoteMessage[] {
         text: str(m.text ?? m.content ?? m.body),
         at: toIso(m.at ?? m.created_at ?? m.timestamp),
         fromCompanion: !["user", "web", "me", "yanyin", "human"].includes(role),
+        handled: Boolean(m.handled), reply_to:str(m.reply_to ?? m.reply_to_id),
       };
     })
     .filter((m) => m.id && m.text);

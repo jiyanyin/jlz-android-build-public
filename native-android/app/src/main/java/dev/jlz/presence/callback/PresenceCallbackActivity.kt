@@ -4,6 +4,13 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.*
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.shape.RoundedCornerShape
+import dev.jlz.presence.ui.components.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -33,21 +40,25 @@ class PresenceCallbackActivity : ComponentActivity() {
         val eventId = intent.getStringExtra(EXTRA_EVENT_ID)
         val intentId = intent.getStringExtra(EXTRA_INTENT_ID)
         val reason = intent.getStringExtra(EXTRA_REASON).orEmpty().ifBlank { "\u6211\u60f3\u627e\u4f60\u3002" }
+        val contentCache = dev.jlz.presence.runtime.WorldContentCache(applicationContext)
         val topic = intent.getStringExtra(EXTRA_TOPIC).orEmpty()
         setContent {
+            var connected by remember { mutableStateOf(false) }
+            ContentDisplayed(if(connected) "callback.connected" else "callback.incoming", "theme.id")
             IceCrystalTheme {
-                Surface(Modifier.fillMaxSize(), color = Color(0xFF090B1B)) {
-                    Column(Modifier.fillMaxSize().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        Image(
-                            painter = painterResource(R.drawable.jlz_chat_avatar),
-                            contentDescription = "纪临洲",
-                            modifier = Modifier.size(88.dp).clip(CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
+                Surface(Modifier.fillMaxSize(), color = Color.Transparent) {
+                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).background(Brush.verticalGradient(worldCallColors())).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        WorldCallPortrait(Modifier.size(if(connected) 156.dp else 230.dp).clip(RoundedCornerShape(36.dp)))
                         Text("\u7eaa\u4e34\u6d32\u6b63\u5728\u627e\u4f60", color = TextPrimary, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 22.dp))
                         if (topic.isNotBlank()) Text(topic, color = VioletGlow, modifier = Modifier.padding(top = 12.dp))
+                        Text(contentCache.text(if(connected) "callback.connected" else "callback.incoming", if(connected) "接到了。我们去回响接着说。" else "我想找你。") , color = TextPrimary, modifier = Modifier.padding(top = 10.dp))
                         Text(reason, color = TextSecondary, modifier = Modifier.padding(top = 10.dp, bottom = 28.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        if(connected) {
+                            IceButton("去回响", onClick={
+                                startActivity(Intent(this@PresenceCallbackActivity, dev.jlz.presence.WebShellActivity::class.java).setData(android.net.Uri.parse("jlz://world/echo")))
+                                finish()
+                            }, primary=true)
+                        } else Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                             IceButton("\u7a0d\u540e", onClick = {
                                 LocalLifeStore(applicationContext).recordTimeline(
                                     "callback", "\u7a0d\u540e\u56de\u6211", reason, eventId, intentId,
@@ -62,8 +73,7 @@ class PresenceCallbackActivity : ComponentActivity() {
                                     metadataJson = org.json.JSONObject().put("actor", "assistant").put("status", "accepted").toString(),
                                     id = PresenceCallbackAdapter.stableRowId(eventId, intentId)
                                 )
-                                startActivity(Intent(this@PresenceCallbackActivity, MainActivity::class.java).putExtra(MainActivity.EXTRA_DESTINATION, "chat").addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
-                                finish()
+                                connected=true
                             }, primary = true)
                         }
                     }

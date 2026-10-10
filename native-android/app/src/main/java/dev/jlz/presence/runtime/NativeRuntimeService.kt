@@ -177,6 +177,7 @@ class NativeRuntimeService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private suspend fun runHeartbeatLoop() {
+        var contentCheckedAt = 0L
         val placeWeather = PlaceWeatherCoordinator(applicationContext)
         val cycleReminder = CycleReminderEngine(applicationContext)
 
@@ -195,6 +196,11 @@ class NativeRuntimeService : Service() {
 
             try {
                 val api = RuntimeApiClient(settings)
+                if(settings.bridgeName.startsWith("Home")) runCatching { WorldContentCache(applicationContext).flushReceipt(api,settings.deviceId) }
+                if(settings.bridgeName.startsWith("Home") && System.currentTimeMillis()-contentCheckedAt >= 300000L) {
+                    contentCheckedAt=System.currentTimeMillis()
+                    runCatching { WorldContentCache(applicationContext).save(api.worldContent()) }
+                }
                 runCatching { cycleReminder.evaluateToday() }
 
                 val placeWeatherSnapshot =
@@ -979,6 +985,15 @@ class NativeRuntimeService : Service() {
         if (plan == null || due.isEmpty()) return
 
         due.forEach { step ->
+              val reminderPayload=runCatching { JSONObject(step.payloadJson) }.getOrDefault(JSONObject())
+              if(reminderPayload.optString("task_id").isNotBlank() || reminderPayload.optString("reply_to").isNotBlank()) {
+                  // Check only a due reminder, never each idle timer tick. Offline is silent.
+                  val allowed=runCatching { api.reminderCheck(reminderPayload) }.getOrDefault(false)
+                  if(!allowed) {
+                      presencePlanRepository.markResult(stepId=step.stepId,ok=true,result="silent_task_completed_replied_or_check_unavailable")
+                      return@forEach
+                  }
+              }
             if (step.action == "set_presence_plan" || step.action == "clear_presence_plan") {
                 presencePlanRepository.markResult(
                     stepId = step.stepId,

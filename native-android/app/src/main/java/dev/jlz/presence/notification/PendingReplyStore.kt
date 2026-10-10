@@ -114,7 +114,8 @@ class PendingReplyStore(context: Context) :
                     notify = false, messageId = item.id,
                     createdAtMs = item.observedAtMs,
                     replyToTitle = item.replyToTitle,
-                    replyToText = item.replyToText
+                    replyToText = item.replyToText,
+                    replyTo = item.parentEventId
                 )
             } catch (_: Exception) { break }
             if (response.id != item.id || response.text != item.text) break

@@ -13,6 +13,7 @@ export type DailyTask = {
   task_id: string;
   date: string;
   title: string;
+  description?: string;
   category: string;
   priority: DailyTaskPriority;
   status: DailyTaskStatus;
@@ -88,6 +89,7 @@ export const normalizeDailyPlan = (payload: unknown, fallbackDate: string): Dail
       owner: str(task.owner) || "user",
       estimated_minutes: Math.max(0, Math.min(1440, num(task.estimated_minutes))),
       due_at: str(task.due_at),
+      description: str(task.description),
       next_action: str(task.next_action),
       source: str(task.source),
       sort_order: Math.max(0, num(task.sort_order, 100)),

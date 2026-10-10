@@ -76,6 +76,9 @@ data class DeviceStateSnapshot(
 }
 
 class RuntimeApiClient(private val settings: RuntimeSettings) {
+    fun contentReceipt(receipt: JSONObject): JSONObject = postJson("/api/world/content/receipt",receipt)
+    fun reminderCheck(payload: JSONObject): Boolean = postJson("/api/world/reminder-check",payload).optBoolean("allowed",false)
+    fun worldContent(): JSONObject = getJson("/api/world/content?space_id=world-between-primary&device_scope=" + if(settings.deviceId.contains("tablet")) "tablet" else "phone").getJSONObject("content")
     private fun connection(
         path: String,
         method: String,
@@ -224,7 +227,8 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         messageId: String? = null,
         createdAtMs: Long? = null,
         replyToTitle: String? = null,
-        replyToText: String? = null
+        replyToText: String? = null,
+        replyTo: String? = null
     ): InboxMessage {
         val body = JSONObject()
             .put("device_id", settings.deviceId)
@@ -238,6 +242,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         intentId?.let { body.put("intent_id", it) }
         replyToTitle?.let { body.put("reply_to_title", it.take(160)) }
         replyToText?.let { body.put("reply_to_text", it.take(1200)) }
+        replyTo?.let { body.put("reply_to",it.take(100)) }
 
         val response = postJson("/api/inbox/message", body)
         // A HTTP response or a locally generated fallback ID is not a delivery receipt.
