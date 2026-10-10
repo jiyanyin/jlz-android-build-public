@@ -614,7 +614,7 @@ export default function BetweenWorlds() {
       {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} copy={copy} voice={{...voiceCard, headline:copy["greetings."+contentPart(now ?? new Date())] || voiceCard.headline, body:copy["home.moment"] || voiceCard.body}} homePortrait={homePortrait} selectTaskDate={selectTaskDate} plan={state.dailyPlan?.date === taskDate ? state.dailyPlan : emptyDailyPlan(taskDate)} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} unlockHello={unlockHello} appHub={appHub} launchApp={launchHubApp} openBanduread={openBanduread} openApps={() => setSheet("apps")} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
       {tab === "echo" && <EchoPage onTask={(text,id)=>{mutateDailyTask("upsert",{date:keyDate(new Date()),task_id:"echo-task-"+id.slice(-70),title:text.slice(0,180),description:text,source:"echo:"+id});notify("已放进今日任务");}} state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
       {tab === "timeline" && <TimelinePage notes={state.notes} remote={state.remoteRecords} />}
-      {tab === "room" && <RoomPage records={state.remoteRecords} teaser={copy["jlz.room.teaser"]} />}
+      {tab === "room" && <RoomPage records={state.remoteRecords} teaser={copy["jlz.room.teaser"]} portrait={homePortrait} />}
       {tab === "calendar" && <CalendarPage records={state.remoteRecords} notes={state.notes} plan={state.dailyPlan} month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
       {tab === "more" && <section className="content-sync glass"><h3>同步与更改记录</h3>{state.outbox.filter(i=>i.rejected).map(i=><p key={i.event_id}>未同步：{String(i.body.text || (i.body.task as DailyTask|undefined)?.title || "一条记录")}<button onClick={()=>{update(s=>({...s,outbox:s.outbox.map(x=>x.event_id===i.event_id?{...x,rejected:false,error:undefined}:x)}));void connect();}}>重试</button></p>)}<p>{contentOnline ? '已连接' : '离线 · 使用本机有效内容'} · 内容版本 {state.worldContent?.revision ?? 0}</p><p>主题：{effectiveTheme} · 只有实际写入的内容来自官端</p><button className="secondary" onClick={()=>void pullContent()}>立即同步</button> <button className="secondary" disabled={!contentOnline || !state.worldContent?.revision} onClick={()=>void rollbackContent()}>恢复上一版</button>{state.worldContent?.recent_changes.map(change=><p key={change.revision}>v{change.revision} · {change.keys.join(' / ')}<small> {change.updated_at}</small></p>)}{state.worldContent?.devices?.map(d=><p key={d.device_id}>{d.device_type==="tablet"?"平板":"手机"} · {d.online_state==="online"?"在线":"暂不可达"} · {d.last_seen_age_seconds} 秒前连接</p>)}{state.worldContent?.receipts.map(r=><p key={r.device_id+r.surface}>{r.device_id} · {r.surface} 已应用 v{r.revision} · {(r.applied_keys||[]).join(" / ")}</p>)}</section>}
       {tab === "more" && <MorePage state={state} update={update} setWelcome={setWelcome} banner={banner} reconnect={() => void connect()} />}
@@ -1031,6 +1031,7 @@ function HomePage({
       <div className="task-entry-dates">
         <span>任务日期 {task.date}</span>
         <span>记录于 {recordDate(task.created_at)}</span>
+        {task.status === "done" && <span>完成于 {task.completed_at ? recordDate(task.completed_at) : "未记录具体日期"}</span>}
       </div>
       <div className="task-entry-meta">
         {task.category} · {statusLabel[task.status]}{task.estimated_minutes ? ` · 约 ${task.estimated_minutes} 分钟` : ""}
@@ -1089,7 +1090,10 @@ function HomePage({
           <button className="task-date-today" onClick={() => selectTaskDate(keyDate(new Date()))}>今天</button>
         </div>
         <div className="task-drawer-list">
-          {[...sections.main, ...sections.other, ...sections.postponed, ...sections.completed].map(renderTask)}
+          {[...sections.main, ...sections.other, ...sections.postponed].length > 0 && <div className="task-group-label">待办中 <span>{plan.tasks.length - completedCount} 项</span></div>}
+          {[...sections.main, ...sections.other, ...sections.postponed].map(renderTask)}
+          {sections.completed.length > 0 && <div className="task-group-label task-group-complete">已完成 <span>{sections.completed.length} 项</span></div>}
+          {sections.completed.map(renderTask)}
           {!plan.tasks.length && <div className="task-drawer-empty"><b>这一天还没有待办。</b><small>从官端聊天或者这里添加，都可以同步进来。</small></div>}
         </div>
         <button className="task-drawer-add" onClick={() => { closeTasks(); openTask(null); }}>＋ 添加待办</button>
@@ -1198,11 +1202,55 @@ function TimelinePage({ notes, remote }: { notes: RecordItem[]; remote: RemoteRe
   ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   return <section className="page active"><PageHead kicker="OUR LITTLE HISTORY" title="你我之间" en="Timeline" copy="主动记录会在这里长成一条时间线" /><div className="timeline">{items.length ? items.map((x) => <article className="timeline-entry" key={x.key}><b>{x.type}</b><p>{x.body}</p><time>{new Date(x.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · {x.label}</time></article>) : <div className="preview-tip">还没有记录。去首页留第一条吧。</div>}</div></section>;
 }
-function RoomPage({records,teaser}:{records:RemoteRecord[];teaser?:string}) {
-  const groups: [string,string[]][]=[['此刻的我',['jlz_state']],['桌边随笔',['jlz_note','jlz_observation']],['想要的事',['jlz_wish','jlz_promise']],['夜信',['night_letter']],['抽屉',['dark_room','jlz_letter']]];
-  const entries=roomEntries(records);
-  return <section className="page active room-page"><PageHead kicker="A ROOM OF MY OWN" title="纪临洲" en="Private room" copy={teaser || '写下来的我，留在你能找到的地方。'} />{groups.map(([name,kinds])=>{const items=entries.filter(r=>name==='抽屉' ? kinds.includes(r.type)||['draft','hidden','decided_to_send'].includes(r.entity_state||'') : kinds.includes(r.type)&&!['draft','hidden','decided_to_send'].includes(r.entity_state||''));return <article className="room-entry glass" key={name}><h3>{name}</h3>{items.length?items.map(r=><div key={r.id}><p>{r.body}</p><small>{new Date(r.at).toLocaleString('zh-CN')} · {r.type==='jlz_observation'?'我的观察，不是你的事实':r.entity_state||'官端写入'}</small></div>):<p className="hint">这里还没有写下的内容。</p>}</article>;})}</section>;
+function RoomPage({ records, teaser, portrait }: { records: RemoteRecord[]; teaser?: string; portrait: string }) {
+  const groups = [
+    { name: "此刻的我", subtitle: "NOW & HERE", hint: "最近的一句真话", icon: "state", kinds: ["jlz_state"] },
+    { name: "桌边随笔", subtitle: "DESK NOTES", hint: "一些没说完的话", icon: "note", kinds: ["jlz_note", "jlz_observation"] },
+    { name: "想要的事", subtitle: "WISHES", hint: "写下想留下的事", icon: "between", kinds: ["jlz_wish", "jlz_promise"] },
+    { name: "夜信", subtitle: "NIGHT LETTER", hint: "夜里留下的信", icon: "letter", kinds: ["night_letter"] },
+    { name: "抽屉", subtitle: "THE DRAWER", hint: "私藏与未寄出的信", icon: "key", kinds: ["dark_room", "jlz_letter"] },
+  ] as const;
+  const entries = roomEntries(records);
+  const shortPreview = (value: string) => value.replace(/\s+/g, " ").trim().slice(0, 88);
+  return <section className="page active room-page room-reimagined">
+    <div className="room-hero">
+      <div className="room-hero-text">
+        <span className="room-kicker">A ROOM OF MY OWN · PRIVATE</span>
+        <h1>纪临洲 <em>Private room</em></h1>
+        <p>{teaser || "写下来的我，留在你能找到的地方。"}</p>
+        <span className="room-hero-deco" aria-hidden="true">✦ ─── ☾ ─── ✦</span>
+      </div>
+      <img className="room-portrait" src={portrait} alt="纪临洲肖像" />
+    </div>
+    <div className="room-archive-heading"><span>PRIVATE COLLECTION</span><h2>我的收藏室</h2><p>有些话适合收好，再慢慢给你看。</p></div>
+    <div className="room-collection">
+      {groups.map(({ name, subtitle, hint, icon, kinds }) => {
+        const items = entries.filter(r => name === "抽屉"
+          ? kinds.some(k => k === r.type) || ["draft", "hidden", "decided_to_send"].includes(r.entity_state || "")
+          : kinds.some(k => k === r.type) && !["draft", "hidden", "decided_to_send"].includes(r.entity_state || ""));
+        const latest = items[0];
+        return <article className={`room-collection-card ${items.length ? "has-content" : "is-empty"}`} key={name}>
+          <div className="room-collection-top">
+            <span className={`room-emblem room-emblem-${icon}`} aria-hidden="true"><i>{icon === "state" ? "✧" : icon === "note" ? "✎" : icon === "between" ? "♡" : icon === "letter" ? "✉" : "⚝"}</i></span>
+            <div className="room-collection-title"><small>{subtitle}</small><h3>{name}</h3></div>
+            <span className="room-card-star" aria-hidden="true">✦</span>
+          </div>
+          <p className="room-card-preview">{latest ? shortPreview(latest.body) + (latest.body.length > 88 ? "…" : "") : hint}</p>
+          <div className="room-card-foot"><small>{latest ? new Date(latest.at).toLocaleDateString("zh-CN") : "尚无记录"}</small><span>{items.length ? `${items.length} 条记录` : "等待真实记录"}</span></div>
+          {items.length > 0 && <details className="room-card-reveal">
+            <summary>展开内容 <span aria-hidden="true">⌄</span></summary>
+            {items.map(r => <div className="room-card-record" key={r.id}>
+              <p>{r.body}</p>
+              <small>{new Date(r.at).toLocaleString("zh-CN")} · {r.type === "jlz_observation" ? "我的观察，不是你的事实" : r.entity_state || "官端写入"}</small>
+            </div>)}
+          </details>}
+        </article>;
+      })}
+    </div>
+    <div className="room-ending" aria-hidden="true">✧　Some things are meant to be kept.　✧</div>
+  </section>;
 }
+
 function CalendarPage({ month, setMonth, addRecord, send, notify, savedText, records, notes, plan }: { month: Date; setMonth: (d: Date) => void; addRecord: (r: RecordItem, b?: ("notes"|"life"|"journal")[]) => void; send: Send; notify: (s:string)=>void; savedText: (w: string) => string; records:RemoteRecord[]; notes:RecordItem[]; plan:DailyPlan|null }) {
   const [food,setFood]=useState('');
   const [selected,setSelected]=useState(keyDate(new Date()));
