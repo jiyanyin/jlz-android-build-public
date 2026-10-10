@@ -5,6 +5,7 @@ import {
   normalizeDailyPlan,
   optimisticTaskMutation,
   planSections,
+  taskDetailText,
 } from "../src/lib/dailyPlan.ts";
 
 test("normalizes Runtime DailyPlan payload", () => {
@@ -85,4 +86,12 @@ test("tracks completion timestamps without guessing dates for legacy tasks", () 
     created_at:"2026-09-29T12:00:00+08:00"
   }]}},date);
   assert.equal(old.tasks[0].completed_at, "");
+});
+
+test("legacy next action appears in the single concrete content field without duplicate text", () => {
+  assert.equal(taskDetailText({ description: "", next_action: "先打开伴读" }), "先打开伴读");
+  assert.equal(taskDetailText({ description: "整理材料", next_action: "先列清单" }), "整理材料\n先列清单");
+  assert.equal(taskDetailText({ description: "整理材料：先列清单", next_action: "先列清单" }), "整理材料：先列清单");
+  assert.equal(taskDetailText({ description: "详细内容", next_action: "" }), "详细内容");
+  assert.equal(taskDetailText(null), "");
 });
