@@ -32,6 +32,8 @@ class StudyTimerService : Service() {
     private val repo by lazy { StudySessionRepository(applicationContext) }
     private val manager by lazy { getSystemService(NotificationManager::class.java) }
     private var busy = false
+    private val focus by lazy { dev.jlz.presence.focus.FocusRepository(applicationContext) }
+    private var daily = dev.jlz.presence.focus.FocusState()
 
     override fun onCreate() {
         super.onCreate()
@@ -49,7 +51,13 @@ class StudyTimerService : Service() {
         scope.launch {
             while (isActive) {
                 val state = repo.state.first()
-                if (!state.active) {
+                daily = focus.current()
+                if (daily.dailyMode in setOf(dev.jlz.presence.focus.DailyMode.FOCUS, dev.jlz.presence.focus.DailyMode.BREAK) && daily.modeNow() == dev.jlz.presence.focus.DailyMode.NORMAL) {
+                    focus.setDailyMode(dev.jlz.presence.focus.DailyMode.NORMAL)
+                    dev.jlz.presence.overlay.FloatingPresenceService.showAttentionNudge(applicationContext, "这一段到时间了，选下一步。")
+                    stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); break
+                }
+                if (!state.active && daily.modeNow() != dev.jlz.presence.focus.DailyMode.BREAK) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
                     break
@@ -67,18 +75,21 @@ class StudyTimerService : Service() {
             scope.launch {
                 try {
                     val state = repo.state.first()
-                    if (state.active) {
+                    if (running) {
                         val event = when (action) {
                             ACTION_PAUSE -> if (!state.paused) {
                                 repo.pause()
+                                focus.pauseDaily()
                                 Triple("pause", state.sessionId, org.json.JSONObject())
                             } else null
                             ACTION_RESUME -> if (state.paused) {
                                 repo.resume()
+                                focus.resumeDaily()
                                 Triple("resume", state.sessionId, org.json.JSONObject())
                             } else null
                             ACTION_FINISH -> {
                                 val metrics = repo.finish()
+                                focus.stop()
                                 FloatingPresenceService.stopStudyIfActive(applicationContext)
                                 Triple(
                                     "finish",
@@ -97,8 +108,16 @@ class StudyTimerService : Service() {
                             )
                         }
                     }
+                    if (daily.modeNow() == dev.jlz.presence.focus.DailyMode.BREAK) {
+                        when (action) {
+                            ACTION_PAUSE -> focus.pauseDaily()
+                            ACTION_RESUME -> focus.resumeDaily()
+                            ACTION_FINISH -> focus.stop()
+                        }
+                    }
+                    daily = focus.current()
                     val current = repo.state.first()
-                    if (!current.active) {
+                    if (!current.active && daily.modeNow() != dev.jlz.presence.focus.DailyMode.BREAK) {
                         stopForeground(STOP_FOREGROUND_REMOVE)
                         stopSelf()
                     } else {
@@ -113,8 +132,9 @@ class StudyTimerService : Service() {
             }
         } else if (action == ACTION_REFRESH) {
             scope.launch {
+                daily = focus.current()
                 val current = repo.state.first()
-                if (current.active) {
+                if (current.active || daily.modeNow() == dev.jlz.presence.focus.DailyMode.BREAK) {
                     manager.notify(NOTIFICATION_ID, buildNotification(current, System.currentTimeMillis()))
                 } else {
                     stopForeground(STOP_FOREGROUND_REMOVE)
@@ -126,11 +146,15 @@ class StudyTimerService : Service() {
     }
 
     private fun buildNotification(state: StudySessionState, now: Long): Notification {
-        val seconds = state.effectiveElapsedMs(now) / 1000L
+        val inDaily = daily.modeNow(now) in setOf(dev.jlz.presence.focus.DailyMode.FOCUS, dev.jlz.presence.focus.DailyMode.BREAK)
+        val paused = if (inDaily) daily.pausedAtMs > 0 else state.paused
+        val running = state.active || inDaily
+        val seconds = (if (inDaily) daily.remainingMs(now) else state.effectiveElapsedMs(now)) / 1000L
         val time = "%02d:%02d:%02d".format(
             seconds / 3600L, (seconds / 60L) % 60L, seconds % 60L
         )
         val content = when {
+            inDaily -> "${if (daily.dailyMode == dev.jlz.presence.focus.DailyMode.BREAK) "短休" else "专注"} · $time" + if (paused) " · 暂停" else ""
             !state.active -> "准备开始 · 点击进入学习"
             state.paused -> "已暂停 · " + time + "（暂停时间不计入）"
             else -> "专注中 · 请看通知中的实时秒表"
@@ -149,19 +173,20 @@ class StudyTimerService : Service() {
             // System chronometer advances every second without restarting a
             // service or re-posting a static timestamp every ten seconds.
             .setShowWhen(true)
-            .setWhen(now - state.effectiveElapsedMs(now))
-            .setUsesChronometer(state.active && !state.paused)
+            .setWhen(if (inDaily) now + daily.remainingMs(now) else now - state.effectiveElapsedMs(now))
+            .setChronometerCountDown(inDaily)
+            .setUsesChronometer(running && !paused)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setSilent(true)
             .setOnlyAlertOnce(true)
             .setOngoing(true)
             .setContentIntent(open)
-        if (state.active) {
+        if (running) {
             notice.addAction(
                 android.R.drawable.ic_media_pause,
-                if (state.paused) "继续" else "暂停",
-                actionIntent(if (state.paused) ACTION_RESUME else ACTION_PAUSE, 501)
+                if (paused) "继续" else "暂停",
+                actionIntent(if (paused) ACTION_RESUME else ACTION_PAUSE, 501)
             )
             notice.addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,

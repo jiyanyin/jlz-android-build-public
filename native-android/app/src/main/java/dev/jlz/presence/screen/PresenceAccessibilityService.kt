@@ -30,6 +30,7 @@ class PresenceAccessibilityService : AccessibilityService() {
     private lateinit var automaticCapture: AutomaticCaptureCoordinator
     private lateinit var entertainmentGateV2: EntertainmentGateV2Coordinator
     private lateinit var unlockSoftGate: UnlockSoftGateCoordinator
+    private val classifier by lazy { dev.jlz.presence.focus.LocalAppClassifier(applicationContext) }
     private val lastGateAtMs = mutableMapOf<String, Long>()
     private val observationCache = AccessibilityObservationCache()
     @Volatile private var contentChangePending = false
@@ -85,18 +86,22 @@ class PresenceAccessibilityService : AccessibilityService() {
         if (currentFocus.active && !currentFocus.isActiveNow()) {
             scope.launch { focusRepository.stop() }
         }
-        if (packageName != applicationContext.packageName && currentFocus.blocks(packageName)) {
-            performGlobalAction(GLOBAL_ACTION_HOME)
+        val dailyMode = currentFocus.modeNow(now)
+        val category = packageName?.let { classifier.classify(it) }
+        val dailyBlocked = packageName != null && category != null && dev.jlz.presence.focus.DailyModePolicy.blocks(dailyMode, category, packageName)
+        val safe = category == dev.jlz.presence.focus.LocalAppCategory.SYSTEM_SAFE
+        if (!safe && (dailyBlocked || (dailyMode == dev.jlz.presence.focus.DailyMode.NORMAL && currentFocus.blocks(packageName)))) {
             FloatingPresenceService.start(applicationContext, "回来，先做完这段。", FloatingPresenceMode.FOCUS)
             val last = lastGateAtMs[packageName] ?: 0L
             if (packageName != null && now - last >= 2_500L) {
                 lastGateAtMs[packageName] = now
-                FocusGateActivity.show(applicationContext, packageName, currentFocus.reason)
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                scope.launch { delay(350L); FocusGateActivity.show(applicationContext, packageName, currentFocus.reason) }
             }
             return
         }
 
-        if (::entertainmentGateV2.isInitialized) {
+        if (::entertainmentGateV2.isInitialized && !safe && !dev.jlz.presence.focus.DailyModePolicy.bypassEntertainment(dailyMode, packageName.orEmpty())) {
             entertainmentGateV2.observe(packageName, eventType, now)
         }
         when (eventType) {

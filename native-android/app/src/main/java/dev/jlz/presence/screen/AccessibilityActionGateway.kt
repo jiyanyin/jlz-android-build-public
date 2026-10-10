@@ -103,6 +103,22 @@ object AccessibilityActionGateway {
         if (!activityName.isNullOrBlank()) foregroundActivity = activityName
     }
     fun available(): Boolean = service != null
+    fun safeForCoWatch(target: String): Boolean {
+        val root = bestRoot() ?: return false
+        if (root.packageName?.toString() != target) return false
+        val queue = java.util.ArrayDeque<android.view.accessibility.AccessibilityNodeInfo>()
+        queue.add(root); var visited = 0
+        while (queue.isNotEmpty() && visited++ < 300) {
+            val n = queue.removeFirst()
+            val text = n.text?.toString().orEmpty() + n.contentDescription?.toString().orEmpty()
+            if (n.isPassword || listOf("密码", "验证码", "支付", "银行卡", "password", "payment").any { text.contains(it, ignoreCase = true) }) return false
+            for (i in 0 until n.childCount) n.getChild(i)?.let { queue.add(it) }
+        }
+        return queue.isEmpty()
+    }
+
+    fun lockScreenByUser(): Boolean = service?.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN) == true
+
     fun currentPackage(): String? = bestRoot()?.packageName?.toString() ?: foregroundPackage
     fun currentActivity(): String? = foregroundActivity
 
