@@ -33,6 +33,7 @@ class LocalAppClassifier(private val context: Context) {
         cache.remove(pkg)
         return true
     }
+    @Synchronized fun invalidate(pkg: String) { cache.remove(pkg) }
     fun clear(pkg: String) { prefs.edit().remove("class:$pkg").remove("cert:$pkg").apply(); cache.remove(pkg) }
 
     fun eligibleLearning(pkg: String): Boolean {
@@ -47,6 +48,7 @@ class LocalAppClassifier(private val context: Context) {
     }
 
     @Synchronized fun classify(pkg: String): LocalAppCategory {
+        if (pkg in setOf(context.packageName, "com.android.settings", "com.android.systemui")) return LocalAppCategory.SYSTEM_SAFE
         val now = System.currentTimeMillis()
         cache[pkg]?.takeIf { now - it.first < 30_000L }?.let { return it.second }
         val result = runCatching {
@@ -56,7 +58,7 @@ class LocalAppClassifier(private val context: Context) {
                 pkg == context.getSystemService(TelecomManager::class.java)?.defaultDialerPackage ||
                 pkg == pm.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName ||
                 context.getSystemService(InputMethodManager::class.java).enabledInputMethodList.any { it.packageName == pkg } ||
-                ((info.flags and ApplicationInfo.FLAG_SYSTEM) != 0 && (pkg.contains("clock") || pkg.contains("alarm") || pkg.contains("permissioncontroller") || pkg.contains("packageinstaller") || pkg.contains("incall") || pkg.contains("emergency")))
+                ((info.flags and ApplicationInfo.FLAG_SYSTEM) != 0 && (pkg.contains("clock") || pkg.contains("alarm") || pkg.contains("permissioncontroller") || pkg.contains("packageinstaller") || pkg.contains("incall") || pkg.contains("emergency") || pkg == "com.google.android.gms")))
             if (safe) LocalAppCategory.SYSTEM_SAFE
             else {
                 val correction = prefs.getString("class:$pkg", null)

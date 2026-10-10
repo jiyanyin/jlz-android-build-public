@@ -60,6 +60,7 @@ class StudySessionBridge(context: Context) {
         val state = repository.state.first()
         if (state.active && !state.paused) {
             repository.pause()
+            dev.jlz.presence.focus.FocusRepository(app).pauseDaily()
             publish("pause", state.sessionId)
         }
         StudyTimerService.sync(app)
@@ -71,6 +72,7 @@ class StudySessionBridge(context: Context) {
         val state = repository.state.first()
         if (state.active && state.paused) {
             repository.resume()
+            dev.jlz.presence.focus.FocusRepository(app).resumeDaily()
             publish("resume", state.sessionId)
         }
         StudyTimerService.sync(app)
@@ -82,6 +84,7 @@ class StudySessionBridge(context: Context) {
         val state = repository.state.first()
         if (state.active) {
             val metrics = repository.finish()
+            dev.jlz.presence.focus.FocusRepository(app).stop()
             StudyTimerService.stop(app)
             publish(
                 "finish",

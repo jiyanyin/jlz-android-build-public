@@ -21,6 +21,9 @@ class PresenceBootReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val app = context.applicationContext
+                val tripCache = app.getSharedPreferences("jlz_manual_trip_cache", Context.MODE_PRIVATE)
+                tripCache.getString("session_id", null)?.let { dev.jlz.presence.trip.PendingTripStop.remember(app, it) }
+                tripCache.edit().remove("points").remove("session_id").apply()
                 val prefs = PresenceDevicePreferencesRepository(app).load()
                 val settings = RuntimeSettingsRepository(app).load()
                 if (intent?.action == Intent.ACTION_BOOT_COMPLETED) {

@@ -85,6 +85,8 @@ class FloatingPresenceService : Service() {
 
     @Volatile private var focusState: FocusState = FocusState()
     private var studyPaused = false
+    private val behavior = QAvatarStateMachine()
+    private var gateUntil = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -498,15 +500,23 @@ class FloatingPresenceService : Service() {
         val modeNow = focusState.modeNow()
         val category = if (pkg.isBlank()) dev.jlz.presence.focus.LocalAppCategory.UNKNOWN else classifier.classify(pkg)
         val hour = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Shanghai")).hour
-        val awakeEntertainment = dev.jlz.presence.screen.ScreenObservationBus.isAvailable() &&
+        val awakeEntertainment = !getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked && dev.jlz.presence.screen.ScreenObservationBus.isAvailable() &&
             category in setOf(dev.jlz.presence.focus.LocalAppCategory.GAME, dev.jlz.presence.focus.LocalAppCategory.FEED) && (hour >= 23 || hour < 6)
-        val mood = when {
-            modeNow == dev.jlz.presence.focus.DailyMode.SLEEP -> "sleep"
-            dev.jlz.presence.cowatch.CoWatchState.active -> "watching"
-            modeNow == dev.jlz.presence.focus.DailyMode.FOCUS -> "watch"
-            modeNow == dev.jlz.presence.focus.DailyMode.BREAK -> "break"
-            awakeEntertainment -> "night"
-            mode == FloatingPresenceMode.STUDY -> "watch"
+        val sync = dev.jlz.presence.runtime.BridgeStore(applicationContext).diagnostics().optLong("last_sync")
+        val offline = sync > 0L && System.currentTimeMillis() - sync > 120_000L
+        val state = behavior.resolve(protected, modeNow == dev.jlz.presence.focus.DailyMode.SLEEP,
+            dev.jlz.presence.cowatch.CoWatchState.active,
+            modeNow == dev.jlz.presence.focus.DailyMode.FOCUS || mode == FloatingPresenceMode.STUDY,
+            System.currentTimeMillis() < gateUntil, awakeEntertainment,
+            modeNow == dev.jlz.presence.focus.DailyMode.BREAK, offline)
+        val mood = when(state) {
+            QAvatarState.SLEEP -> "sleep"
+            QAvatarState.WATCHING -> "watching"
+            QAvatarState.STUDY -> "watch"
+            QAvatarState.ANNOYED -> "gate"
+            QAvatarState.NIGHT -> "night"
+            QAvatarState.BREAK -> "break"
+            QAvatarState.OFFLINE -> "offline"
             else -> "idle"
         }
         avatar?.setMood(mood)
@@ -682,6 +692,8 @@ class FloatingPresenceService : Service() {
     companion object {
         @Volatile private var captureHidden = false
         @Volatile private var liveService: FloatingPresenceService? = null
+
+        fun gateReaction() { liveService?.let { it.gateUntil = System.currentTimeMillis() + 5000; it.avatar?.setMood("gate") } }
 
         suspend fun <T> withoutOverlay(block: suspend () -> T): T {
             withContext(Dispatchers.Main) { captureHidden = true; liveService?.panel?.visibility = View.INVISIBLE }

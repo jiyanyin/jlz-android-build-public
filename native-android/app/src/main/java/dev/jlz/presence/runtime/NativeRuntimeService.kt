@@ -858,14 +858,17 @@ class NativeRuntimeService : Service() {
                     }
                     "pause", "study_pause", "study_paused" -> {
                         studyRepository.pause()
+                        focusRepository.pauseDaily()
                         dev.jlz.presence.study.StudyTimerService.sync(applicationContext)
                     }
                     "resume", "continue", "study_resume", "study_resumed" -> {
                         studyRepository.resume()
+                        focusRepository.resumeDaily()
                         dev.jlz.presence.study.StudyTimerService.sync(applicationContext)
                     }
                     "finish", "end", "study_finish", "study_finished" -> {
                         studyRepository.finish()
+                        focusRepository.stop()
                         FloatingPresenceService.stopStudyIfActive(applicationContext)
                         dev.jlz.presence.study.StudyTimerService.stop(applicationContext)
                     }

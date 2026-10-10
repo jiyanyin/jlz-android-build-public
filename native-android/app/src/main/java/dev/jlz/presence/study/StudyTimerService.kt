@@ -75,7 +75,7 @@ class StudyTimerService : Service() {
             scope.launch {
                 try {
                     val state = repo.state.first()
-                    if (running) {
+                    if (state.active) {
                         val event = when (action) {
                             ACTION_PAUSE -> if (!state.paused) {
                                 repo.pause()
