@@ -90,6 +90,8 @@ export default function BetweenWorlds() {
   const [sheet, setSheet] = useState<"status" | "note" | "life" | "task" | "apps" | null>(null);
   const [appHub, setAppHub] = useState<AppHubSnapshot>(() => emptyAppHubSnapshot());
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
+  const [taskDate, setTaskDate] = useState(() => keyDate(new Date()));
+  const taskDateRef = useRef(taskDate);
   const [toast, setToast] = useState("");
   const [now, setNow] = useState<Date | null>(null);
   const [month, setMonth] = useState(() => new Date());
@@ -237,12 +239,21 @@ export default function BetweenWorlds() {
     }
   }, [update, notify]);
 
-  const pullDailyPlan = useCallback(async (date = keyDate(new Date())) => {
+  const pullDailyPlan = useCallback(async (date = taskDateRef.current) => {
     const c = cfg();
     if (!c) return;
     const plan = await runtime.dailyPlan(c, date);
+    if (date !== taskDateRef.current) return;
     update((s) => ({ ...s, dailyPlan: s.outbox.filter(i=>i.path==="/api/web/daily-plan/task" && i.body.date===date).reduce((p,i)=>optimisticTaskMutation(p,date,String(i.body.action),i.body.task as Partial<DailyTask>),plan) }));
   }, [update]);
+
+  const selectTaskDate = (date: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    taskDateRef.current = date;
+    setTaskDate(date);
+    if (!cfg()) notify("离线时仅保留上次加载的日期，新增任务会排队同步");
+    else void pullDailyPlan(date).catch(() => notify("这个日期暂时没能同步，已有记录仍保留"));
+  };
 
   const pullStudySummary = useCallback(async (date = keyDate(new Date())) => {
     const c = cfg();
@@ -388,7 +399,7 @@ export default function BetweenWorlds() {
   }, [update, flush]);
 
   const mutateDailyTask = useCallback((action: string, payload: Partial<DailyTask> & { task_id?: string }) => {
-    const date = keyDate(new Date());
+    const date = payload.date || taskDateRef.current;
     const taskPayload = {
       ...payload,
       task_id: payload.task_id || newEventId(),
@@ -598,8 +609,8 @@ export default function BetweenWorlds() {
 
     <main className="app-shell">
       <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}>✦ 换装</button><button className="round-btn" aria-label="更多" onClick={()=>switchTab("more")}>⋯</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
-      {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} copy={copy} voice={{...voiceCard, headline:copy["greetings."+contentPart(now ?? new Date())] || voiceCard.headline, body:copy["home.moment"] || voiceCard.body}} homePortrait={homePortrait} plan={state.dailyPlan?.date === keyDate(now ?? new Date()) ? state.dailyPlan : emptyDailyPlan(keyDate(now ?? new Date()))} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} unlockHello={unlockHello} appHub={appHub} launchApp={launchHubApp} openBanduread={openBanduread} openApps={() => setSheet("apps")} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
-      {tab === "echo" && <EchoPage onTask={(text,id)=>{mutateDailyTask("upsert",{task_id:"echo-task-"+id.slice(-70),title:text.slice(0,180),description:text,source:"echo:"+id});notify("已放进今日任务");}} state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
+      {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} copy={copy} voice={{...voiceCard, headline:copy["greetings."+contentPart(now ?? new Date())] || voiceCard.headline, body:copy["home.moment"] || voiceCard.body}} homePortrait={homePortrait} selectTaskDate={selectTaskDate} plan={state.dailyPlan?.date === taskDate ? state.dailyPlan : emptyDailyPlan(taskDate)} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} unlockHello={unlockHello} appHub={appHub} launchApp={launchHubApp} openBanduread={openBanduread} openApps={() => setSheet("apps")} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
+      {tab === "echo" && <EchoPage onTask={(text,id)=>{mutateDailyTask("upsert",{date:keyDate(new Date()),task_id:"echo-task-"+id.slice(-70),title:text.slice(0,180),description:text,source:"echo:"+id});notify("已放进今日任务");}} state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
       {tab === "timeline" && <TimelinePage notes={state.notes} remote={state.remoteRecords} />}
       {tab === "room" && <RoomPage records={state.remoteRecords} teaser={copy["jlz.room.teaser"]} />}
       {tab === "calendar" && <CalendarPage records={state.remoteRecords} notes={state.notes} plan={state.dailyPlan} month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
@@ -615,7 +626,7 @@ export default function BetweenWorlds() {
       {sheet === "status" && <StatusEditor close={() => setSheet(null)} update={update} send={send} notify={notify} savedText={savedText} />}
       {sheet === "note" && <NoteEditor close={() => setSheet(null)} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
       {sheet === "life" && <LifeEditor activeLife={state.activeLife} close={() => setSheet(null)} update={update} send={send} notify={notify} savedText={savedText} />}
-      {sheet === "task" && <TaskEditor task={editingTask} date={keyDate(now ?? new Date())} close={() => setSheet(null)} mutateTask={mutateDailyTask} notify={notify} />}
+      {sheet === "task" && <TaskEditor task={editingTask} date={taskDate} close={() => setSheet(null)} mutateTask={mutateDailyTask} notify={notify} />}
       {sheet === "apps" && <AppDrawerSheet snapshot={appHub} launchApp={launchHubApp} setPinned={updateAppPin} movePinned={moveAppPin} openBanduread={openBanduread} />}
     </div>
     <div className={`toast ${toast ? "show" : ""}`}>{toast}</div>
@@ -928,7 +939,7 @@ function bannerText(b: Banner) {
 const syncLabel = (sync?: Sync) => (sync === "synced" ? "已同步" : "本地 · 待同步");
 
 function HomePage({
-  copy, dateLabel, timeText, voice, homePortrait, plan, study, nowMs, unlockHello, appHub, launchApp, openBanduread, openApps, openStudy, openSheet, openTask, mutateTask, setTab, banner,
+  copy, dateLabel, timeText, voice, homePortrait, plan, selectTaskDate, study, nowMs, unlockHello, appHub, launchApp, openBanduread, openApps, openStudy, openSheet, openTask, mutateTask, setTab, banner,
 }: {
   copy: Record<string,string>;
   dateLabel: string;
@@ -936,6 +947,7 @@ function HomePage({
   voice: ReturnType<typeof selectVoiceCard>;
   homePortrait: string;
   plan: DailyPlan;
+  selectTaskDate: (date: string) => void;
   study: StudySummary;
   nowMs: number;
   unlockHello: boolean;
@@ -993,8 +1005,8 @@ function HomePage({
       </div>
     </div>
 
-    <button className="task-summary glass" onClick={()=>setTasksOpen(true)}><span>今日任务 · {plan.tasks.filter(t=>t.status==='done').length}/{plan.tasks.length}</span><strong>{plan.current_step?.next_action || '给今天留一个小小的开始'}</strong><i>查看全部 ↗</i></button>
-    {tasksOpen && <div className="task-drawer-backdrop" onClick={()=>setTasksOpen(false)}><section className={`task-drawer ${tasksExpanded?'expanded':''}`} role="dialog" aria-modal="true" aria-label="今日任务总览" onClick={e=>e.stopPropagation()}><button className="drawer-grip" onClick={()=>setTasksExpanded(v=>!v)} aria-label="展开或收起任务面板">━━</button><div className="daily-plan-top"><div><span>{plan.date}</span><h3>今天，一件一件来。</h3></div><button onClick={()=>setTasksOpen(false)} aria-label="关闭任务总览">×</button></div><button className="primary" onClick={()=>{setTasksOpen(false);openTask(null);}}>＋ 加一件事</button>{plan.current_step && <div className="current-step"><span>现在这一步</span><strong>{plan.current_step.next_action}</strong>{current && <button className="secondary" onClick={()=>mutateTask(current.status==='in_progress'?'complete':'start',{task_id:current.task_id})}>{current.status==='in_progress'?'做完了':'现在开始'}</button>}</div>}{[...sections.main,...sections.other,...sections.postponed,...sections.completed].map(renderTask)}{!plan.tasks.length&&<p>还没有安排。这里会接住你在官端说的待办。</p>}</section></div>}
+    <button className="task-summary glass" onClick={()=>setTasksOpen(true)}><span>{plan.date === keyDate(new Date()) ? "今日任务" : plan.date + " 的任务"} · {plan.tasks.filter(t=>t.status==='done').length}/{plan.tasks.length}</span><strong>{plan.current_step?.next_action || '给今天留一个小小的开始'}</strong><i>查看全部 ↗</i></button>
+    {tasksOpen && <div className="task-drawer-backdrop" onClick={()=>setTasksOpen(false)}><section className={`task-drawer ${tasksExpanded?'expanded':''}`} role="dialog" aria-modal="true" aria-label="今日任务总览" onClick={e=>e.stopPropagation()}><button className="drawer-grip" onClick={()=>setTasksExpanded(v=>!v)} aria-label="展开或收起任务面板">━━</button><div className="daily-plan-top"><div><label>任务日期<input type="date" aria-label="任务日期" value={plan.date} onChange={e=>selectTaskDate(e.target.value)} /></label><h3>一件一件来。</h3></div><button onClick={()=>setTasksOpen(false)} aria-label="关闭任务总览">×</button></div><button className="primary" onClick={()=>{setTasksOpen(false);openTask(null);}}>＋ 加一件事</button>{plan.current_step && <div className="current-step"><span>现在这一步</span><strong>{plan.current_step.next_action}</strong>{current && <button className="secondary" onClick={()=>mutateTask(current.status==='in_progress'?'complete':'start',{task_id:current.task_id})}>{current.status==='in_progress'?'做完了':'现在开始'}</button>}</div>}{[...sections.main,...sections.other,...sections.postponed,...sections.completed].map(renderTask)}{!plan.tasks.length&&<p>还没有安排。这里会接住你在官端说的待办。</p>}</section></div>}
 
     <SectionHead title="陪你学一会儿" english="STUDY SESSION" />
     <div className={`study-session-card glass ${study.active ? "active" : ""} ${study.paused ? "paused" : ""}`}>
@@ -1066,7 +1078,8 @@ function PageHead({ kicker, title, en, copy }: { kicker: string; title: string; 
 
 function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask }: { onTask:(text:string,id:string)=>void; state: AppState; conn: Conn; update: (fn: (s: AppState) => AppState) => void; send: Send; notify: (s: string) => void; chatAvatar: string }) {
   const [text, setText] = useState("");
-  const submit = () => { const value = text.trim(); if (!value) return; const id = newEventId(); update((s) => ({ ...s, messages: [...s.messages, { text: value, at: new Date().toISOString(), event_id: id, sync: "queued" as Sync }].slice(-80) })); send("/api/web/message", { text: value }, id); setText(""); if (conn !== "online") notify("已存本机，连接后自动发送"); };
+  const [replyTo,setReplyTo] = useState<{id:string;text:string}|null>(null);
+  const submit = () => { const value = text.trim(); if (!value) return; const id = newEventId(); update((s) => ({ ...s, messages: [...s.messages, { text: value, at: new Date().toISOString(), event_id: id, sync: "queued" as Sync }].slice(-80) })); send("/api/web/message", { text: value, reply_to:replyTo?.id, reply_to_text:replyTo?.text }, id); setText(""); setReplyTo(null); if (conn !== "online") notify("已存本机，连接后自动发送"); };
   const remoteIds = new Set(state.remoteMessages.map((m) => m.id));
   const list = [
     ...state.importedMessages.map((m) => ({ key: m.id, text: m.text, at: m.at, me: false, label: "离线指令包" })),
@@ -1081,9 +1094,10 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask }: { o
       {list.length === 0 && <div className="message-row companion"><img className="message-avatar" src={chatAvatar} alt="" /><div className="message">音音，今天如果什么都不想做，就来坐一会儿。<time>纪临洲</time></div></div>}
       {list.map((m) => <div className={`message-row ${m.me ? "me" : "companion"}`} key={m.key}>
         {!m.me && <img className="message-avatar" src={chatAvatar} alt="" />}
-        <div className={`message ${m.me ? "me" : ""}`}>{m.text}<time>{new Date(m.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} · {m.label}</time><div className="echo-actions"><button onClick={()=>onTask(m.text,m.key)}>变成待办</button><button onClick={()=>{const id='echo-note-'+m.key.slice(-70);send('/api/web/journal',{kind:'echo_excerpt',text:m.text,source_ref:m.key},id);notify('片段已排队保存到你我之间');}}>留在共历</button></div></div>
+        <div className={`message ${m.me ? "me" : ""}`}>{m.text}<time>{new Date(m.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} · {m.label}</time><div className="echo-actions">{!m.me && <button onClick={()=>setReplyTo({id:m.key,text:m.text})}>回复这条</button>}<button onClick={()=>onTask(m.text,m.key)}>变成待办</button><button onClick={()=>{const id='echo-note-'+m.key.slice(-70);send('/api/web/journal',{kind:'echo_excerpt',text:m.text,source_ref:m.key},id);notify('片段已排队保存到你我之间');}}>留在共历</button></div></div>
       </div>)}
     </div>
+    {replyTo && <div className="reply-context"><span>回复：{replyTo.text.slice(0,100)}</span><button onClick={()=>setReplyTo(null)} aria-label="取消引用回复">×</button></div>}
     <div className="composer"><textarea maxLength={1200} placeholder="写点什么……" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }} /><button onClick={submit} aria-label="发送消息">↑</button></div>
   </section>;
 }
