@@ -49,13 +49,7 @@ class DailyModeActivity : Activity() {
         button("学习应用身份／分类纠正") { apps() }
         button("设置原生起床闹钟") { alarm() }
         button("选择系统／Google 同步日历") { calendars() }
-        button("换装") {
-            val packs = dev.jlz.presence.overlay.QAvatarAssetImporter.listPacks(this)
-            AlertDialog.Builder(this).setTitle("本机角色库").setItems(packs.map { it.label }.toTypedArray()) { _, i ->
-                dev.jlz.presence.overlay.QAvatarAssetImporter.selectPack(this, packs[i].id)
-                FloatingPresenceService.refreshArtworkAfterImport(); render()
-            }.show()
-        }
+        button("Q版衣橱 · 四套预览换装") { startActivity(Intent(this, dev.jlz.presence.overlay.QAvatarWardrobeActivity::class.java)) }
         button("返回") { finish() }
     }
     private fun renderSleep() {
