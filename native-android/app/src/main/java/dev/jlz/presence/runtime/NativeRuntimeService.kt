@@ -270,7 +270,7 @@ class NativeRuntimeService : Service() {
                 // Actual screen pixels and accessibility node text are fetched
                 // on demand through the screenshot / get_screen_nodes tools.
                 ForegroundUsageTracker.flush()
-                val dayStart = LocalDate.now().atStartOfDay(ZoneId.systemDefault())
+                val dayStart = LocalDate.now(ZoneId.of("Asia/Shanghai")).atStartOfDay(ZoneId.of("Asia/Shanghai"))
                     .toInstant().toEpochMilli()
                 val usageTotals = ForegroundUsageStore(applicationContext).use { it.totalsSince(dayStart, 50) }
                 val observedScreen = ScreenObservationBus.observations.value
@@ -303,16 +303,61 @@ class NativeRuntimeService : Service() {
                             }
                         })
                 }
-                if (ScreenObservationBus.isAvailable()) {
-                    val windowEnd = System.currentTimeMillis()
-                    val rolling = ForegroundUsageStore(applicationContext).use { it.totalsInWindow(windowEnd-3_600_000L,windowEnd,12) }
+                val windowEnd = System.currentTimeMillis()
+                val windowStart = windowEnd - 3_600_000L
+                val recent = deviceActivityJournal.readAppSessions(applicationContext,
+                    windowStart, windowEnd, limit = 500, deviceId = settings.deviceId)
+                if (recent.optBoolean("ok")) {
+                    val sessions = recent.optJSONArray("sessions") ?: JSONArray()
+                    val totals = linkedMapOf<String, Long>()
+                    val classifier = dev.jlz.presence.focus.LocalAppClassifier(applicationContext)
+                    for (i in 0 until sessions.length()) {
+                        val item = sessions.optJSONObject(i) ?: continue
+                        val pkg = item.optString("package_name")
+                        val duration = item.optLong("duration_ms")
+                        val category = when {
+                            pkg in setOf("com.taobao.taobao","com.xunmeng.pinduoduo","com.jingdong.app.mall") -> "shopping"
+                            pkg in setOf("com.tencent.mm","com.tencent.mobileqq") -> "chat"
+                            pkg in setOf("com.ss.android.ugc.aweme","com.smile.gifmaker") -> "short_video"
+                            classifier.eligibleLearning(pkg) -> "learning"
+                            else -> classifier.classify(pkg).name.lowercase()
+                        }
+                        item.put("category",category)
+                        totals[pkg] = (totals[pkg] ?: 0L) + duration
+                    }
+                    usageJson.put("recent_window_minutes", 60)
+                        .put("recent_window_start_ms", windowStart)
+                        .put("recent_window_end_ms", windowEnd)
+                        .put("recent_window_source", "android_usage_events")
+                        .put("recent_sessions", JSONArray().apply {
+                            for (i in (sessions.length()-120).coerceAtLeast(0) until sessions.length()) {
+                                val source = sessions.optJSONObject(i) ?: continue
+                                put(JSONObject().apply {
+                                    listOf("package_name","session_start","session_end","origin","source","confidence","category").forEach { k -> put(k,source.opt(k)) }
+                                })
+                            }
+                        })
+                        .put("recent_sessions_truncated", recent.optString("next_cursor").isNotBlank() || sessions.length()>120)
+                        .put("recent_window_totals", JSONArray().apply {
+                            totals.entries.sortedByDescending { it.value }.take(50).forEach {
+                                put(JSONObject().put("package_name", it.key).put("duration_ms", it.value))
+                            }
+                        })
+                } else if (ScreenObservationBus.isAvailable()) {
+                    val rolling = ForegroundUsageStore(applicationContext).use { it.totalsInWindow(windowStart,windowEnd,12) }
                     usageJson.put("recent_window_minutes",60)
                         .put("recent_window_source","android_accessibility_foreground_segments")
-                        .put("recent_window_end_ms",windowEnd)
+                        .put("recent_window_start_ms",windowStart).put("recent_window_end_ms",windowEnd)
                         .put("recent_window_totals",JSONArray().apply { rolling.forEach { total ->
                             put(JSONObject().put("package_name",total.packageName).put("duration_ms",total.durationMs))
                         } })
                 }
+                val screenHistory = deviceActivityJournal.readScreenTimeline(applicationContext,
+                    windowStart, windowEnd, limit = 80, deviceId = settings.deviceId)
+                usageJson.put("recent_screen_events", screenHistory.optJSONArray("items") ?: JSONArray())
+                    .put("recent_screen_events_truncated", screenHistory.optString("next_cursor").isNotBlank())
+                usageJson.put("daily_mode", focusRepository.current().modeNow().name)
+                    .put("notification_listener_connected", dev.jlz.presence.notification.PresenceNotificationListenerService.isConnected())
                 // V2: Health Connect telemetry removed by product decision.
                 api.postDeviceState(
                     DeviceStateSnapshot(
@@ -559,8 +604,22 @@ class NativeRuntimeService : Service() {
                 val title = command.payload.optString("title").ifBlank { "我在找你" }
                 val eventId = command.payload.optString("event_id").ifBlank { command.id }
                 val intentId = command.payload.optString("intent_id").ifBlank { command.id }
-                val result = NotificationAdapter(this).showMessage(title, message, eventId, intentId)
-                result.ok to result.code
+                val expires = command.payload.optLong("expires_at_ms", 0L)
+                if (expires > 0L && System.currentTimeMillis() >= expires) {
+                    true to "expired_without_notification"
+                } else if (!command.payload.optBoolean("notify", true) ||
+                    focusRepository.current().modeNow() == dev.jlz.presence.focus.DailyMode.SLEEP) {
+                    true to "echo_only_without_system_notification"
+                } else if (command.payload.optString("queue_message_id").isNotBlank() &&
+                    !runCatching { api.reminderCheck(command.payload) }.getOrDefault(false)) {
+                    true to "cancelled_or_check_unavailable_without_notification"
+                } else {
+                    val result = NotificationAdapter(this).showMessage(title, message, eventId, intentId)
+                    result.ok to JSONObject().put("code", result.code)
+                        .put("notification_id", result.notificationId ?: JSONObject.NULL)
+                        .put("posted_at_ms", if(result.ok) System.currentTimeMillis() else JSONObject.NULL)
+                        .put("system_active_at_ms", JSONObject.NULL).toString()
+                }
             }
 
             "presence_callback", "trigger_guidian" -> {

@@ -133,7 +133,7 @@ fun NotificationObservationsPanel() {
                 }
                 val outcome = meta.optString("audit_result",
                     if (event.type == "notification_observation") "filtered" else "recorded")
-                val outcomeLabel = when (outcome) {
+                val outcomeLabel = if (meta.optString("notification_lifecycle") == "removed") "已撤回" else when (outcome) {
                     "masked" -> "收到 · 正文已遮蔽"
                     "filtered" -> "收到 · 已过滤"
                     "no_readable_text" -> "收到 · Android 未提供可读文字"

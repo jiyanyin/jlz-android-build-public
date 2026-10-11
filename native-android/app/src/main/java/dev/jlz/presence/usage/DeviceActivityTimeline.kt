@@ -307,7 +307,10 @@ class DeviceActivityJournal(context: Context) :
                 .put("sessions", JSONArray())
         val safeStart = startMs.coerceAtLeast(0L)
         val safeEnd = endMs.coerceAtLeast(safeStart)
-        val events = manager.queryEvents(safeStart, safeEnd)
+        // Seed the foreground app from preceding OS events; otherwise a game
+        // started before the hour disappears from the hourly window.
+        val lookback = (safeStart - 24L * 60L * 60L * 1000L).coerceAtLeast(0L)
+        val events = manager.queryEvents(lookback, safeEnd)
         val event = UsageEvents.Event()
         var currentPackage: String? = null
         var currentStart = 0L
@@ -316,7 +319,8 @@ class DeviceActivityJournal(context: Context) :
 
         fun close(atMs: Long, backgroundType: String) {
             val pkg = currentPackage ?: return
-            if (currentStart <= 0L || atMs <= currentStart) {
+            val clippedStart = currentStart.coerceAtLeast(safeStart)
+            if (currentStart <= 0L || atMs <= clippedStart) {
                 currentPackage = null; currentStart = 0L; return
             }
             if (packageName.isNullOrBlank() || pkg == packageName) {
@@ -325,8 +329,8 @@ class DeviceActivityJournal(context: Context) :
                 if (originFilter.isNullOrBlank() || origin.name == originFilter) {
                     sessions += JSONObject()
                         .put("package_name", pkg)
-                        .put("session_start", currentStart).put("session_end", atMs)
-                        .put("duration_ms", atMs - currentStart)
+                        .put("session_start", clippedStart).put("session_end", atMs)
+                        .put("duration_ms", atMs - clippedStart)
                         .put("foreground_event", currentStartType)
                         .put("background_event", backgroundType)
                         .put("origin", origin.name).put("actor", actorFor(origin))
@@ -342,7 +346,7 @@ class DeviceActivityJournal(context: Context) :
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
             val type = event.eventType
-            val at = event.timeStamp.coerceIn(safeStart, safeEnd)
+            val at = event.timeStamp.coerceIn(lookback, safeEnd)
             if (Build.VERSION.SDK_INT >= 28 && type == UsageEvents.Event.SCREEN_NON_INTERACTIVE) {
                 close(at, "SCREEN_NON_INTERACTIVE"); continue
             }
