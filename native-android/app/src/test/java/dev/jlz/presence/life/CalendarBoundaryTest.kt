@@ -23,7 +23,7 @@ class CalendarBoundaryTest {
     }
 
     @Test fun cloudIdsCannotBeInferredOrLinkedWithoutConfirmation() {
-        val app = RuntimeEnvironment.getApplication<Application>()
+        val app: Application = RuntimeEnvironment.getApplication()
         shadowOf(app).grantPermissions(Manifest.permission.READ_CALENDAR)
         val result = NativeCalendarBridge(app).add(JSONObject().put("operation", "link_verified_cloud_event")
             .put("cloud_event_id", "unverified"))
