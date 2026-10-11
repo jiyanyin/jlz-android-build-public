@@ -121,8 +121,15 @@ object AccessibilityActionGateway {
     }
 
     fun overlayProtected(): Boolean = runCatching {
-        service?.windows?.any { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD ||
-            it.root?.packageName?.toString()?.let { pkg -> pkg.contains("permissioncontroller") || pkg.contains("incall") } == true } == true
+        service?.windows?.any { window ->
+            // Some OEMs retain an inactive keyboard window after it is dismissed.
+            // Its mere presence must not hide Q across every other application.
+            val current = window.isActive || window.isFocused
+            current && (window.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD ||
+                window.root?.packageName?.toString()?.let {
+                    dev.jlz.presence.overlay.OverlayVisibilityPolicy.protectedPackage(it)
+                } == true)
+        } == true
     }.getOrDefault(true)
 
     fun lockScreenByUser(): Boolean = service?.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN) == true

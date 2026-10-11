@@ -34,6 +34,7 @@
         android:icon="@drawable/world_between_app_icon" android:roundIcon="@drawable/world_between_app_icon" android:usesCleartextTraffic="false">
         <meta-data android:name="asset_statements" android:resource="@string/asset_statements" />
         <activity android:name=".focus.DailyModeActivity" android:exported="false" />
+        <activity android:name=".overlay.QAvatarWardrobeActivity" android:exported="false" />
         <activity android:name=".cowatch.CoWatchActivity" android:exported="false" />
         <activity android:name=".focus.FocusGateActivity" android:exported="false" android:excludeFromRecents="true" />
         <activity
@@ -109,7 +110,7 @@
         <service android:name=".study.StudyTimerService" android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="study timer" />
         </service>
-        <service android:name=".overlay.FloatingPresenceService" android:exported="false" android:foregroundServiceType="specialUse">
+        <service android:name=".overlay.FloatingPresenceService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="overlay" />
         </service>
         <service android:name=".cowatch.CoWatchService" android:exported="false" android:foregroundServiceType="mediaProjection" />
