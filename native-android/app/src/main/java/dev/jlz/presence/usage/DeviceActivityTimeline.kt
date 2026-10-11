@@ -586,4 +586,124 @@ class DeviceActivityJournal(context: Context) :
     private fun appendLocalEvents(
         target: MutableList<JSONObject>,
         startMs: Long,
-        endMs: 
+        endMs: Long,
+        eventTypes: Set<String>,
+        originFilter: String?,
+        deviceId: String
+    ) {
+        val placeholders = eventTypes.joinToString(",") { "?" }
+        val args = mutableListOf(startMs.toString(), endMs.toString())
+        args.addAll(eventTypes)
+        readableDatabase.rawQuery(
+            """SELECT event_id,event_type,wall_clock_timestamp,elapsed_realtime,
+                screen_interactive,lock_state,foreground_package,origin,actor,
+                command_id,intent_id,device_id,device_type,metadata_json
+               FROM device_events
+               WHERE wall_clock_timestamp BETWEEN ? AND ?
+                 AND event_type IN ($placeholders)
+               ORDER BY wall_clock_timestamp ASC""".trimIndent(),
+            args.toTypedArray()
+        ).use { c ->
+            while (c.moveToNext()) {
+                val origin = c.getString(7)
+                if (!originFilter.isNullOrBlank() && origin != originFilter) continue
+                if (c.getString(11) != deviceId) continue
+                target += JSONObject()
+                    .put("event_id", c.getString(0)).put("event_type", c.getString(1))
+                    .put("wall_clock_timestamp", c.getLong(2)).put("elapsed_realtime", c.getLong(3))
+                    .put("screen_interactive", c.getInt(4) != 0).put("lock_state", c.getString(5))
+                    .put("foreground_package", c.getString(6) ?: JSONObject.NULL)
+                    .put("origin", origin).put("actor", c.getString(8))
+                    .put("command_id", c.getString(9) ?: JSONObject.NULL)
+                    .put("intent_id", c.getString(10) ?: JSONObject.NULL)
+                    .put("device_id", c.getString(11)).put("device_type", c.getString(12))
+                    .put("metadata", runCatching { JSONObject(c.getString(13)) }.getOrElse { JSONObject() })
+                    .put("source", "device_event_journal")
+            }
+        }
+    }
+
+    private fun dedupeScreenEvents(events: List<JSONObject>): List<JSONObject> {
+        val out = mutableListOf<JSONObject>()
+        for (event in events) {
+            val type = event.optString("event_type")
+            val at = event.optLong("wall_clock_timestamp")
+            val duplicateIndex = out.indexOfLast { existing ->
+                existing.optString("event_type") == type &&
+                    kotlin.math.abs(existing.optLong("wall_clock_timestamp") - at) <= 1_500L
+            }
+            if (duplicateIndex < 0) {
+                out += event
+                continue
+            }
+            val existing = out[duplicateIndex]
+            val currentLocal = event.optString("source") == "device_event_journal"
+            val existingLocal = existing.optString("source") == "device_event_journal"
+            if (currentLocal && !existingLocal) {
+                out[duplicateIndex] = event
+            } else if (currentLocal == existingLocal) {
+                val currentCommand = event.opt("command_id") != null &&
+                    event.opt("command_id") != JSONObject.NULL
+                val existingCommand = existing.opt("command_id") != null &&
+                    existing.opt("command_id") != JSONObject.NULL
+                if (currentCommand && !existingCommand) out[duplicateIndex] = event
+            }
+        }
+        return out.sortedBy { it.optLong("wall_clock_timestamp") }
+    }
+
+    private fun paged(kind: String, all: List<JSONObject>, limit: Int, cursor: String?, deviceId: String): JSONObject {
+        val offset = cursor?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+        val safeLimit = limit.coerceIn(1, 500)
+        val page = all.drop(offset).take(safeLimit)
+        val next = if (offset + page.size < all.size) (offset + page.size).toString() else ""
+        return JSONObject().put("ok", true).put("kind", kind)
+            .put("device_id", deviceId).put("device_type", deviceTypeForId(deviceId))
+            .put("items", JSONArray(page)).put("count", page.size).put("next_cursor", next)
+    }
+
+    @Synchronized
+    private fun prune() {
+        val cutoff = System.currentTimeMillis() - RETENTION_MS
+        writableDatabase.delete("device_events", "wall_clock_timestamp < ?", arrayOf(cutoff.toString()))
+        writableDatabase.delete(
+            "command_executions",
+            "COALESCE(verified_at_ms, executed_at_ms, phone_received_at_ms, requested_at_ms, 0) < ?",
+            arrayOf(cutoff.toString())
+        )
+    }
+
+    companion object {
+        const val DEFAULT_DEVICE_ID = "android-phone-native-n0"
+        const val RETENTION_DAYS = 14
+        private const val DB_NAME = "jlz_device_activity_v1.db"
+        private const val DB_VERSION = 1
+        private const val COMMAND_MATCH_WINDOW_MS = 12_000L
+        private const val RETENTION_MS = RETENTION_DAYS * 24L * 60L * 60L * 1000L
+
+        fun normalizeOrigin(raw: String?): Origin = when (raw?.trim()?.uppercase()) {
+            "JLZ_RUNTIME", "OFFICIAL_GPT", "GPT", "RUNTIME" -> Origin.JLZ_RUNTIME
+            "WORK_TEST", "WORK", "TEST" -> Origin.WORK_TEST
+            "SYSTEM" -> Origin.SYSTEM
+            "USER_OR_NON_RUNTIME", "USER", "NON_RUNTIME" -> Origin.USER_OR_NON_RUNTIME
+            else -> Origin.UNKNOWN
+        }
+
+        fun actorFor(origin: Origin): String = origin.name
+
+        fun deviceTypeForId(deviceId: String): String =
+            if (deviceId.contains("tablet", ignoreCase = true)) "tablet" else "phone"
+
+        private fun eventName(type: Int): String = when (type) {
+            UsageEvents.Event.MOVE_TO_FOREGROUND -> "MOVE_TO_FOREGROUND"
+            UsageEvents.Event.MOVE_TO_BACKGROUND -> "MOVE_TO_BACKGROUND"
+            else -> if (Build.VERSION.SDK_INT >= 29 && type == UsageEvents.Event.ACTIVITY_RESUMED) "ACTIVITY_RESUMED"
+                else if (Build.VERSION.SDK_INT >= 29 && type == UsageEvents.Event.ACTIVITY_PAUSED) "ACTIVITY_PAUSED"
+                else if (Build.VERSION.SDK_INT >= 29 && type == UsageEvents.Event.ACTIVITY_STOPPED) "ACTIVITY_STOPPED"
+                else type.toString()
+        }
+
+        private fun jsonObjects(array: JSONArray): List<JSONObject> =
+            buildList { for (i in 0 until array.length()) array.optJSONObject(i)?.let(::add) }
+    }
+}
