@@ -39,6 +39,16 @@ class CoWatchService : Service() {
     private var height = 0
     private var destroyed = false
     private var capturedVisible = true
+    private val connectivity by lazy { getSystemService(android.net.ConnectivityManager::class.java) }
+    private val networkCallback = object : android.net.ConnectivityManager.NetworkCallback() {
+        override fun onLost(network: android.net.Network) {
+            if (connectivity.activeNetwork == null) {
+                CoWatchState.reason = "网络已断开，已停止共享；没有离线补传"
+                stopSelf()
+            }
+        }
+    }
+    private var networkRegistered = false
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "STOP") {
@@ -54,6 +64,8 @@ class CoWatchService : Service() {
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel("jlz_cowatch_v1", "主动屏幕陪看", NotificationManager.IMPORTANCE_LOW))
         startForeground(4555, notification())
+        connectivity.registerDefaultNetworkCallback(networkCallback)
+        networkRegistered = true
         scope.launch {
             try {
                 val cfg = RuntimeSettingsRepository(applicationContext).load()
@@ -81,6 +93,7 @@ class CoWatchService : Service() {
                 CoWatchState.uploaded = 0; CoWatchState.expiresAt = System.currentTimeMillis() + minutes * 60_000L
                 CoWatchState.reason = "仅采样选定应用；切去其他页面暂停采样，GPT未自动读取"
                 while (isActive && System.currentTimeMillis() < CoWatchState.expiresAt) {
+                    check(connectivity.activeNetwork != null) { "网络已断开" }
                     if (safe(target)) {
                         val pixels = dev.jlz.presence.overlay.FloatingPresenceService.withoutOverlay {
                             delay(300)
@@ -147,6 +160,7 @@ class CoWatchService : Service() {
     override fun onDestroy() {
         if (destroyed) return
         destroyed = true; CoWatchState.active = false; CoWatchState.expiresAt = 0L
+        if (networkRegistered) runCatching { connectivity.unregisterNetworkCallback(networkCallback) }
         scope.cancel(); display?.release(); reader?.close(); projection?.stop()
         display = null; reader = null; projection = null
         val ending = sid; val client = api
