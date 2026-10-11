@@ -262,9 +262,20 @@ class DeviceActionExecutor(private val context: Context) {
         val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
             putExtra(AlarmClock.EXTRA_HOUR, hour); putExtra(AlarmClock.EXTRA_MINUTES, minute)
             putExtra(AlarmClock.EXTRA_MESSAGE, payload.optString("message").ifBlank { "纪临洲叫你起床" })
-            putExtra(AlarmClock.EXTRA_SKIP_UI, true); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra(AlarmClock.EXTRA_SKIP_UI, false); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            payload.optJSONArray("days")?.let { days ->
+                val values = (0 until days.length()).map { days.optInt(it) }.filter { it in 1..7 }.distinct()
+                if (values.isNotEmpty()) putIntegerArrayListExtra(AlarmClock.EXTRA_DAYS, ArrayList(values))
+            }
         }
-        return runCatching { context.startActivity(intent); true to status(true, "alarm_ok") }
+        return runCatching {
+            context.startActivity(intent)
+            dev.jlz.presence.data.LocalLifeStore(context).recordTimeline("alarm_requested", "打开原生闹钟设置", "%02d:%02d · 未确认创建".format(hour, minute))
+            true to JSONObject().put("ok", true).put("verification_status", "unconfirmed")
+                .put("opened_settings", true).put("alarm_created", JSONObject.NULL)
+                .put("hour", hour).put("minute", minute)
+                .put("requires_user_save_and_ring_test", true).toString()
+        }
             .getOrElse { false to status(false, "alarm_fail:${it.javaClass.simpleName}") }
     }
 

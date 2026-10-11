@@ -8,7 +8,7 @@ enum class QAvatarState(val poolName: String) {
     WATCHING("watching"), OFFLINE("offline"), HIDDEN("hidden"), CELEBRATE("celebrate")
 }
 
-class QAvatarStateMachine {
+class QAvatarStateMachine(private val clock: () -> Long = System::currentTimeMillis) {
     private var currentState: QAvatarState = QAvatarState.IDLE
     private val recentPicks = mutableListOf<String>()
     private val cooldownMs = 8000L
@@ -37,10 +37,10 @@ class QAvatarStateMachine {
 
     fun pickAsset(pool: List<String>): String? {
         if (pool.isEmpty()) return null
-        val now = System.currentTimeMillis()
+        val now = clock()
         if (now - lastPickAt < cooldownMs && lastPick in pool) return lastPick
         val fresh = pool.filter { it !in recentPicks.takeLast(5) }
-        val source = fresh.ifEmpty { pool }
+        val source = fresh.ifEmpty { pool.filter { it != lastPick }.ifEmpty { pool } }
         val pick = source.random()
         recentPicks.add(pick)
         while (recentPicks.size > 5) recentPicks.removeAt(0)

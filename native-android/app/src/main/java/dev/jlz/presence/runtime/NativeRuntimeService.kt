@@ -680,13 +680,14 @@ class NativeRuntimeService : Service() {
             "run_sequence", "native_phone_sequence" -> executePhoneSequence(command, api)
 
             "get_calendar_state" -> {
-                val calendar = NativeCalendarBridge(applicationContext).snapshot()
+                val from = command.payload.optLong("from_ms", System.currentTimeMillis())
+                val calendar = NativeCalendarBridge(applicationContext).snapshot(from, command.payload.optLong("to_ms", from + 14L * 86_400_000L))
                 calendar.optBoolean("ok", false) to calendar.toString()
             }
 
             "add_calendar_event", "upsert_calendar_event" -> {
                 val result = NativeCalendarBridge(applicationContext).add(command.payload)
-                if (result.first) {
+                if (result.first && command.payload.optString("operation") != "link_verified_cloud_event") {
                     lifeStore.recordTimeline(
                         type = "calendar_event",
                         title = "我给你记到日历里了",

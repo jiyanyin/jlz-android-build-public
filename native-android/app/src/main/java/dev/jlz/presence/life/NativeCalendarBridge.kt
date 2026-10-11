@@ -62,7 +62,8 @@ class NativeCalendarBridge(private val context: Context) {
                         .put("event_id", rows.getLong(0))
                         .put("calendar_id", rows.getLong(6))
                         .put("provider_sync_id", providerSyncId(rows.getLong(0)))
-                        .put("stable_instance_key", "android:" + rows.getLong(6) + ":" + rows.getLong(0) + ":" + rows.getLong(2))
+                        .put("cloud_link", cloudLink(rows.getLong(6), rows.getLong(0)))
+                        .put("stable_instance_key", instanceKey(rows.getLong(6), rows.getLong(0), rows.getLong(2)))
                         .put("source", "android_calendar_provider")
                         .put("title", rows.getString(1).orEmpty())
                         .put("start_ms", rows.getLong(2))
@@ -86,6 +87,7 @@ class NativeCalendarBridge(private val context: Context) {
     }.getOrDefault("")
 
     fun add(payload: JSONObject): Pair<Boolean, String> {
+        if (payload.optString("operation") == "link_verified_cloud_event") return linkCloudEvent(payload)
         if (!canWrite()) return false to "calendar_write_permission_required"
         val title = payload.optString("title").trim()
         val start = payload.optLong("start_ms", 0L)
@@ -124,6 +126,43 @@ class NativeCalendarBridge(private val context: Context) {
         } catch (error: Exception) {
             false to "calendar_insert_exception:" + error.javaClass.simpleName
         }
+    }
+
+    private fun cloudLink(calendar: Long, event: Long): JSONObject = runCatching {
+        JSONObject(prefs.getString("cloud:$calendar:$event", "{}") ?: "{}")
+    }.getOrDefault(JSONObject())
+
+    private fun instanceKey(calendar: Long, event: Long, start: Long): String {
+        val link = cloudLink(calendar, event)
+        return if (link.optString("event_id").isNotBlank())
+            "google:${link.optString("calendar_id")}:${link.optString("event_id")}:$start"
+        else "android:$calendar:$event:$start"
+    }
+
+    /** IDs must come from a real cloud read and an explicitly confirmed provider match. */
+    private fun linkCloudEvent(payload: JSONObject): Pair<Boolean, String> {
+        if (!canRead()) return false to "calendar_read_permission_required"
+        if (!payload.optBoolean("link_confirmed")) return false to "calendar_link_confirmation_required"
+        val calendar = payload.optLong("calendar_id")
+        val event = payload.optLong("event_id")
+        val cloudCalendar = payload.optString("cloud_calendar_id").trim()
+        val cloudEvent = payload.optString("cloud_event_id").trim()
+        if (calendar <= 0 || event <= 0 || cloudCalendar.isBlank() || cloudEvent.isBlank() || cloudCalendar.length > 256 || cloudEvent.length > 256)
+            return false to "calendar_link_ids_required"
+        val matches = context.contentResolver.query(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, event),
+            arrayOf(CalendarContract.Events.CALENDAR_ID, CalendarContract.Events.TITLE, CalendarContract.Events.DTSTART), null, null, null).use { rows ->
+            rows != null && rows.moveToFirst() && rows.getLong(0) == calendar &&
+                rows.getString(1).orEmpty() == payload.optString("expected_title") && rows.getLong(2) == payload.optLong("expected_start_ms")
+        }
+        if (!matches) return false to "calendar_link_provider_changed_or_mismatch"
+        val old = cloudLink(calendar, event)
+        if (old.length() > 0 && (old.optString("calendar_id") != cloudCalendar || old.optString("event_id") != cloudEvent))
+            return false to "calendar_link_conflict"
+        val link = JSONObject().put("calendar_id", cloudCalendar).put("event_id", cloudEvent)
+            .put("source", "explicit_verified_cloud_read").put("linked_at_ms", System.currentTimeMillis())
+        check(prefs.edit().putString("cloud:$calendar:$event", link.toString()).commit())
+        return true to JSONObject().put("ok", true).put("event_id", event).put("calendar_id", calendar)
+            .put("cloud_link", link).put("provider_event_modified", false).toString()
     }
 
     private fun writableCalendarId(): Long? {

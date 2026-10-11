@@ -4,6 +4,18 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class QAvatarPriorityTest {
+    @Test fun exhaustedSmallPoolNeverImmediatelyRepeatsAfterCooldown() {
+        var now = 100_000L
+        val q = QAvatarStateMachine { now }
+        val pool = listOf("a", "b")
+        var previous = q.pickAsset(pool)
+        repeat(20) {
+            now += 120_000L
+            val next = q.pickAsset(pool)
+            assertNotEquals(previous, next)
+            previous = next
+        }
+    }
     @Test fun userModesAndSafetyWinOverRandomOrEntertainment() {
         val q = QAvatarStateMachine()
         assertEquals(QAvatarState.HIDDEN, q.resolve(true, true, true, true, true, true, true, true))
