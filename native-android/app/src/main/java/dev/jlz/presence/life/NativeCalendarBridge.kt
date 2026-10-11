@@ -116,7 +116,16 @@ class NativeCalendarBridge(private val context: Context) {
             put(CalendarContract.Events.ALL_DAY, if (payload.optBoolean("all_day")) 1 else 0)
         }
         return try {
-            val uri = context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, data)
+            val existingId = payload.optLong("event_id", 0L)
+            val uri = if (existingId > 0) {
+                val existingUri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, existingId)
+                val matches = context.contentResolver.query(existingUri, arrayOf(CalendarContract.Events.CALENDAR_ID), null, null, null).use {
+                    it != null && it.moveToFirst() && it.getLong(0) == calendarId
+                }
+                if (!matches) return false to "calendar_update_target_mismatch"
+                if (context.contentResolver.update(existingUri, data, null, null) != 1) return false to "calendar_update_failed"
+                existingUri
+            } else context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, data)
                 ?: return false to "calendar_insert_failed"
             prefs.edit().putLong("event:$calendarId:$requestId", ContentUris.parseId(uri)).commit()
             true to JSONObject().put("ok", true)
