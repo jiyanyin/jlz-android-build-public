@@ -73,7 +73,9 @@ async function request<T>(cfg: RuntimeConfig, path: string, init: { method?: "GE
 }
 
 const q = `space_id=${encodeURIComponent(SPACE_ID)}`;
+export type NotificationDynamic = {id:string;device_id:string;title:string;subtitle:string;created_at:string;package_name:string;metadata:{notification_lifecycle?:string;policy?:string;observed_at_ms?:number}};
 export const runtime = {
+  notifications: (cfg:RuntimeConfig,device_id:string) => request<{notifications:NotificationDynamic[];listener_connected:boolean|null}>(cfg,"/api/web/notification-delta?"+new URLSearchParams({device_id})),
   // Explicit trip sessions are read only when the user visits the trip panel.
   recentTrip: (cfg: RuntimeConfig, deviceId = "android-phone-native-n0") =>
     request<{ok:boolean;session:TripSummary|null}>(cfg,

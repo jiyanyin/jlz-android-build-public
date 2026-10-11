@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NativeCalendarPanel } from "./NativeCalendarPanel";
+import { NotificationDynamicsPanel } from "./NotificationDynamicsPanel";
 import { TripMapPanel } from "./TripMapPanel";
 import { DEFAULT_RUNTIME_URL, extractMessages, extractRecords, newEventId, runtime, RuntimeError, type OutboxItem, type RemoteMessage, type RemoteRecord, type RuntimeConfig, type WritePath } from "./lib/runtime";
 import { EMPTY_VOICE_MEMORY, formatVoiceClock, formatVoiceDate, selectVoiceCard, type VoiceMemory, type VoiceStatus } from "./lib/voiceEngine";
@@ -1209,6 +1210,7 @@ function TimelinePage({ notes, remote }: { notes: RecordItem[]; remote: RemoteRe
 function RoomPage({ records, teaser, portrait }: { records: RemoteRecord[]; teaser?: string; portrait: string }) {
   const groups = [
     { name: "此刻的我", subtitle: "NOW & HERE", hint: "最近的一句真话", icon: "state", kinds: ["jlz_state"] },
+    { name: "生活收纳", subtitle: "DAY NOTES", hint: "今天真实留下的生活", icon: "note", kinds: ["jlz_life_digest"] },
     { name: "桌边随笔", subtitle: "DESK NOTES", hint: "一些没说完的话", icon: "note", kinds: ["jlz_note", "jlz_observation"] },
     { name: "想要的事", subtitle: "WISHES", hint: "写下想留下的事", icon: "between", kinds: ["jlz_wish", "jlz_promise"] },
     { name: "夜信", subtitle: "NIGHT LETTER", hint: "夜里留下的信", icon: "letter", kinds: ["night_letter"] },
@@ -1388,6 +1390,7 @@ function MorePage({ effectiveTheme, chooseTheme, state, update, setWelcome, bann
  return <section className="page active">
    <PageHead kicker="OUR LITTLE ROOMS" title="更多" en="The Rooms" copy="一扇扇门，通向我们的小世界" />
    <div className="card"><h3>一起过日子</h3><button className="setting-button" onClick={()=>{window.location.href="jlz://native/modes"}}>普通 · 专注 · 短休 · 睡眠／闹钟／日历 <span>›</span></button><button className="setting-button" onClick={()=>{window.location.href="jlz://native/cowatch"}}>视频通话 · 短时屏幕陪看 <span>›</span></button></div>
+   <NotificationDynamicsPanel cfg={currentCfg()} />
    <TripMapPanel cfg={currentCfg()} />
    <div className="glass settings-card"><b>✦ 风格衣橱 · Theme Wardrobe</b><small>四套风格，换装与官端使用同一份设置。</small><div className="theme-grid">{THEMES.map(theme=><button key={theme} className={effectiveTheme===theme?"active":""} onClick={()=>chooseTheme(theme)}><i className={`swatch ${theme}`}/><b>{{mist:"冰雾玻璃",gothic:"暗夜童话",deepsea:"深海月光",rose:"奶油灰玫瑰"}[theme]}</b></button>)}</div></div>
    <div className="glass settings-card"><b>网页与 Runtime</b><p className="hint">钥匙只保存在这个浏览器里。留空就保持本地模式，记录会排队等待同步。</p><div className="field"><label>私人连接钥匙</label><input type="password" autoComplete="off" placeholder="留空则仅本地" value={key} onChange={e=>setKey(e.target.value)} /></div><div className="field"><label>Runtime 地址</label><input type="url" value={url} onChange={e=>setUrl(e.target.value)} /></div><div className="sheet-actions"><button className="secondary" onClick={()=>{setKey("");update(s=>({...s,webToken:""}))}}>清除钥匙</button><button className="primary" onClick={()=>{update(s=>({...s,webToken:key.trim(),runtimeUrl:url.trim()||DEFAULT_RUNTIME_URL}));reconnect()}}>保存并连接</button></div><div className="runtime-line"><span>连接状态</span><b>{label}</b></div><div className="runtime-line"><span>待同步记录</span><b>{banner.pending} 条</b></div><div className="runtime-line"><span>Android 主控制</span><b>未暴露给网页</b></div></div>

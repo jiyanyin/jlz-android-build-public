@@ -27,7 +27,7 @@ object SystemUsageSnapshot {
      */
     fun today(context: Context): JSONObject {
         val now = System.currentTimeMillis()
-        val day = Calendar.getInstance().apply {
+        val day = Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Shanghai")).apply {
             set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
         }.timeInMillis
@@ -43,7 +43,7 @@ object SystemUsageSnapshot {
         val manager = context.getSystemService(UsageStatsManager::class.java)
             ?: return base.put("totals", JSONArray())
                 .put("reason", "usage_stats_manager_unavailable")
-        val events = manager.queryEvents(day, now)
+        val events = manager.queryEvents((day - 24L*60L*60L*1000L).coerceAtLeast(0L), now)
         val event = UsageEvents.Event()
         val starts = linkedMapOf<String, Long>()
         val totals = mutableMapOf<String, Long>()
@@ -71,7 +71,7 @@ object SystemUsageSnapshot {
                 interactive = true
                 continue
             }
-            if (Build.VERSION.SDK_INT >= 28 && type == UsageEvents.Event.KEYGUARD_HIDDEN) {
+            if (Build.VERSION.SDK_INT >= 28 && type == UsageEvents.Event.KEYGUARD_HIDDEN && event.timeStamp >= day) {
                 unlocks++
                 lastUnlockedAt = time
             }
@@ -83,6 +83,7 @@ object SystemUsageSnapshot {
                     (type == UsageEvents.Event.ACTIVITY_PAUSED ||
                      type == UsageEvents.Event.ACTIVITY_STOPPED))
             if (foreground && interactive) {
+                starts.keys.filter { it != pkg }.toList().forEach { close(it,time) }
                 if (!starts.containsKey(pkg)) starts[pkg] = time
                 lastPackage = pkg
             } else if (background) {
