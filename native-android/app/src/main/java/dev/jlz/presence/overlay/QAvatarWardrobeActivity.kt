@@ -149,7 +149,7 @@ class QAvatarWardrobeActivity : Activity() {
         val slider = android.widget.SeekBar(this).apply {
             max = 75; progress = QOverlayPreferences.opacity(this@QAvatarWardrobeActivity) - 25
             contentDescription = "Q 不透明度，25% 到 100%"
-            minHeight = dp(48)
+            minimumHeight = dp(48)
         }
         fun updateOpacity(value: Int) {
             val percent = FloatingPresenceService.setAvatarOpacity(this, value)
