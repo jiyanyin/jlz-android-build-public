@@ -32,6 +32,8 @@ class PresenceCallbackAdapter(private val context: Context) {
         eventId: String = UUID.randomUUID().toString(),
         intentId: String = UUID.randomUUID().toString()
     ): CallbackResult {
+        val quiet = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { dev.jlz.presence.focus.FocusRepository(context).current().modeNow() == dev.jlz.presence.focus.DailyMode.SLEEP }
+        if (quiet) { dev.jlz.presence.notification.NotificationAdapter(context).showMessage(message = reason, eventId = eventId, intentId = intentId); return CallbackResult(true, "sleep_quiet_notification_only", eventId, intentId) }
         ensureChannel()
         if (
             Build.VERSION.SDK_INT >= 33 &&

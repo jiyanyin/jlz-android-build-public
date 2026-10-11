@@ -55,7 +55,7 @@ enum class FloatingPresenceMode {
 
 /**
  * One system overlay + one foreground service shared by LIFE/STUDY/FOCUS.
- * The Q-avatar and four user-approved actions are the same in every mode.
+ * The Q-avatar and three user-approved actions are the same in every mode.
  * This service does not call a model and does not claim screenshots can
  * already be pulled by the official GPT conversation.
  */
@@ -63,6 +63,7 @@ class FloatingPresenceService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val journal by lazy { CaptureEventStore(applicationContext) }
     private val lifeStore by lazy { LocalLifeStore(applicationContext) }
+    private val classifier by lazy { dev.jlz.presence.focus.LocalAppClassifier(applicationContext) }
     private val study by lazy { StudySessionRepository(applicationContext) }
 
     private var windowManager: WindowManager? = null
@@ -83,7 +84,10 @@ class FloatingPresenceService : Service() {
     private var transientUntilMs = 0L
 
     @Volatile private var focusState: FocusState = FocusState()
+    private var suspended = false
     private var studyPaused = false
+    private val behavior = QAvatarStateMachine()
+    private var gateUntil = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -95,7 +99,7 @@ class FloatingPresenceService : Service() {
             NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification_world_between_v3)
                 .setContentTitle("我在屏幕边上")
-                .setContentText("点小小的纪临洲，展开四个动作")
+                .setContentText("点小小的纪临洲，展开三个入口")
                 .setOngoing(true)
                 .build()
         )
@@ -124,6 +128,7 @@ class FloatingPresenceService : Service() {
         scope.launch {
             while (isActive) {
                 renderStatus()
+                updateBehavior()
                 delay(1_000L)
             }
         }
@@ -241,21 +246,9 @@ class FloatingPresenceService : Service() {
             }
             actions.addView(button, item)
         }
-        action("调戏老公") {
-            character.react(listOf("shy", "angry", "surprised", "feisty", "proud", "tease", "reach", "disappointed").random(), idleMood())
-        }
-        action("说点什么") {
-            if (!working) openNote()
-        }
-        // The unused manual "让我看看" menu action is retired.
-        // Keep the automatic / explicitly requested remote capture paths.
-        action("我在摸鱼") {
-            if (!working) {
-                character.react("surprised", idleMood())
-                closeMenu()
-                scope.launch { recordDistraction() }
-            }
-        }
+        action("专注模式") { closeMenu(); scope.launch { FocusRepository(applicationContext).setDailyMode(dev.jlz.presence.focus.DailyMode.FOCUS, 25); dev.jlz.presence.focus.DailyModeActivity.open(this@FloatingPresenceService) } }
+        action("视频通话") { closeMenu(); startActivity(Intent(this, dev.jlz.presence.cowatch.CoWatchActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        action("睡眠模式") { closeMenu(); scope.launch { FocusRepository(applicationContext).setDailyMode(dev.jlz.presence.focus.DailyMode.SLEEP); dev.jlz.presence.focus.DailyModeActivity.open(this@FloatingPresenceService) } }
         root.addView(actions)
 
         val form = LinearLayout(this).apply {
@@ -371,6 +364,7 @@ class FloatingPresenceService : Service() {
             y = dp(68)
         }
 
+        var downAt = 0L
         var downX = 0f
         var downY = 0f
         var startX = 0
@@ -378,6 +372,7 @@ class FloatingPresenceService : Service() {
         character.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    downAt = System.currentTimeMillis()
                     downX = event.rawX
                     downY = event.rawY
                     startX = lp.x
@@ -398,6 +393,11 @@ class FloatingPresenceService : Service() {
                     if (abs(event.rawX - downX) < dp(12) &&
                         abs(event.rawY - downY) < dp(12)
                     ) {
+                        if (System.currentTimeMillis() - downAt > 600L) {
+                            suspended = !suspended
+                            closeMenu(); character.setSizeDp(if (suspended) QAvatarScale.MIN_DP else QAvatarScale.get(this)); character.alpha = if (suspended) 0.6f else 1f
+                            return@setOnTouchListener true
+                        }
                         character.react("surprised", idleMood())
                         if (noteOpen) closeNote() else toggleMenu()
                     } else {
@@ -499,6 +499,37 @@ class FloatingPresenceService : Service() {
             else -> ""
         }
         hint.visibility = if (hint.text.isBlank()) View.GONE else View.VISIBLE
+    }
+
+    private fun updateBehavior() {
+        val pkg = dev.jlz.presence.screen.AccessibilityActionGateway.currentPackage().orEmpty()
+        val protected = dev.jlz.presence.screen.AccessibilityActionGateway.overlayProtected() || pkg.contains("permissioncontroller") || pkg.contains("incall") || pkg.contains("inputmethod") || pkg == "com.android.systemui"
+        if (!captureHidden) panel?.visibility = if (protected) View.INVISIBLE else View.VISIBLE
+        val modeNow = focusState.modeNow()
+        val category = if (pkg.isBlank()) dev.jlz.presence.focus.LocalAppCategory.UNKNOWN else classifier.classify(pkg)
+        val hour = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Shanghai")).hour
+        val awakeEntertainment = !getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked && dev.jlz.presence.screen.ScreenObservationBus.isAvailable() &&
+            category in setOf(dev.jlz.presence.focus.LocalAppCategory.GAME, dev.jlz.presence.focus.LocalAppCategory.FEED) && (hour >= 23 || hour < 6)
+        val sync = dev.jlz.presence.runtime.BridgeStore(applicationContext).diagnostics().optLong("last_sync")
+        val offline = sync > 0L && System.currentTimeMillis() - sync > 120_000L
+        val state = behavior.resolve(protected, modeNow == dev.jlz.presence.focus.DailyMode.SLEEP,
+            dev.jlz.presence.cowatch.CoWatchState.active,
+            modeNow == dev.jlz.presence.focus.DailyMode.FOCUS || mode == FloatingPresenceMode.STUDY ||
+                (focusState.isActiveNow() && modeNow == dev.jlz.presence.focus.DailyMode.NORMAL),
+            System.currentTimeMillis() < gateUntil, awakeEntertainment,
+            modeNow == dev.jlz.presence.focus.DailyMode.BREAK, offline)
+        val mood = when(state) {
+            QAvatarState.HIDDEN -> "hidden"
+            QAvatarState.SLEEP -> "sleep"
+            QAvatarState.WATCHING -> "watching"
+            QAvatarState.STUDY -> "watch"
+            QAvatarState.ANNOYED -> "gate"
+            QAvatarState.NIGHT -> "night"
+            QAvatarState.BREAK -> "break"
+            QAvatarState.OFFLINE -> "offline"
+            else -> if (suspended) "hidden" else if (hour >= 22 || hour < 6) "sleepy" else "idle"
+        }
+        avatar?.setMood(mood)
     }
 
     private fun showTransient(message: String, durationMs: Long = 2_800L) {
@@ -669,11 +700,43 @@ class FloatingPresenceService : Service() {
     }
 
     companion object {
+        @Volatile private var captureHidden = false
         @Volatile private var liveService: FloatingPresenceService? = null
+
+        fun gateReaction() { liveService?.let { it.gateUntil = System.currentTimeMillis() + 5000; it.avatar?.setMood("gate") } }
+        fun localCelebration() {
+            liveService?.let { live ->
+                val mode = live.focusState.modeNow()
+                if (captureHidden || live.panel?.visibility != View.VISIBLE || mode == dev.jlz.presence.focus.DailyMode.SLEEP || dev.jlz.presence.cowatch.CoWatchState.active || System.currentTimeMillis() < live.gateUntil) return
+                live.avatar?.react("celebrate", if (mode == dev.jlz.presence.focus.DailyMode.FOCUS) "watch" else live.idleMood())
+            }
+        }
+
+        fun wakeReaction() { liveService?.let { live -> live.scope.launch {
+            live.focusState = dev.jlz.presence.focus.FocusRepository(live).current()
+            live.updateBehavior()
+            if (!captureHidden && live.panel?.visibility == View.VISIBLE) {
+                live.avatar?.react("wake", "idle"); live.showTransient("早安，音音。", 2800L)
+            }
+        } } }
+
+        fun privateMessageReaction() { liveService?.let { live -> live.scope.launch {
+            live.updateBehavior()
+            if (!captureHidden && live.panel?.visibility == View.VISIBLE &&
+                live.focusState.modeNow() == dev.jlz.presence.focus.DailyMode.NORMAL &&
+                !dev.jlz.presence.cowatch.CoWatchState.active && System.currentTimeMillis() >= live.gateUntil)
+                live.avatar?.react("clingy", live.idleMood())
+        } } }
+
+        suspend fun <T> withoutOverlay(block: suspend () -> T): T {
+            withContext(Dispatchers.Main) { captureHidden = true; liveService?.panel?.visibility = View.INVISIBLE }
+            return try { delay(350); block() } finally { withContext(Dispatchers.Main) { captureHidden = false; liveService?.updateBehavior() } }
+        }
 
         /** The official GPT captures the underlying app, not its own Q menu. */
         suspend fun captureForRuntime(automatic: Boolean = false): ScreenshotCaptureResult {
             val view = withContext(Dispatchers.Main.immediate) {
+                captureHidden = true
                 liveService?.panel?.also { it.visibility = View.INVISIBLE }
             }
             return try {
@@ -687,7 +750,8 @@ class FloatingPresenceService : Service() {
                 result
             } finally {
                 withContext(Dispatchers.Main.immediate) {
-                    if (view != null) view.visibility = View.VISIBLE
+                    captureHidden = false
+                    liveService?.updateBehavior()
                 }
             }
         }

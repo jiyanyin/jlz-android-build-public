@@ -21,8 +21,17 @@ class PresenceBootReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val app = context.applicationContext
+                val tripCache = app.getSharedPreferences("jlz_manual_trip_cache", Context.MODE_PRIVATE)
+                tripCache.getString("session_id", null)?.let { dev.jlz.presence.trip.PendingTripStop.remember(app, it) }
+                tripCache.edit().remove("points").remove("session_id").apply()
                 val prefs = PresenceDevicePreferencesRepository(app).load()
                 val settings = RuntimeSettingsRepository(app).load()
+                val focus = dev.jlz.presence.focus.FocusRepository(app)
+                val mode = focus.current()
+                if (mode.dailyMode in setOf(dev.jlz.presence.focus.DailyMode.FOCUS, dev.jlz.presence.focus.DailyMode.BREAK)) {
+                    if (mode.modeNow() == dev.jlz.presence.focus.DailyMode.NORMAL) focus.setDailyMode(dev.jlz.presence.focus.DailyMode.NORMAL)
+                    else runCatching { dev.jlz.presence.study.StudyTimerService.sync(app) }
+                }
                 if (intent?.action == Intent.ACTION_BOOT_COMPLETED) {
                     DeviceActivityJournal(app).recordEvent(
                         context = app,

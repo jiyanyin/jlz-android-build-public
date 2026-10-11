@@ -81,6 +81,7 @@ class FocusGateActivity : ComponentActivity() {
                             modifier = Modifier.padding(top = 10.dp, bottom = 26.dp)
                         )
 
+                        TextButton(onClick = { scope.launch { FocusRepository(applicationContext).setDailyMode(DailyMode.NORMAL); finish() } }) { Text("结束本次模式") }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             TextButton(onClick = { finish() }) {
                                 Text("好，回去")

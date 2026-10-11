@@ -750,6 +750,7 @@ fun StudyScreen() {
                                     val sessionId = session.sessionId
                                     scope.launch {
                                         repo.resume()
+                                        dev.jlz.presence.focus.FocusRepository(context).resumeDaily()
                                         StudyTimerService.sync(context)
                                         StudyRuntimeReporter.post(context, "resume", sessionId)
                                         actionNote = "接上了。继续。"
@@ -763,6 +764,7 @@ fun StudyScreen() {
                                 onClick = {
                                     scope.launch {
                                         val metrics = repo.finish()
+                                        dev.jlz.presence.focus.FocusRepository(context).stop()
                                         StudyTimerService.stop(context)
                                         StudyRuntimeReporter.post(
                                             context, "finish", metrics.sessionId,
@@ -788,6 +790,7 @@ fun StudyScreen() {
                                     val sessionId = session.sessionId
                                     scope.launch {
                                         repo.pause()
+                                        dev.jlz.presence.focus.FocusRepository(context).pauseDaily()
                                         StudyRuntimeReporter.post(context, "pause", sessionId)
                                         actionNote = "暂停。现在不算时间。"
                                     }
@@ -799,6 +802,7 @@ fun StudyScreen() {
                                 onClick = {
                                     scope.launch {
                                         val metrics = repo.finish()
+                                        dev.jlz.presence.focus.FocusRepository(context).stop()
                                         StudyTimerService.stop(context)
                                         StudyRuntimeReporter.post(
                                             context, "finish", metrics.sessionId,

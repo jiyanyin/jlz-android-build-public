@@ -17,6 +17,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
@@ -32,6 +33,8 @@
         android:networkSecurityConfig="@xml/bridge_network_security"
         android:icon="@drawable/world_between_app_icon" android:roundIcon="@drawable/world_between_app_icon" android:usesCleartextTraffic="false">
         <meta-data android:name="asset_statements" android:resource="@string/asset_statements" />
+        <activity android:name=".focus.DailyModeActivity" android:exported="false" />
+        <activity android:name=".cowatch.CoWatchActivity" android:exported="false" />
         <activity android:name=".focus.FocusGateActivity" android:exported="false" android:excludeFromRecents="true" />
         <activity
             android:name=".focus.EntertainmentGateActivity"
@@ -109,6 +112,7 @@
         <service android:name=".overlay.FloatingPresenceService" android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="overlay" />
         </service>
+        <service android:name=".cowatch.CoWatchService" android:exported="false" android:foregroundServiceType="mediaProjection" />
         <service android:name=".trip.LocationForegroundService" android:exported="false" android:foregroundServiceType="location" />
         <service android:name=".screen.PresenceAccessibilityService" android:exported="false"
             android:label="@string/accessibility_service_label" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">

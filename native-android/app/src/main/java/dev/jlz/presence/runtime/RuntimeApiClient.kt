@@ -86,7 +86,21 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
     fun stopTrip(sessionId: String): JSONObject = postJson(
         "/api/trips/" + URLEncoder.encode(sessionId, Charsets.UTF_8.name()) + "/stop",
         JSONObject().put("device_id", settings.deviceId))
+    fun startCoWatch(sid: String, minutes: Int): JSONObject = postJson("/api/cowatch/start",
+        JSONObject().put("session_id", sid).put("device_id", settings.deviceId).put("minutes", minutes).put("user_confirmed", true))
+    fun stopCoWatch(sid: String): JSONObject = postJson("/api/cowatch/$sid/stop", JSONObject().put("device_id", settings.deviceId))
+    fun uploadCoWatchFrame(sid: String, frameId: String, observed: Long, pixels: ByteArray): JSONObject {
+        requirePrivateCaptureRoute()
+        val conn = connection("/api/cowatch/$sid/frame", "POST").apply {
+            doOutput = true; setRequestProperty("Content-Type", "image/jpeg")
+            setRequestProperty("X-Device-ID", settings.deviceId); setRequestProperty("X-Frame-ID", frameId)
+            setRequestProperty("X-Observed-At-Ms", observed.toString()); setFixedLengthStreamingMode(pixels.size)
+        }
+        settings.traffic?.record(upload = pixels.size.toLong(), screenshot = pixels.size.toLong())
+        conn.outputStream.use { it.write(pixels) }; return readJson(conn)
+    }
     fun contentReceipt(receipt: JSONObject): JSONObject = postJson("/api/world/content/receipt",receipt)
+    fun dailyPlanForReaction(): JSONObject = getJson("/api/daily-plan?space_id=world-between-primary").getJSONObject("plan")
     fun reminderCheck(payload: JSONObject): Boolean = postJson("/api/world/reminder-check",payload).optBoolean("allowed",false)
     fun worldContent(): JSONObject = getJson("/api/world/content?space_id=world-between-primary&device_scope=" + if(settings.deviceId.contains("tablet")) "tablet" else "phone").getJSONObject("content")
     private fun connection(
