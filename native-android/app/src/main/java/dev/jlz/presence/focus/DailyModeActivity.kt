@@ -18,42 +18,77 @@ class DailyModeActivity : Activity() {
     private val repo by lazy { FocusRepository(applicationContext) }
     private lateinit var root: LinearLayout
     private var tick: Job? = null
+    private val ice by lazy { dev.jlz.presence.ui.theme.NativeIceStyle(this) }
+    private var buttonHost: LinearLayout? = null
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); render() }
     override fun onDestroy() { scope.cancel(); super.onDestroy() }
     private fun label(text: String, size: Float = 14f) = TextView(this).apply {
-        this.text = text; textSize = size; setTextColor(Color.rgb(39, 50, 77)); setPadding(8, 14, 8, 14)
+        this.text = text; textSize = size; setTextColor(ice.ink); setPadding(ice.dp(4), ice.dp(8), ice.dp(4), ice.dp(8))
+        if (size >= 18f) typeface = ice.titleFont
     }
-    private fun button(text: String, click: () -> Unit) { root.addView(Button(this).apply { this.text = text; textSize = 13f; setOnClickListener { click() } }) }
+    private fun button(text: String, click: () -> Unit) {
+        (buttonHost ?: root).addView(ice.button(text, click), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ice.dp(8) })
+    }
+    private fun section(title: String, copy: String) {
+        buttonHost = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(ice.dp(14), ice.dp(10), ice.dp(14), ice.dp(8))
+            background = ice.card()
+        }.also {
+            root.addView(it, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = ice.dp(14) })
+            it.addView(label(title, 18f))
+            it.addView(label(copy, 12f).apply { setTextColor(ice.muted) })
+        }
+    }
+    private fun presets(mode: DailyMode, values: List<Int>) {
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        values.forEach { minutes ->
+            row.addView(ice.button("$minutes 分钟") { change(mode, minutes) },
+                LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(ice.dp(3), ice.dp(5), ice.dp(3), ice.dp(8)) })
+        }
+        buttonHost?.addView(row)
+    }
     private fun change(mode: DailyMode, minutes: Int = 25) { scope.launch { if (mode in setOf(DailyMode.FOCUS, DailyMode.BREAK)) withContext(Dispatchers.IO) { LocalAppClassifier(applicationContext).refreshVisible() }; repo.setDailyMode(mode, minutes); FloatingPresenceService.refreshArtworkAfterImport(); render() } }
     private fun render() { scope.launch { if (repo.current().modeNow() == DailyMode.SLEEP && !intent.getBooleanExtra("settings", false)) renderSleep() else renderSettings() } }
     private fun renderSettings() {
         tick?.cancel()
         window.attributes = window.attributes.apply { screenBrightness = -1f }
-        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(36, 44, 36, 36); setBackgroundColor(0xFFF5F3F8.toInt()) }
-        setContentView(ScrollView(this).apply { addView(root) })
-        root.addView(label("世界之间 · 作息", 22f))
-        val stateLabel = label("读取本机状态…"); root.addView(stateLabel)
+        buttonHost = null
+        root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val side = maxOf(ice.dp(18), (resources.displayMetrics.widthPixels - ice.dp(640)) / 2)
+            setPadding(side, ice.dp(24), side, ice.dp(130)); background = ice.background()
+        }
+        setContentView(ScrollView(this).apply { isFillViewport = true; addView(root) })
+        root.addView(label("DAILY RHYTHM", 10f).apply { letterSpacing = .16f; setTextColor(ice.accent) })
+        root.addView(label("世界之间 · 作息", 24f))
+        val stateLabel = label("读取本机状态…", 12f); root.addView(stateLabel)
         tick = scope.launch {
             while (isActive) {
                 val s = repo.current()
                 val sec = s.remainingMs() / 1000
-                stateLabel.text = "${s.modeNow()} · %02d:%02d".format(sec / 60, sec % 60) + if (!dev.jlz.presence.screen.ScreenObservationBus.isAvailable()) "\n无障碍未连接，门禁保护不可用" else ""
+                val modeName = when (s.modeNow()) { DailyMode.FOCUS -> "专注"; DailyMode.BREAK -> "短休"; DailyMode.SLEEP -> "睡眠"; else -> "普通" }
+                stateLabel.text = "$modeName · %02d:%02d".format(sec / 60, sec % 60) + if (!dev.jlz.presence.screen.ScreenObservationBus.isAvailable()) "\n无障碍未连接，门禁保护不可用" else ""
                 delay(1000)
             }
         }
-        root.addView(label("专注仅 GPT／粉笔／独立伴读；请先核对学习应用。"))
-        for (m in listOf(25, 45, 60)) button("专注 $m 分钟") { change(DailyMode.FOCUS, m) }
-        for (m in listOf(5, 10, 15)) button("短休 $m 分钟 · 游戏不放行") { change(DailyMode.BREAK, m) }
+        section("留一段时间给学习", "专注仅 GPT／粉笔／独立伴读；先核对学习应用。")
+        presets(DailyMode.FOCUS, listOf(25, 45, 60))
+        section("休息，也有分寸", "短休不放行游戏；哔哩哔哩可用。")
+        presets(DailyMode.BREAK, listOf(5, 10, 15))
+        section("收好今天", "睡眠保持安静，电话与原生闹钟照常。")
         button("睡眠模式") { change(DailyMode.SLEEP) }
         button("结束当前模式") { change(DailyMode.NORMAL) }
+        section("生活里的小安排", "应用身份、起床时间与已有日历。")
         button("学习应用身份／分类纠正") { apps() }
         button("设置原生起床闹钟") { alarm() }
         button("选择系统／Google 同步日历") { calendars() }
         button("Q版衣橱 · 四套预览换装") { startActivity(Intent(this, dev.jlz.presence.overlay.QAvatarWardrobeActivity::class.java)) }
+        buttonHost = null
         button("返回") { finish() }
     }
     private fun renderSleep() {
         tick?.cancel()
+        buttonHost = null
         window.attributes = window.attributes.apply { screenBrightness = 0.08f }
         root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER

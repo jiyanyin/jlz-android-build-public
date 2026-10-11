@@ -206,6 +206,7 @@ class FloatingPresenceService : Service() {
             setPadding(dp(2), dp(2), dp(2), dp(2))
         }
         val character = ChibiPresenceView(this).apply {
+            alpha = QOverlayPreferences.alpha(QOverlayPreferences.opacity(this@FloatingPresenceService))
             setMood(listOf("idle", "watch", "shy")[Random.nextInt(3)])
             contentDescription = "纪临洲，点一下展开操作"
         }
@@ -395,7 +396,7 @@ class FloatingPresenceService : Service() {
                     ) {
                         if (System.currentTimeMillis() - downAt > 600L) {
                             suspended = !suspended
-                            closeMenu(); character.setSizeDp(if (suspended) QAvatarScale.MIN_DP else QAvatarScale.get(this)); character.alpha = if (suspended) 0.6f else 1f
+                            closeMenu(); character.setSizeDp(if (suspended) QAvatarScale.MIN_DP else QAvatarScale.get(this))
                             return@setOnTouchListener true
                         }
                         character.react("surprised", idleMood())
@@ -422,7 +423,14 @@ class FloatingPresenceService : Service() {
         noteInput = editor
         status = hint
         params = lp
-        windowManager?.addView(root, lp)
+        try {
+            windowManager?.addView(root, lp)
+            lastFailure = null
+        } catch (_: RuntimeException) {
+            panel = null; avatar = null
+            lastFailure = "系统未允许创建悬浮窗，请在衣橱检查权限并重新显示"
+            stopSelf()
+        }
     }
 
     private fun toggleMenu() {
@@ -503,8 +511,16 @@ class FloatingPresenceService : Service() {
 
     private fun updateBehavior() {
         val pkg = dev.jlz.presence.screen.AccessibilityActionGateway.currentPackage().orEmpty()
-        val protected = dev.jlz.presence.screen.AccessibilityActionGateway.overlayProtected() || pkg.contains("permissioncontroller") || pkg.contains("incall") || pkg.contains("inputmethod") || pkg == "com.android.systemui"
-        if (!captureHidden) panel?.visibility = if (protected) View.INVISIBLE else View.VISIBLE
+        if (!Settings.canDrawOverlays(this)) {
+            lastFailure = "悬浮权限已撤销，请在衣橱重新授权"
+            stopSelf()
+            return
+        }
+        val protected = OverlayVisibilityPolicy.hide(
+            getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked,
+            getSystemService(android.os.PowerManager::class.java).isInteractive,
+            captureHidden, dev.jlz.presence.screen.AccessibilityActionGateway.overlayProtected())
+        panel?.visibility = if (protected) View.INVISIBLE else View.VISIBLE
         val modeNow = focusState.modeNow()
         val category = if (pkg.isBlank()) dev.jlz.presence.focus.LocalAppCategory.UNKNOWN else classifier.classify(pkg)
         val hour = java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Shanghai")).hour
@@ -789,6 +805,21 @@ class FloatingPresenceService : Service() {
             liveService?.avatar?.reloadArtwork()
         }
 
+        @Volatile private var lastFailure: String? = null
+        fun overlayStatus(context: Context): String = when {
+            !Settings.canDrawOverlays(context) -> "未授权 · 需要允许在其他应用上层显示"
+            liveService?.panel?.isAttachedToWindow != true -> lastFailure ?: "未运行 · 点显示小人恢复"
+            liveService?.panel?.visibility != View.VISIBLE -> "保护界面或息屏期间暂时隐藏"
+            else -> "系统悬浮窗已挂载 · 可切到桌面检查"
+        }
+        fun setAvatarOpacity(context: Context, percent: Int): Int {
+            val value = QOverlayPreferences.setOpacity(context, percent)
+            liveService?.let { live -> live.scope.launch {
+                live.avatar?.alpha = QOverlayPreferences.alpha(value)
+            } }
+            return value
+        }
+
         /** The editor/menu stays unchanged. Only the draggable Q image scales. */
         fun setAvatarSize(context: Context, requestedDp: Int): Int {
             val value = QAvatarScale.put(context, requestedDp)
@@ -843,12 +874,15 @@ class FloatingPresenceService : Service() {
                 PresenceDevicePreferencesRepository(context.applicationContext)
                     .setOverlayState(true, mode.name, resolvedMessage)
             }
-            if (Build.VERSION.SDK_INT >= 26) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            return runCatching {
+                if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent)
+                else context.startService(intent)
+                lastFailure = null
+                true
+            }.getOrElse {
+                lastFailure = "系统限制了后台启动，请打开衣橱后点显示小人"
+                false
             }
-            return true
         }
 
         fun stop(context: Context) {

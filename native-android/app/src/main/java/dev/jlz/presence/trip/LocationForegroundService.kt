@@ -233,6 +233,8 @@ class LocationForegroundService : Service() {
     private fun ingest(location: Location) {
         val current = _trip.value
         if (!current.active) return
+        if (!TripFixFreshness.acceptable(location.time, location.elapsedRealtimeNanos,
+                System.currentTimeMillis(), android.os.SystemClock.elapsedRealtimeNanos(), current.startedAtMs)) return
         if (!location.latitude.isFinite() || !location.longitude.isFinite() ||
             location.latitude !in -90.0..90.0 || location.longitude !in -180.0..180.0 ||
             !location.hasAccuracy() || !location.accuracy.isFinite() || location.accuracy < 0f ||
@@ -251,7 +253,7 @@ class LocationForegroundService : Service() {
             if (location.hasAccuracy()) location.accuracy else -1f,
             if (location.hasSpeed()) location.speed else 0f,
             if (location.hasBearing()) location.bearing else 0f,
-            System.currentTimeMillis(),
+            location.time,
             location.provider ?: "gps"
         )
         // Bounded raw buffer: oldest points are dropped (cleanup strategy).

@@ -110,7 +110,7 @@
         <service android:name=".study.StudyTimerService" android:exported="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="study timer" />
         </service>
-        <service android:name=".overlay.FloatingPresenceService" android:exported="false" android:foregroundServiceType="specialUse">
+        <service android:name=".overlay.FloatingPresenceService" android:exported="false" android:stopWithTask="false" android:foregroundServiceType="specialUse">
             <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="overlay" />
         </service>
         <service android:name=".cowatch.CoWatchService" android:exported="false" android:foregroundServiceType="mediaProjection" />

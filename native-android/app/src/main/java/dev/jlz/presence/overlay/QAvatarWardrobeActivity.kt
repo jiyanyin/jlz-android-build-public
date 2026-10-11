@@ -27,6 +27,9 @@ class QAvatarWardrobeActivity : Activity() {
     private val muted = 0xFFB9BED1.toInt()
     private val rose = 0xFFD4B4C9.toInt()
     private var previewId: String? = null
+    private val ice by lazy { dev.jlz.presence.ui.theme.NativeIceStyle(this) }
+    private var overlayState: TextView? = null
+    override fun onResume() { super.onResume(); overlayState?.text = FloatingPresenceService.overlayStatus(this) }
 
     private fun dp(n: Int): Int = (n * resources.displayMetrics.density + 0.5f).toInt()
     private fun rounded(color: Int, radius: Int, stroke: Int? = null): GradientDrawable =
@@ -133,6 +136,51 @@ class QAvatarWardrobeActivity : Activity() {
             setPadding(0, dp(5), 0, 0)
         })
         content.addView(preview)
+
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = ice.card()
+        }
+        controls.addView(text("跨应用小人", 16f, ice.ink))
+        overlayState = text(FloatingPresenceService.overlayStatus(this), 12f, ice.muted)
+        controls.addView(overlayState)
+        val opacityLabel = text("不透明度 ${QOverlayPreferences.opacity(this)}%", 13f, ice.ink)
+        controls.addView(opacityLabel)
+        val slider = android.widget.SeekBar(this).apply {
+            max = 75; progress = QOverlayPreferences.opacity(this@QAvatarWardrobeActivity) - 25
+            contentDescription = "Q 不透明度，25% 到 100%"
+            minHeight = dp(48)
+        }
+        fun updateOpacity(value: Int) {
+            val percent = FloatingPresenceService.setAvatarOpacity(this, value)
+            opacityLabel.text = "不透明度 $percent%"
+            portrait.alpha = QOverlayPreferences.alpha(percent)
+        }
+        portrait.alpha = QOverlayPreferences.alpha(QOverlayPreferences.opacity(this))
+        slider.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(bar: android.widget.SeekBar?, value: Int, fromUser: Boolean) { if (fromUser) updateOpacity(value + 25) }
+            override fun onStartTrackingTouch(bar: android.widget.SeekBar?) = Unit
+            override fun onStopTrackingTouch(bar: android.widget.SeekBar?) = Unit
+        })
+        controls.addView(slider)
+        controls.addView(ice.button("恢复默认 · 100%") { slider.progress = 75; updateOpacity(100) })
+        controls.addView(text("只保存在这台设备。100% 保留原图透明边缘；手机与平板各自设置。", 11f, ice.muted))
+        controls.addView(ice.button("显示小人／检查权限") {
+            if (!android.provider.Settings.canDrawOverlays(this)) {
+                runCatching { startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    android.net.Uri.parse("package:$packageName"))) }
+                    .onFailure { Toast.makeText(this, "请在系统设置允许在其他应用上层显示", Toast.LENGTH_LONG).show() }
+            } else {
+                val requested = FloatingPresenceService.start(this)
+                overlayState?.text = if (requested) "已请求启动 · 请切到桌面检查" else FloatingPresenceService.overlayStatus(this)
+                controls.postDelayed({ overlayState?.text = FloatingPresenceService.overlayStatus(this) }, 800)
+            }
+        })
+        controls.addView(ice.button("隐藏小人") {
+            FloatingPresenceService.stop(this)
+            overlayState?.text = "已请求隐藏；点显示小人恢复"
+        })
+        content.addView(controls, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
 
         content.addView(text("SELECT YOUR LOOK", 10f, muted).apply {
             letterSpacing = 0.13f
