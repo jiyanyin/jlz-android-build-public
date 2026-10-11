@@ -204,6 +204,7 @@ class NativeRuntimeService : Service() {
                 if(settings.bridgeName.startsWith("Home") && System.currentTimeMillis()-contentCheckedAt >= 300000L) {
                     contentCheckedAt=System.currentTimeMillis()
                     runCatching { WorldContentCache(applicationContext).save(api.worldContent()) }
+                    runCatching { dev.jlz.presence.overlay.TaskReactionTracker(applicationContext).accept(api.dailyPlanForReaction()) }
                 }
                 runCatching { cycleReminder.evaluateToday() }
 

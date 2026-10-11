@@ -104,6 +104,9 @@ object AccessibilityActionGateway {
     }
     fun available(): Boolean = service != null
     fun safeForCoWatch(target: String): Boolean {
+        val windows = service?.windows ?: return false
+        if (windows.any { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD ||
+            (it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION && it.root?.packageName?.toString() != target) }) return false
         val root = bestRoot() ?: return false
         if (root.packageName?.toString() != target) return false
         val queue = java.util.ArrayDeque<android.view.accessibility.AccessibilityNodeInfo>()
@@ -111,11 +114,16 @@ object AccessibilityActionGateway {
         while (queue.isNotEmpty() && visited++ < 300) {
             val n = queue.removeFirst()
             val text = n.text?.toString().orEmpty() + n.contentDescription?.toString().orEmpty()
-            if (n.isPassword || listOf("密码", "验证码", "支付", "银行卡", "password", "payment").any { text.contains(it, ignoreCase = true) }) return false
+            if (n.isPassword || n.isEditable || listOf("密码", "验证码", "支付", "银行卡", "password", "payment").any { text.contains(it, ignoreCase = true) }) return false
             for (i in 0 until n.childCount) n.getChild(i)?.let { queue.add(it) }
         }
         return queue.isEmpty()
     }
+
+    fun overlayProtected(): Boolean = runCatching {
+        service?.windows?.any { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD ||
+            it.root?.packageName?.toString()?.let { pkg -> pkg.contains("permissioncontroller") || pkg.contains("incall") } == true } == true
+    }.getOrDefault(true)
 
     fun lockScreenByUser(): Boolean = service?.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN) == true
 

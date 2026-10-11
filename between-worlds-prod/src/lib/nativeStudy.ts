@@ -16,6 +16,7 @@ export type NativeStudySnapshot = {
 type NativeStudyBridge = {
   version?: () => string;
   calendarSnapshot?: () => string;
+  calendarRange?: (fromMs: number, toMs: number) => string;
   taskCompleted?: () => void;
   snapshot?: () => string;
   start?: () => string;

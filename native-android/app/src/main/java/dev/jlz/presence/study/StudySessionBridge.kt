@@ -113,6 +113,10 @@ class StudySessionBridge(context: Context) {
     @JavascriptInterface
     fun calendarSnapshot(): String = dev.jlz.presence.life.NativeCalendarBridge(app).snapshot().toString()
 
+    @JavascriptInterface
+    fun calendarRange(fromMs: Long, toMs: Long): String =
+        dev.jlz.presence.life.NativeCalendarBridge(app).snapshot(fromMs, toMs).toString()
+
     fun close() {
         scope.cancel()
     }

@@ -24,8 +24,9 @@ class DailyModeActivity : Activity() {
         this.text = text; textSize = size; setTextColor(Color.rgb(39, 50, 77)); setPadding(8, 14, 8, 14)
     }
     private fun button(text: String, click: () -> Unit) { root.addView(Button(this).apply { this.text = text; textSize = 13f; setOnClickListener { click() } }) }
-    private fun change(mode: DailyMode, minutes: Int = 25) { scope.launch { repo.setDailyMode(mode, minutes); FloatingPresenceService.refreshArtworkAfterImport(); render() } }
-    private fun render() {
+    private fun change(mode: DailyMode, minutes: Int = 25) { scope.launch { if (mode in setOf(DailyMode.FOCUS, DailyMode.BREAK)) withContext(Dispatchers.IO) { LocalAppClassifier(applicationContext).refreshVisible() }; repo.setDailyMode(mode, minutes); FloatingPresenceService.refreshArtworkAfterImport(); render() } }
+    private fun render() { scope.launch { if (repo.current().modeNow() == DailyMode.SLEEP && !intent.getBooleanExtra("settings", false)) renderSleep() else renderSettings() } }
+    private fun renderSettings() {
         tick?.cancel()
         window.attributes = window.attributes.apply { screenBrightness = -1f }
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(36, 44, 36, 36); setBackgroundColor(0xFFF5F3F8.toInt()) }
@@ -38,21 +39,6 @@ class DailyModeActivity : Activity() {
                 val sec = s.remainingMs() / 1000
                 stateLabel.text = "${s.modeNow()} · %02d:%02d".format(sec / 60, sec % 60) + if (!dev.jlz.presence.screen.ScreenObservationBus.isAvailable()) "\n无障碍未连接，门禁保护不可用" else ""
                 delay(1000)
-            }
-        }
-        scope.launch {
-            if (repo.current().modeNow() == DailyMode.SLEEP) {
-                window.attributes = window.attributes.apply { screenBrightness = 0.1f }
-                root.addView(ChibiPresenceView(this@DailyModeActivity).apply { setSizeDp(126); setMood("sleep") })
-                root.addView(label("睡眠中\n电话和原生闹钟照常。起床只以你点按钮确认为准。"))
-                button("我醒了") { change(DailyMode.NORMAL); dev.jlz.presence.data.LocalLifeStore(applicationContext).recordTimeline("wake_confirmed", "我醒了", "用户手动确认"); FloatingPresenceService.showAttentionNudge(applicationContext, "早安，音音。") }
-                button("系统安全锁屏") {
-                    AlertDialog.Builder(this@DailyModeActivity).setMessage("锁定后需 PIN 或指纹正常解锁，才能回到睡眠页。现在锁定？")
-                        .setPositiveButton("锁定") { _, _ ->
-                            val ok = dev.jlz.presence.screen.AccessibilityActionGateway.lockScreenByUser()
-                            Toast.makeText(this@DailyModeActivity, if (ok) "已请求系统锁屏" else "系统锁屏不可用，请使用电源键", Toast.LENGTH_SHORT).show()
-                        }.setNegativeButton("取消", null).show()
-                }
             }
         }
         root.addView(label("专注仅 GPT／粉笔／独立伴读；请先核对学习应用。"))
@@ -72,6 +58,43 @@ class DailyModeActivity : Activity() {
         }
         button("返回") { finish() }
     }
+    private fun renderSleep() {
+        tick?.cancel()
+        window.attributes = window.attributes.apply { screenBrightness = 0.08f }
+        root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = android.view.Gravity.CENTER
+            setPadding(36, 48, 36, 36)
+            background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(0xFF101828.toInt(), 0xFF253048.toInt()))
+        }
+        setContentView(root)
+        root.addView(label("世界之间 · 今夜", 16f).apply { setTextColor(0xFFD4C7AF.toInt()) })
+        root.addView(Space(this), LinearLayout.LayoutParams(1, 0, 1f))
+        val sleeper = ChibiPresenceView(this).apply { setSizeDp(126); setMood("sleep") }
+        root.addView(sleeper)
+        root.addView(label("安心睡。电话和闹钟照常。", 13f).apply { setTextColor(0xFFBAC4D5.toInt()) })
+        button("我醒了") {
+            scope.launch {
+                repo.setDailyMode(DailyMode.NORMAL)
+                dev.jlz.presence.data.LocalLifeStore(applicationContext).recordTimeline("wake_confirmed", "我醒了", "用户手动确认")
+                sleeper.react("wake", "idle")
+                FloatingPresenceService.wakeReaction()
+                Toast.makeText(this@DailyModeActivity, "早安，音音。醒来时间已记录。", Toast.LENGTH_SHORT).show()
+                delay(1500); finish()
+            }
+        }
+        root.addView(Space(this), LinearLayout.LayoutParams(1, 0, 1f))
+        button("系统安全锁屏") {
+            AlertDialog.Builder(this).setMessage("锁定后需 PIN 或指纹正常解锁，才能回到睡眠页。现在锁定？")
+                .setPositiveButton("锁定") { _, _ ->
+                    val ok = dev.jlz.presence.screen.AccessibilityActionGateway.lockScreenByUser()
+                    if (!ok) Toast.makeText(this, "请使用电源键锁屏", Toast.LENGTH_SHORT).show()
+                }.setNegativeButton("取消", null).show()
+        }
+        button("作息设置") { startActivity(Intent(this, DailyModeActivity::class.java).putExtra("settings", true)) }
+        button("返回 · 保持安静模式") { finish() }
+    }
+
     private fun apps() {
         val pm = packageManager
         val apps = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)

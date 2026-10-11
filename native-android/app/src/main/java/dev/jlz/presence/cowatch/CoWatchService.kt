@@ -38,6 +38,7 @@ class CoWatchService : Service() {
     private var width = 0
     private var height = 0
     private var destroyed = false
+    private var capturedVisible = true
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "STOP") {
@@ -66,6 +67,8 @@ class CoWatchService : Service() {
                 check(projection != null) { "系统录屏许可不可用" }
                 projection!!.registerCallback(object : MediaProjection.Callback() {
                     override fun onStop() { CoWatchState.reason = "系统结束共享"; stopSelf() }
+                    override fun onCapturedContentVisibilityChanged(isVisible: Boolean) { capturedVisible = isVisible }
+                    override fun onCapturedContentResize(w: Int, h: Int) { resize(w, h) }
                 }, Handler(Looper.getMainLooper()))
                 val metrics = resources.displayMetrics
                 val scale = 720f / maxOf(metrics.widthPixels, metrics.heightPixels)
@@ -84,10 +87,11 @@ class CoWatchService : Service() {
                             if (safe(target)) frame() else null
                         }
                         if (pixels != null) {
-                            check(safe(target)) { "共享目标改变，停止上传" }
+                            check(!destroyed && safe(target)) { "共享目标改变，停止上传" }
                             val stamp = System.currentTimeMillis()
                             val receipt = withContext(Dispatchers.IO) { api!!.uploadCoWatchFrame(sid, UUID.randomUUID().toString(), stamp, pixels) }
                             check(receipt.optBoolean("ok")) { "帧上传未确认" }
+                            if (destroyed || !isActive) return@launch
                             CoWatchState.uploaded = receipt.optInt("frame_count")
                             CoWatchState.reason = "已上传真实采样；官端是否读取需查询回执"
                         }
@@ -103,9 +107,22 @@ class CoWatchService : Service() {
         return START_NOT_STICKY
     }
     private fun safe(target: String): Boolean =
-        !getSystemService(KeyguardManager::class.java).isKeyguardLocked &&
+        !destroyed && capturedVisible && !getSystemService(KeyguardManager::class.java).isKeyguardLocked &&
             dev.jlz.presence.screen.ScreenObservationBus.isAvailable() &&
             dev.jlz.presence.screen.AccessibilityActionGateway.safeForCoWatch(target)
+
+    private fun resize(w: Int, h: Int) {
+        if (destroyed || display == null || w <= 0 || h <= 0) return
+        val scale = minOf(1f, 720f / maxOf(w, h))
+        val nextWidth = (w * scale).toInt().coerceAtLeast(1)
+        val nextHeight = (h * scale).toInt().coerceAtLeast(1)
+        if (nextWidth == width && nextHeight == height) return
+        val next = ImageReader.newInstance(nextWidth, nextHeight, PixelFormat.RGBA_8888, 2)
+        display?.surface = null
+        display?.resize(nextWidth, nextHeight, resources.displayMetrics.densityDpi)
+        display?.surface = next.surface
+        reader?.close(); reader = next; width = nextWidth; height = nextHeight
+    }
 
     private fun frame(): ByteArray? {
         val image = reader?.acquireLatestImage() ?: return null

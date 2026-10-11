@@ -34,6 +34,10 @@ class LocalAppClassifier(private val context: Context) {
         return true
     }
     @Synchronized fun invalidate(pkg: String) { cache.remove(pkg) }
+    fun refreshVisible() {
+        pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)
+            .map { it.activityInfo.packageName }.distinct().forEach { invalidate(it); classify(it) }
+    }
     fun clear(pkg: String) { prefs.edit().remove("class:$pkg").remove("cert:$pkg").apply(); cache.remove(pkg) }
 
     fun eligibleLearning(pkg: String): Boolean {

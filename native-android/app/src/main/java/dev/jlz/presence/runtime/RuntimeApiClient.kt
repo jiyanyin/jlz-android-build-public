@@ -100,6 +100,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         conn.outputStream.use { it.write(pixels) }; return readJson(conn)
     }
     fun contentReceipt(receipt: JSONObject): JSONObject = postJson("/api/world/content/receipt",receipt)
+    fun dailyPlanForReaction(): JSONObject = getJson("/api/daily-plan?space_id=world-between-primary").getJSONObject("plan")
     fun reminderCheck(payload: JSONObject): Boolean = postJson("/api/world/reminder-check",payload).optBoolean("allowed",false)
     fun worldContent(): JSONObject = getJson("/api/world/content?space_id=world-between-primary&device_scope=" + if(settings.deviceId.contains("tablet")) "tablet" else "phone").getJSONObject("content")
     private fun connection(

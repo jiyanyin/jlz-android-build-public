@@ -32,7 +32,7 @@ class NativeCalendarBridge(private val context: Context) {
     ) == PackageManager.PERMISSION_GRANTED
 
     /** Calendar summaries, capped to 60 entries over next 14 days. */
-    fun snapshot(): JSONObject {
+    fun snapshot(fromMs: Long = System.currentTimeMillis(), toMs: Long = fromMs + 14L * 86_400_000L): JSONObject {
         val now = System.currentTimeMillis()
         val result = JSONObject()
             .put("source", "android_calendar_provider")
@@ -40,14 +40,15 @@ class NativeCalendarBridge(private val context: Context) {
             .put("read_permission", canRead())
             .put("write_permission", canWrite())
             .put("events", JSONArray())
+            .put("range_start_ms", fromMs).put("range_end_ms", toMs)
+        if (toMs <= fromMs || toMs - fromMs > 42L * 86_400_000L) return result.put("ok", false).put("reason", "calendar_invalid_range")
         if (!canRead()) return result.put("reason", "calendar_read_permission_required")
         val selected = prefs.getLong("selected_calendar", 0L)
         if (selected <= 0L) return result.put("reason", "select_calendar_first")
         val events = JSONArray()
-        val end = now + 14L * 86_400_000L
         val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().also {
-            ContentUris.appendId(it, now)
-            ContentUris.appendId(it, end)
+            ContentUris.appendId(it, fromMs)
+            ContentUris.appendId(it, toMs)
         }.build()
         val fields = arrayOf(CalendarContract.Instances.EVENT_ID,
             CalendarContract.Instances.TITLE, CalendarContract.Instances.BEGIN,
@@ -70,7 +71,7 @@ class NativeCalendarBridge(private val context: Context) {
                         .put("all_day", rows.getInt(5) != 0))
                 }
             }
-            return result.put("events", events).put("ok", true)
+            return result.put("events", events).put("ok", true).put("possibly_truncated", events.length() == 60)
         } catch (error: Exception) {
             return result.put("ok", false)
                 .put("reason", "calendar_provider_error:" + error.javaClass.simpleName)

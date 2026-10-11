@@ -503,7 +503,7 @@ class FloatingPresenceService : Service() {
 
     private fun updateBehavior() {
         val pkg = dev.jlz.presence.screen.AccessibilityActionGateway.currentPackage().orEmpty()
-        val protected = pkg.contains("permissioncontroller") || pkg.contains("incall") || pkg.contains("inputmethod") || pkg == "com.android.systemui"
+        val protected = dev.jlz.presence.screen.AccessibilityActionGateway.overlayProtected() || pkg.contains("permissioncontroller") || pkg.contains("incall") || pkg.contains("inputmethod") || pkg == "com.android.systemui"
         if (!captureHidden) panel?.visibility = if (protected) View.INVISIBLE else View.VISIBLE
         val modeNow = focusState.modeNow()
         val category = if (pkg.isBlank()) dev.jlz.presence.focus.LocalAppCategory.UNKNOWN else classifier.classify(pkg)
@@ -519,6 +519,7 @@ class FloatingPresenceService : Service() {
             System.currentTimeMillis() < gateUntil, awakeEntertainment,
             modeNow == dev.jlz.presence.focus.DailyMode.BREAK, offline)
         val mood = when(state) {
+            QAvatarState.HIDDEN -> "hidden"
             QAvatarState.SLEEP -> "sleep"
             QAvatarState.WATCHING -> "watching"
             QAvatarState.STUDY -> "watch"
@@ -526,7 +527,7 @@ class FloatingPresenceService : Service() {
             QAvatarState.NIGHT -> "night"
             QAvatarState.BREAK -> "break"
             QAvatarState.OFFLINE -> "offline"
-            else -> "idle"
+            else -> if (suspended) "hidden" else if (hour >= 22 || hour < 6) "sleepy" else "idle"
         }
         avatar?.setMood(mood)
     }
@@ -706,19 +707,36 @@ class FloatingPresenceService : Service() {
         fun localCelebration() {
             liveService?.let { live ->
                 val mode = live.focusState.modeNow()
-                if (mode == dev.jlz.presence.focus.DailyMode.SLEEP || dev.jlz.presence.cowatch.CoWatchState.active) return
+                if (captureHidden || live.panel?.visibility != View.VISIBLE || mode == dev.jlz.presence.focus.DailyMode.SLEEP || dev.jlz.presence.cowatch.CoWatchState.active || System.currentTimeMillis() < live.gateUntil) return
                 live.avatar?.react("celebrate", if (mode == dev.jlz.presence.focus.DailyMode.FOCUS) "watch" else live.idleMood())
             }
         }
 
+        fun wakeReaction() { liveService?.let { live -> live.scope.launch {
+            live.focusState = dev.jlz.presence.focus.FocusRepository(live).current()
+            live.updateBehavior()
+            if (!captureHidden && live.panel?.visibility == View.VISIBLE) {
+                live.avatar?.react("wake", "idle"); live.showTransient("早安，音音。", 2800L)
+            }
+        } } }
+
+        fun privateMessageReaction() { liveService?.let { live -> live.scope.launch {
+            live.updateBehavior()
+            if (!captureHidden && live.panel?.visibility == View.VISIBLE &&
+                live.focusState.modeNow() == dev.jlz.presence.focus.DailyMode.NORMAL &&
+                !dev.jlz.presence.cowatch.CoWatchState.active && System.currentTimeMillis() >= live.gateUntil)
+                live.avatar?.react("clingy", live.idleMood())
+        } } }
+
         suspend fun <T> withoutOverlay(block: suspend () -> T): T {
             withContext(Dispatchers.Main) { captureHidden = true; liveService?.panel?.visibility = View.INVISIBLE }
-            return try { delay(350); block() } finally { withContext(Dispatchers.Main) { captureHidden = false; liveService?.panel?.visibility = View.VISIBLE } }
+            return try { delay(350); block() } finally { withContext(Dispatchers.Main) { captureHidden = false; liveService?.updateBehavior() } }
         }
 
         /** The official GPT captures the underlying app, not its own Q menu. */
         suspend fun captureForRuntime(automatic: Boolean = false): ScreenshotCaptureResult {
             val view = withContext(Dispatchers.Main.immediate) {
+                captureHidden = true
                 liveService?.panel?.also { it.visibility = View.INVISIBLE }
             }
             return try {
@@ -732,7 +750,8 @@ class FloatingPresenceService : Service() {
                 result
             } finally {
                 withContext(Dispatchers.Main.immediate) {
-                    if (view != null) view.visibility = View.VISIBLE
+                    captureHidden = false
+                    liveService?.updateBehavior()
                 }
             }
         }

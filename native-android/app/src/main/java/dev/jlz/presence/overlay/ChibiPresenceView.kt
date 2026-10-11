@@ -74,6 +74,7 @@ class ChibiPresenceView(context: Context) : View(context) {
     private val posePicker = QAvatarStateMachine()
     private var pickedMood = ""
     private var pickedSprite = "idle"
+    private var nextVariantAt = 0L
 
     private fun baseSpriteName(): String = when (mood) {
         "watch", "watching" -> studyingPose
@@ -97,7 +98,8 @@ class ChibiPresenceView(context: Context) : View(context) {
     }
 
     private fun spriteName(): String {
-        if (pickedMood != mood) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (pickedMood != mood || now >= nextVariantAt) {
             val pool = when (mood) {
                 "watch", "watching" -> listOf("study_watch", "study_read", "study_note", "study_think", "study_arms", "study_stand")
                 "idle", "thinking" -> listOf("idle", "idle_crouch", "idle_think", "idle_smile", "idle_wave", "idle_arms")
@@ -108,6 +110,7 @@ class ChibiPresenceView(context: Context) : View(context) {
             }
             pickedSprite = posePicker.pickAsset(pool) ?: "idle"
             pickedMood = mood
+            nextVariantAt = now + Random.nextLong(60_000L, 120_001L)
         }
         return pickedSprite
     }
@@ -168,8 +171,18 @@ class ChibiPresenceView(context: Context) : View(context) {
     }
 
     private var reactionUntil = 0L
+    private var reactionGeneration = 0L
     fun setMood(value: String) {
-        if (System.currentTimeMillis() < reactionUntil || mood == value) return
+        if (value in setOf("sleep", "watching", "gate", "night", "hidden")) {
+            reactionUntil = 0L; reactionGeneration++
+            animate().cancel(); scaleX = 1f; scaleY = 1f; rotation = 0f
+        }
+        if (System.currentTimeMillis() < reactionUntil) return
+        if (mood == value) {
+            if (android.os.SystemClock.elapsedRealtime() >= nextVariantAt &&
+                context.getSystemService(android.os.PowerManager::class.java)?.isPowerSaveMode != true) invalidate()
+            return
+        }
         mood = value
         updateMotion()
         invalidate()
@@ -177,11 +190,12 @@ class ChibiPresenceView(context: Context) : View(context) {
 
     fun react(value: String, after: String = "watch") {
         animate().cancel()
+        val generation = ++reactionGeneration
         reactionUntil = System.currentTimeMillis() + 1400L
         mood = value
         val reduce = android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
         val save = context.getSystemService(android.os.PowerManager::class.java)?.isPowerSaveMode == true
-        if (reduce || save) { postDelayed({ mood = after; invalidate() }, 1400L); invalidate(); return }
+        if (reduce || save) { postDelayed({ if (generation == reactionGeneration) { mood = after; invalidate() } }, 1400L); invalidate(); return }
         invalidate()
         animate().scaleX(1.1f).scaleY(0.9f).rotation(if (pose % 2 == 0) 8f else -8f)
             .setDuration(170L)
@@ -189,8 +203,7 @@ class ChibiPresenceView(context: Context) : View(context) {
                 animate().scaleX(1f).scaleY(1f).rotation(0f).setDuration(220L)
                     .withEndAction {
                         postDelayed({
-                            mood = after
-                            invalidate()
+                            if (generation == reactionGeneration) { mood = after; invalidate() }
                         }, 500L)
                     }.start()
             }.start()

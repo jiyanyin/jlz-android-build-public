@@ -55,6 +55,7 @@ class NotificationAdapter(private val context: Context) {
         }
 
         val notificationId = nextNotificationId()
+        if (!sleepQuiet) dev.jlz.presence.overlay.FloatingPresenceService.privateMessageReaction()
         val avatar = createAvatarBitmap()
 
         val contentPendingIntent = PendingIntent.getActivity(
