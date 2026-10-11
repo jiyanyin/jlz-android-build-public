@@ -84,6 +84,7 @@ class FloatingPresenceService : Service() {
     private var transientUntilMs = 0L
 
     @Volatile private var focusState: FocusState = FocusState()
+    private var suspended = false
     private var studyPaused = false
     private val behavior = QAvatarStateMachine()
     private var gateUntil = 0L
@@ -364,7 +365,6 @@ class FloatingPresenceService : Service() {
         }
 
         var downAt = 0L
-        var suspended = false
         var downX = 0f
         var downY = 0f
         var startX = 0

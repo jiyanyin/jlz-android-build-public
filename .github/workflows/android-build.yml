@@ -13,6 +13,11 @@ on:
       - 'between-worlds-prod/**'
       - '.github/workflows/android-build.yml'
   workflow_dispatch:
+    inputs:
+      private_release_id:
+        description: 'Draft release ID containing AES-GCM encrypted private poses; empty for ordinary build'
+        required: false
+        type: string
 
 concurrency:
   group: public-android-${{ github.ref }}
@@ -39,10 +44,43 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
+          cache-disabled: ${{ inputs.private_release_id != '' }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Stage authenticated private resources
+        if: github.event_name == 'workflow_dispatch' && inputs.private_release_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ inputs.private_release_id }}
+          WB_PRIVATE_BUILD_KEY: ${{ secrets.WB_PRIVATE_BUILD_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" > "$RUNNER_TEMP/private-release.json"
+          test "$(jq -r .draft "$RUNNER_TEMP/private-release.json")" = true
+          asset=$(jq -r '.assets[] | select(.name=="q-poses.enc") | .id' "$RUNNER_TEMP/private-release.json")
+          test -n "$asset"
+          gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$asset" > "$RUNNER_TEMP/q-poses.enc"
+          node scripts/private-build-envelope.mjs decrypt "$RUNNER_TEMP/q-poses.enc" "$RUNNER_TEMP/q-poses.zip"
+          python - "$RUNNER_TEMP/q-poses.zip" <<'PY'
+          import sys, zipfile, pathlib, json, hashlib
+          target=pathlib.Path('native-android/app/src/main/assets/avatar/packs').resolve()
+          with zipfile.ZipFile(sys.argv[1]) as z:
+              assert len(z.infolist()) == 116
+              assert sum(i.file_size for i in z.infolist()) < 20_000_000
+              for i in z.infolist():
+                  p=(target/i.filename).resolve()
+                  assert p.is_relative_to(target) and (i.filename == 'index.json' or i.filename.startswith('poses/'))
+                  p.parent.mkdir(parents=True,exist_ok=True); p.write_bytes(z.read(i))
+          packs=json.loads((target/'index.json').read_text())['packs']
+          assert len(packs)==4 and len(list(target.rglob('*.webp')))==115
+          print('Four private packs staged; 115 single poses; no reference sheets.')
+          PY
+          rm -f "$RUNNER_TEMP/q-poses.zip" "$RUNNER_TEMP/q-poses.enc"
 
       - name: Package unchanged WebShell UI for offline startup
         shell: bash
@@ -85,7 +123,7 @@ jobs:
           exit $status
 
       - name: Re-sign APK with stable private certificate
-        if: success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/runtime-slim-20260930' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+        if: success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/runtime-slim-20260930' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) || (github.event_name == 'workflow_dispatch' && inputs.private_release_id != ''))
         shell: bash
         env:
           JLZ_DEBUG_KEYSTORE_BASE64: ${{ secrets.JLZ_DEBUG_KEYSTORE_BASE64 }}
@@ -93,6 +131,7 @@ jobs:
           set -euo pipefail
           test -n "${JLZ_DEBUG_KEYSTORE_BASE64:-}"
           mkdir -p /tmp/jlz-signing
+          trap 'rm -f /tmp/jlz-signing/jlz-native-debug.keystore' EXIT
           printf '%s' "$JLZ_DEBUG_KEYSTORE_BASE64" | base64 --decode > /tmp/jlz-signing/jlz-native-debug.keystore
           apk="native-android/app/build/outputs/apk/debug/app-debug.apk"
           APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
@@ -104,10 +143,11 @@ jobs:
             --key-pass pass:android \
             "$apk"
           "$APKSIGNER" verify --verbose --print-certs "$apk"
+          "$APKSIGNER" verify --print-certs "$apk" | grep -q 'a129340ee73c5ef1d05808258582a83dfa53d4191e0bd49b5516ef083f3e5ef5'
           rm -f /tmp/jlz-signing/jlz-native-debug.keystore
 
       - name: Upload APK artifact
-        if: success() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/runtime-slim-20260930' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+        if: success() && inputs.private_release_id == '' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/runtime-slim-20260930' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
         uses: actions/upload-artifact@v4
         with:
           name: JLZ-Presence-${{ github.sha }}
@@ -115,8 +155,26 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Encrypt private signed deliverable
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.private_release_id != ''
+        env:
+          WB_PRIVATE_BUILD_KEY: ${{ secrets.WB_PRIVATE_BUILD_KEY }}
+        run: node scripts/private-build-envelope.mjs encrypt native-android/app/build/outputs/apk/debug/app-debug.apk World-Between-private.apk.enc
+
+      - name: Upload encrypted deliverable only
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.private_release_id != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: World-Between-private-encrypted
+          path: World-Between-private.apk.enc
+          retention-days: 3
+
+      - name: Remove private runner resources
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.private_release_id != ''
+        run: rm -rf native-android/app/src/main/assets/avatar/packs native-android/app/build
+
       - name: Publish latest APK release
-        if: success() && github.ref == 'refs/heads/main'
+        if: success() && inputs.private_release_id == '' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash

@@ -305,8 +305,8 @@ export default function BetweenWorlds() {
     });
     return ()=>cancelAnimationFrame(frame);
   },[state.worldContent,contentOnline,effectiveTheme,welcome,tab,unlockHello,displayedPart]);
-  const changeTheme = async () => {
-    const theme=THEMES[(THEMES.indexOf(effectiveTheme)+1)%THEMES.length];
+  const changeTheme = async (selected?: Theme) => {
+    const theme=selected ?? THEMES[(THEMES.indexOf(effectiveTheme)+1)%THEMES.length];
     const c=cfg();
     if(!c || !contentOnline || !state.worldContent) { notify('离线时保留上次主题，连接后再换装'); return; }
     try {
@@ -621,7 +621,7 @@ export default function BetweenWorlds() {
       {tab === "room" && <RoomPage records={state.remoteRecords} teaser={copy["jlz.room.teaser"]} portrait={homePortrait} />}
       {tab === "calendar" && <CalendarPage records={state.remoteRecords} notes={state.notes} plan={state.dailyPlan} month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
       {tab === "more" && <section className="content-sync glass"><h3>同步与更改记录</h3>{state.outbox.filter(i=>i.rejected).map(i=><p key={i.event_id}>未同步：{String(i.body.text || (i.body.task as DailyTask|undefined)?.title || "一条记录")}<button onClick={()=>{update(s=>({...s,outbox:s.outbox.map(x=>x.event_id===i.event_id?{...x,rejected:false,error:undefined}:x)}));void connect();}}>重试</button></p>)}<p>{contentOnline ? '已连接' : '离线 · 使用本机有效内容'} · 内容版本 {state.worldContent?.revision ?? 0}</p><p>主题：{effectiveTheme} · 只有实际写入的内容来自官端</p><button className="secondary" onClick={()=>void pullContent()}>立即同步</button> <button className="secondary" disabled={!contentOnline || !state.worldContent?.revision} onClick={()=>void rollbackContent()}>恢复上一版</button>{state.worldContent?.recent_changes.map(change=><p key={change.revision}>v{change.revision} · {change.keys.join(' / ')}<small> {change.updated_at}</small></p>)}{state.worldContent?.devices?.map(d=><p key={d.device_id}>{d.device_type==="tablet"?"平板":"手机"} · {d.online_state==="online"?"在线":"暂不可达"} · {d.last_seen_age_seconds} 秒前连接</p>)}{state.worldContent?.receipts.map(r=><p key={r.device_id+r.surface}>{r.device_id} · {r.surface} 已应用 v{r.revision} · {(r.applied_keys||[]).join(" / ")}</p>)}</section>}
-      {tab === "more" && <MorePage state={state} update={update} setWelcome={setWelcome} banner={banner} reconnect={() => void connect()} />}
+      {tab === "more" && <MorePage effectiveTheme={effectiveTheme} chooseTheme={theme => void changeTheme(theme)} state={state} update={update} setWelcome={setWelcome} banner={banner} reconnect={() => void connect()} />}
       <nav className="dock" aria-label="主导航">
         {([["home","now","现在"],["echo","echo","回响"],["timeline","between","你我之间"],["room","jilinzhou","纪临洲"],["calendar","calendar","共历"]] as [Tab,VintageIconName,string][]).map(([id, icon, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => switchTab(id)}><VintageIcon name={icon} size={29}/><span>{label}</span></button>)}
       </nav>
@@ -1270,7 +1270,7 @@ function CalendarPage({ month, setMonth, addRecord, send, notify, savedText, rec
 }
 function keyDate(d: Date) { return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-"); }
 
-function MorePage({ state, update, setWelcome, banner, reconnect }: { state: AppState; update:(fn:(s:AppState)=>AppState)=>void; setWelcome:(v:boolean)=>void; banner: Banner; reconnect: () => void }) {
+function MorePage({ effectiveTheme, chooseTheme, state, update, setWelcome, banner, reconnect }: { effectiveTheme: Theme; chooseTheme: (theme: Theme) => void; state: AppState; update:(fn:(s:AppState)=>AppState)=>void; setWelcome:(v:boolean)=>void; banner: Banner; reconnect: () => void }) {
  const [key, setKey] = useState(state.webToken);
  const [url, setUrl] = useState(state.runtimeUrl);
  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(() => deferredInstallPrompt);
@@ -1389,7 +1389,7 @@ function MorePage({ state, update, setWelcome, banner, reconnect }: { state: App
    <PageHead kicker="OUR LITTLE ROOMS" title="更多" en="The Rooms" copy="一扇扇门，通向我们的小世界" />
    <div className="card"><h3>一起过日子</h3><button className="setting-button" onClick={()=>{window.location.href="jlz://native/modes"}}>普通 · 专注 · 短休 · 睡眠／闹钟／日历 <span>›</span></button><button className="setting-button" onClick={()=>{window.location.href="jlz://native/cowatch"}}>视频通话 · 短时屏幕陪看 <span>›</span></button></div>
    <TripMapPanel cfg={currentCfg()} />
-   <div className="glass settings-card"><b>✦ 风格衣橱 · Theme Wardrobe</b><small>两套风格，一个世界。换装不会清掉记录。</small><div className="theme-grid"><button className={state.theme==="mist"?"active":""} onClick={()=>update(s=>({...s,theme:"mist"}))}><i className="swatch mist"/><b>冰雾玻璃</b><small>Mist & Glass</small></button><button className={state.theme==="gothic"?"active":""} onClick={()=>update(s=>({...s,theme:"gothic"}))}><i className="swatch gothic"/><b>暗夜童话</b><small>Dark Fairytale</small></button></div></div>
+   <div className="glass settings-card"><b>✦ 风格衣橱 · Theme Wardrobe</b><small>四套风格，换装与官端使用同一份设置。</small><div className="theme-grid">{THEMES.map(theme=><button key={theme} className={effectiveTheme===theme?"active":""} onClick={()=>chooseTheme(theme)}><i className={`swatch ${theme}`}/><b>{{mist:"冰雾玻璃",gothic:"暗夜童话",deepsea:"深海月光",rose:"奶油灰玫瑰"}[theme]}</b></button>)}</div></div>
    <div className="glass settings-card"><b>网页与 Runtime</b><p className="hint">钥匙只保存在这个浏览器里。留空就保持本地模式，记录会排队等待同步。</p><div className="field"><label>私人连接钥匙</label><input type="password" autoComplete="off" placeholder="留空则仅本地" value={key} onChange={e=>setKey(e.target.value)} /></div><div className="field"><label>Runtime 地址</label><input type="url" value={url} onChange={e=>setUrl(e.target.value)} /></div><div className="sheet-actions"><button className="secondary" onClick={()=>{setKey("");update(s=>({...s,webToken:""}))}}>清除钥匙</button><button className="primary" onClick={()=>{update(s=>({...s,webToken:key.trim(),runtimeUrl:url.trim()||DEFAULT_RUNTIME_URL}));reconnect()}}>保存并连接</button></div><div className="runtime-line"><span>连接状态</span><b>{label}</b></div><div className="runtime-line"><span>待同步记录</span><b>{banner.pending} 条</b></div><div className="runtime-line"><span>Android 主控制</span><b>未暴露给网页</b></div></div>
    {ANDROID_SHELL ? <div className="glass settings-card">
      <b>世界之间 · Android</b>
