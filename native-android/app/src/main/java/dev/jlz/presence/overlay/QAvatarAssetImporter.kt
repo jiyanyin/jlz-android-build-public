@@ -56,15 +56,32 @@ object QAvatarAssetImporter {
     private fun preferences(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+    private fun builtins(context: Context): List<JSONObject> = runCatching {
+        val items = JSONObject(context.assets.open("avatar/packs/index.json").bufferedReader().use { it.readText() }).getJSONArray("packs")
+        (0 until items.length()).map { items.getJSONObject(it) }
+    }.getOrDefault(emptyList())
+
+    fun builtinSprite(context: Context, id: String, name: String): ByteArray? = runCatching {
+        val pack = builtins(context).firstOrNull { it.optString("id") == id } ?: return null
+        val map = pack.getJSONObject("assets")
+        val path = map.optString(name).ifBlank { map.getString("idle") }
+        check(!path.contains("..") && path.startsWith("poses/"))
+        val bytes = context.assets.open("avatar/packs/$path").use { it.readBytes() }
+        val hash = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        check(hash == pack.getJSONObject("hashes").getString(path))
+        bytes
+    }.getOrNull()
+
     @Synchronized
     fun activePackId(context: Context): String {
         val selected = preferences(context).getString(ACTIVE, null)
         if (selected == VECTOR_ID) return VECTOR_ID
+        if (builtins(context).any { it.optString("id") == selected }) return selected!!
         if (selected != null && validDirectory(packDir(context, selected))) return selected
         if (validDirectory(oldDirectory(context))) return LEGACY_ID
         return library(context).listFiles()?.firstOrNull {
             validDirectory(it) && Regex("[0-9a-f]{32}").matches(it.name)
-        }?.name ?: VECTOR_ID
+        }?.name ?: builtins(context).firstOrNull { it.optString("id") == "builtin-cat_lavender" }?.optString("id") ?: VECTOR_ID
     }
 
     @Synchronized
@@ -95,12 +112,13 @@ object QAvatarAssetImporter {
                 dir.listFiles()?.count { it.isFile && it.extension == "webp" } ?: 0,
                 active == dir.name)
         }
+        builtins(context).forEach { pack -> result += PackInfo(pack.getString("id"), pack.getString("label"), pack.getJSONObject("assets").length(), active == pack.getString("id")) }
         return result
     }
 
     @Synchronized
     fun selectPack(context: Context, id: String): Boolean {
-        if (id != VECTOR_ID && !validDirectory(packDir(context, id))) return false
+        if (id != VECTOR_ID && builtins(context).none { it.optString("id") == id } && !validDirectory(packDir(context, id))) return false
         return preferences(context).edit().putString(ACTIVE, id).commit()
     }
 

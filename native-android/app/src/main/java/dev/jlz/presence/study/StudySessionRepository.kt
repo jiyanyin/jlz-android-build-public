@@ -289,6 +289,9 @@ class StudySessionRepository(private val context: Context) {
             targetPackages = targets
         )
         metricsStore.save(metrics)
+        if (wasActive) android.os.Handler(android.os.Looper.getMainLooper()).post {
+            dev.jlz.presence.overlay.FloatingPresenceService.localCelebration()
+        }
 
         lifeStore.recordTimeline(
             "study",

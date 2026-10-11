@@ -204,6 +204,7 @@ class NativeRuntimeService : Service() {
                 if(settings.bridgeName.startsWith("Home") && System.currentTimeMillis()-contentCheckedAt >= 300000L) {
                     contentCheckedAt=System.currentTimeMillis()
                     runCatching { WorldContentCache(applicationContext).save(api.worldContent()) }
+                    runCatching { dev.jlz.presence.overlay.TaskReactionTracker(applicationContext).accept(api.dailyPlanForReaction()) }
                 }
                 runCatching { cycleReminder.evaluateToday() }
 
@@ -858,14 +859,17 @@ class NativeRuntimeService : Service() {
                     }
                     "pause", "study_pause", "study_paused" -> {
                         studyRepository.pause()
+                        focusRepository.pauseDaily()
                         dev.jlz.presence.study.StudyTimerService.sync(applicationContext)
                     }
                     "resume", "continue", "study_resume", "study_resumed" -> {
                         studyRepository.resume()
+                        focusRepository.resumeDaily()
                         dev.jlz.presence.study.StudyTimerService.sync(applicationContext)
                     }
                     "finish", "end", "study_finish", "study_finished" -> {
                         studyRepository.finish()
+                        focusRepository.stop()
                         FloatingPresenceService.stopStudyIfActive(applicationContext)
                         dev.jlz.presence.study.StudyTimerService.stop(applicationContext)
                     }

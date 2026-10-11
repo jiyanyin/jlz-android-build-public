@@ -27,6 +27,13 @@ class StudySessionBridge(context: Context) {
     fun version(): String = "study-bridge-2"
 
     @JavascriptInterface
+    fun taskCompleted() {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            dev.jlz.presence.overlay.FloatingPresenceService.localCelebration()
+        }
+    }
+
+    @JavascriptInterface
     fun snapshot(): String = runBlocking {
         val now = System.currentTimeMillis()
         val recovery = repository.recoverStaleSession(now)
@@ -60,6 +67,7 @@ class StudySessionBridge(context: Context) {
         val state = repository.state.first()
         if (state.active && !state.paused) {
             repository.pause()
+            dev.jlz.presence.focus.FocusRepository(app).pauseDaily()
             publish("pause", state.sessionId)
         }
         StudyTimerService.sync(app)
@@ -71,6 +79,7 @@ class StudySessionBridge(context: Context) {
         val state = repository.state.first()
         if (state.active && state.paused) {
             repository.resume()
+            dev.jlz.presence.focus.FocusRepository(app).resumeDaily()
             publish("resume", state.sessionId)
         }
         StudyTimerService.sync(app)
@@ -82,6 +91,7 @@ class StudySessionBridge(context: Context) {
         val state = repository.state.first()
         if (state.active) {
             val metrics = repository.finish()
+            dev.jlz.presence.focus.FocusRepository(app).stop()
             StudyTimerService.stop(app)
             publish(
                 "finish",
@@ -99,6 +109,13 @@ class StudySessionBridge(context: Context) {
 
     @JavascriptInterface
     fun openFenbi(): String = StudyShortcuts.openFenbi(app)
+
+    @JavascriptInterface
+    fun calendarSnapshot(): String = dev.jlz.presence.life.NativeCalendarBridge(app).snapshot().toString()
+
+    @JavascriptInterface
+    fun calendarRange(fromMs: Long, toMs: Long): String =
+        dev.jlz.presence.life.NativeCalendarBridge(app).snapshot(fromMs, toMs).toString()
 
     fun close() {
         scope.cancel()

@@ -38,6 +38,7 @@ class NotificationAdapter(private val context: Context) {
         eventId: String = UUID.randomUUID().toString(),
         intentId: String = UUID.randomUUID().toString()
     ): NotificationResult {
+        val sleepQuiet = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { dev.jlz.presence.focus.FocusRepository(context).current().modeNow() == dev.jlz.presence.focus.DailyMode.SLEEP }
         ensureChannel()
 
         if (
@@ -54,6 +55,7 @@ class NotificationAdapter(private val context: Context) {
         }
 
         val notificationId = nextNotificationId()
+        if (!sleepQuiet) dev.jlz.presence.overlay.FloatingPresenceService.privateMessageReaction()
         val avatar = createAvatarBitmap()
 
         val contentPendingIntent = PendingIntent.getActivity(
@@ -151,7 +153,8 @@ class NotificationAdapter(private val context: Context) {
             .setContentIntent(contentPendingIntent)
             .addAction(replyAction)
             .setAutoCancel(true)
-            .setOnlyAlertOnce(false)
+            .setSilent(sleepQuiet)
+            .setOnlyAlertOnce(sleepQuiet)
             .build()
 
         manager.notify(notificationId, notification)

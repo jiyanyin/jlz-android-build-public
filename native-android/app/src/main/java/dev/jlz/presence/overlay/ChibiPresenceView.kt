@@ -55,7 +55,10 @@ class ChibiPresenceView(context: Context) : View(context) {
     // The source adapter can compile without the separately processed binary
     // asset drop-in. Until the sprites are present in APK assets, use the
     // existing vector. Never invent a completed image integration.
-    private val imageCache = mutableMapOf<String, Bitmap?>()
+    private val imageCache = object : android.util.LruCache<String, Bitmap>(3 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
+    }
+    private val missing = mutableSetOf<String>()
     private var loadedPackId: String? = null
     private var previewPackId: String? = null
 
@@ -68,9 +71,19 @@ class ChibiPresenceView(context: Context) : View(context) {
     private val artworkPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val sleepingPose = listOf("sleep_hug", "sleep_blanket", "sleep_sitting")[Random.nextInt(3)]
     private val studyingPose = listOf("study_watch", "study_crouch", "study_read")[Random.nextInt(3)]
+    private val posePicker = QAvatarStateMachine()
+    private var pickedMood = ""
+    private var pickedSprite = "idle"
+    private var nextVariantAt = 0L
 
-    private fun spriteName(): String = when (mood) {
-        "watch" -> studyingPose
+    private fun baseSpriteName(): String = when (mood) {
+        "watch", "watching" -> studyingPose
+        "break", "wake" -> "sleep_wave"
+        "sleepy" -> "sleep_drowsy"
+        "offline" -> "idle_think"
+        "celebrate" -> "study_encourage"
+        "clingy" -> "react_reach"
+        "gate", "night" -> "react_angry"
         "sleep" -> sleepingPose
         "shy" -> "react_shy"
         "angry" -> "react_angry"
@@ -84,51 +97,105 @@ class ChibiPresenceView(context: Context) : View(context) {
         else -> "idle"
     }
 
+    private fun spriteName(): String {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (pickedMood != mood || now >= nextVariantAt) {
+            val pool = when (mood) {
+                "watch", "watching" -> listOf("study_watch", "study_read", "study_note", "study_think", "study_arms", "study_stand")
+                "idle", "thinking" -> listOf("idle", "idle_crouch", "idle_think", "idle_smile", "idle_wave", "idle_arms")
+                "sleep" -> listOf("sleep_hug", "sleep_blanket", "sleep_sitting", "sleep_curl", "sleep_nest")
+                "break" -> listOf("idle_wave", "idle_smile", "idle_crouch")
+                "celebrate" -> listOf("study_encourage", "react_proud", "idle_smile")
+                else -> listOf(baseSpriteName())
+            }
+            pickedSprite = posePicker.pickAsset(pool) ?: "idle"
+            pickedMood = mood
+            nextVariantAt = now + Random.nextLong(60_000L, 120_001L)
+        }
+        return pickedSprite
+    }
+
     private fun spriteFor(name: String): Bitmap? {
         val desiredPack = previewPackId ?: QAvatarAssetImporter.activePackId(context)
         if (loadedPackId != desiredPack) {
-            imageCache.clear()
+            imageCache.evictAll(); missing.clear()
             loadedPackId = desiredPack
         }
-        if (!imageCache.containsKey(name)) {
-            imageCache[name] = runCatching {
+        imageCache.get(name)?.let { return it }
+        if (name !in missing) {
+            val decoded = runCatching {
                 val imageFile = QAvatarAssetImporter.spriteFile(
                     context, name, previewPackId
                 )
                 if (imageFile != null) {
                     BitmapFactory.decodeFile(imageFile.absolutePath)
+                } else if (desiredPack.startsWith("builtin-")) {
+                    QAvatarAssetImporter.builtinSprite(context, desiredPack, name)?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
                 } else if (desiredPack == QAvatarAssetImporter.VECTOR_ID) {
                     null
                 } else {
-                    context.assets.open("avatar/$name.webp").use { stream ->
-                        BitmapFactory.decodeStream(stream)
-                    }
+                    QAvatarAssetImporter.spriteFile(context, "idle", previewPackId)?.let { BitmapFactory.decodeFile(it.absolutePath) }
                 }
             }.getOrNull()
+            if (decoded != null) imageCache.put(name, decoded) else missing.add(name)
         }
-        return imageCache[name]
+        return imageCache.get(name)
     }
 
     /** Called after user imports a replacement pack; the view stays alive. */
     fun reloadArtwork() {
-        imageCache.clear()
+        imageCache.evictAll(); missing.clear()
         loadedPackId = null
         invalidate()
     }
 
+    private var breathing: android.animation.ValueAnimator? = null
+    private fun updateMotion() {
+        breathing?.cancel(); breathing = null; translationY = 0f
+        val quiet = mood in setOf("watch", "watching", "sleep") ||
+            android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f ||
+            context.getSystemService(android.os.PowerManager::class.java)?.isPowerSaveMode == true
+        if (quiet || !isAttachedToWindow) return
+        breathing = android.animation.ValueAnimator.ofFloat(0f, -resources.displayMetrics.density * 1.3f).apply {
+            duration = 2400; repeatCount = android.animation.ValueAnimator.INFINITE; repeatMode = android.animation.ValueAnimator.REVERSE
+            addUpdateListener { translationY = it.animatedValue as Float }; start()
+        }
+    }
+    override fun onDetachedFromWindow() { breathing?.cancel(); breathing = null; animate().cancel(); super.onDetachedFromWindow() }
+    override fun onWindowVisibilityChanged(visibility: Int) { super.onWindowVisibilityChanged(visibility); if (visibility == VISIBLE) updateMotion() else { breathing?.cancel(); breathing = null } }
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         reloadArtwork()
+        updateMotion()
     }
 
+    private var reactionUntil = 0L
+    private var reactionGeneration = 0L
     fun setMood(value: String) {
+        if (value in setOf("sleep", "watching", "gate", "night", "hidden")) {
+            reactionUntil = 0L; reactionGeneration++
+            animate().cancel(); scaleX = 1f; scaleY = 1f; rotation = 0f
+        }
+        if (System.currentTimeMillis() < reactionUntil) return
+        if (mood == value) {
+            if (android.os.SystemClock.elapsedRealtime() >= nextVariantAt &&
+                context.getSystemService(android.os.PowerManager::class.java)?.isPowerSaveMode != true) invalidate()
+            return
+        }
         mood = value
+        updateMotion()
         invalidate()
     }
 
     fun react(value: String, after: String = "watch") {
         animate().cancel()
+        val generation = ++reactionGeneration
+        reactionUntil = System.currentTimeMillis() + 1400L
         mood = value
+        val reduce = android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+        val save = context.getSystemService(android.os.PowerManager::class.java)?.isPowerSaveMode == true
+        if (reduce || save) { postDelayed({ if (generation == reactionGeneration) { mood = after; invalidate() } }, 1400L); invalidate(); return }
         invalidate()
         animate().scaleX(1.1f).scaleY(0.9f).rotation(if (pose % 2 == 0) 8f else -8f)
             .setDuration(170L)
@@ -136,8 +203,7 @@ class ChibiPresenceView(context: Context) : View(context) {
                 animate().scaleX(1f).scaleY(1f).rotation(0f).setDuration(220L)
                     .withEndAction {
                         postDelayed({
-                            mood = after
-                            invalidate()
+                            if (generation == reactionGeneration) { mood = after; invalidate() }
                         }, 500L)
                     }.start()
             }.start()
