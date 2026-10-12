@@ -141,6 +141,7 @@ class DailyModeActivity : Activity() {
         section("生活里的小安排", "应用身份、起床时间与已有日历。")
         button("学习应用身份／分类纠正") { apps() }
         button("设置原生起床闹钟") { alarm() }
+        button("语音来电窗 · 全屏权限") { callWindowPermission() }
         button("选择系统／Google 同步日历") { calendars() }
         button("Q版衣橱 · 四套预览换装") { startActivity(Intent(this, dev.jlz.presence.overlay.QAvatarWardrobeActivity::class.java)) }
         buttonHost = null
@@ -236,6 +237,30 @@ class DailyModeActivity : Activity() {
                 }.show()
             }.show()
     }
+    private fun callWindowPermission() {
+        if (android.os.Build.VERSION.SDK_INT < 34) {
+            Toast.makeText(this, "此版本由系统决定是否全屏显示来电。", Toast.LENGTH_LONG).show()
+            return
+        }
+        val notifications = getSystemService(android.app.NotificationManager::class.java)
+        if (notifications.canUseFullScreenIntent()) {
+            Toast.makeText(this, "全屏权限已允许。实际弹出仍由系统决定。", Toast.LENGTH_LONG).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("语音通话窗权限")
+            .setMessage("Android 14及以后需到系统设置允许全屏通知。未允许时仍可从横幅通知进入；不能绕过系统限制。")
+            .setPositiveButton("去系统设置") { _, _ ->
+                runCatching {
+                    startActivity(Intent(android.provider.Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT)
+                        .setData(android.net.Uri.parse("package:" + packageName)))
+                }.onFailure {
+                    Toast.makeText(this, "请到应用信息里检查全屏通知权限。", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNegativeButton("稍后", null).show()
+    }
+
     private fun alarm() {
         TimePickerDialog(this, { _, hour, minute ->
             val dayNames = arrayOf("每天", "工作日", "仅一次")
