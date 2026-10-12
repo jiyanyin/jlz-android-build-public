@@ -2,6 +2,7 @@ package dev.jlz.presence.focus
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.KeyguardManager
 import android.app.TimePickerDialog
 import android.content.Intent
 import android.graphics.Color
@@ -20,7 +21,9 @@ class DailyModeActivity : Activity() {
     private var tick: Job? = null
     private val ice by lazy { dev.jlz.presence.ui.theme.NativeIceStyle(this) }
     private var buttonHost: LinearLayout? = null
-    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); render() }
+    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState) }
+    override fun onResume() { super.onResume(); render() }
+    override fun onStop() { tick?.cancel(); super.onStop() }
     override fun onDestroy() { scope.cancel(); super.onDestroy() }
     private fun label(text: String, size: Float = 14f) = TextView(this).apply {
         this.text = text; textSize = size; setTextColor(ice.ink); setPadding(ice.dp(4), ice.dp(8), ice.dp(4), ice.dp(8))
@@ -48,7 +51,64 @@ class DailyModeActivity : Activity() {
         buttonHost?.addView(row)
     }
     private fun change(mode: DailyMode, minutes: Int = 25) { scope.launch { if (mode in setOf(DailyMode.FOCUS, DailyMode.BREAK)) withContext(Dispatchers.IO) { LocalAppClassifier(applicationContext).refreshVisible() }; repo.setDailyMode(mode, minutes); FloatingPresenceService.refreshArtworkAfterImport(); render() } }
-    private fun render() { scope.launch { if (repo.current().modeNow() == DailyMode.SLEEP && !intent.getBooleanExtra("settings", false)) renderSleep() else renderSettings() } }
+    private fun render() {
+        scope.launch {
+            val mode = repo.current().modeNow()
+            val settings = intent.getBooleanExtra("settings", false)
+            if (android.os.Build.VERSION.SDK_INT >= 27) {
+                // Only show this harmless mode face above keyguard; never bypass PIN.
+                setShowWhenLocked(!settings && mode in setOf(DailyMode.SLEEP, DailyMode.FOCUS))
+                setTurnScreenOn(false)
+            }
+            when {
+                settings -> renderSettings()
+                mode == DailyMode.SLEEP -> renderSleep()
+                mode == DailyMode.FOCUS -> renderFocus()
+                else -> renderSettings()
+            }
+        }
+    }
+
+    private fun renderFocus() {
+        tick?.cancel()
+        buttonHost = null
+        window.attributes = window.attributes.apply { screenBrightness = -1f }
+        root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER
+            val side = maxOf(ice.dp(18), (resources.displayMetrics.widthPixels - ice.dp(640)) / 2)
+            setPadding(side, ice.dp(30), side, ice.dp(26))
+            background = ice.background()
+        }
+        setContentView(ScrollView(this).apply { isFillViewport = true; addView(root) })
+        root.addView(label("世界之间 · 陪你学习", 23f))
+        root.addView(ChibiPresenceView(this).apply { setSizeDp(144); setMood("watch") })
+        val clock = label("", 18f)
+        val remaining = label("", 32f)
+        root.addView(clock)
+        root.addView(remaining)
+        root.addView(label("这一段交给我。先做完眼前的题。", 13f))
+        tick = scope.launch {
+            while (isActive) {
+                val state = repo.current()
+                if (state.modeNow() != DailyMode.FOCUS) { render(); return@launch }
+                clock.text = java.text.SimpleDateFormat("HH:mm", java.util.Locale.CHINA).format(java.util.Date())
+                val seconds = state.remainingMs() / 1000
+                remaining.text = "%02d:%02d".format(seconds / 60, seconds % 60)
+                delay(1000)
+            }
+        }
+        button("暂停／继续计时") {
+            scope.launch {
+                val state = repo.current()
+                if (state.pausedAtMs > 0L) repo.resumeDaily() else repo.pauseDaily()
+                render()
+            }
+        }
+        button("结束专注") { change(DailyMode.NORMAL) }
+        button("作息设置") { startActivity(Intent(this, DailyModeActivity::class.java).putExtra("settings", true)) }
+        button("返回 · 继续专注") { finish() }
+    }
     private fun renderSettings() {
         tick?.cancel()
         window.attributes = window.attributes.apply { screenBrightness = -1f }
@@ -98,19 +158,35 @@ class DailyModeActivity : Activity() {
         }
         setContentView(root)
         root.addView(label("世界之间 · 今夜", 16f).apply { setTextColor(0xFFD4C7AF.toInt()) })
+        val wallClock = label("", 32f).apply { setTextColor(0xFFE6DBF6.toInt()) }
+        val sleepElapsed = label("", 14f).apply { setTextColor(0xFFBAC4D5.toInt()) }
+        root.addView(wallClock)
+        root.addView(sleepElapsed)
+        tick = scope.launch {
+            while (isActive) {
+                val state = repo.current()
+                if (state.modeNow() != DailyMode.SLEEP) { render(); return@launch }
+                wallClock.text = java.text.SimpleDateFormat("HH:mm", java.util.Locale.CHINA).format(java.util.Date())
+                val sec = ((System.currentTimeMillis() - state.startedAtMs).coerceAtLeast(0L)) / 1000
+                sleepElapsed.text = "安静模式 · 已经过 %02d:%02d".format(sec / 3600, (sec / 60) % 60)
+                delay(1000)
+            }
+        }
         root.addView(Space(this), LinearLayout.LayoutParams(1, 0, 1f))
         val sleeper = ChibiPresenceView(this).apply { setSizeDp(126); setMood("sleep") }
         root.addView(sleeper)
         root.addView(label("安心睡。电话和闹钟照常。", 13f).apply { setTextColor(0xFFBAC4D5.toInt()) })
         button("我醒了") {
-            scope.launch {
-                repo.setDailyMode(DailyMode.NORMAL)
-                dev.jlz.presence.data.LocalLifeStore(applicationContext).recordTimeline("wake_confirmed", "我醒了", "用户手动确认")
-                sleeper.react("wake", "idle")
-                FloatingPresenceService.wakeReaction()
-                Toast.makeText(this@DailyModeActivity, "早安，音音。醒来时间已记录。", Toast.LENGTH_SHORT).show()
-                delay(1500); finish()
-            }
+            val keyguard = getSystemService(KeyguardManager::class.java)
+            if (keyguard.isDeviceLocked && android.os.Build.VERSION.SDK_INT >= 26) {
+                // Show system PIN/biometrics before accepting a wake confirmation.
+                keyguard.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
+                    override fun onDismissSucceeded() { confirmWake(sleeper) }
+                    override fun onDismissCancelled() {
+                        Toast.makeText(this@DailyModeActivity, "先正常解锁，再来告诉我醒了。", Toast.LENGTH_SHORT).show()
+                    }
+                })
+            } else confirmWake(sleeper)
         }
         root.addView(Space(this), LinearLayout.LayoutParams(1, 0, 1f))
         button("系统安全锁屏") {
@@ -122,6 +198,20 @@ class DailyModeActivity : Activity() {
         }
         button("作息设置") { startActivity(Intent(this, DailyModeActivity::class.java).putExtra("settings", true)) }
         button("返回 · 保持安静模式") { finish() }
+    }
+
+    private fun confirmWake(sleeper: ChibiPresenceView) {
+        scope.launch {
+            if (repo.current().modeNow() != DailyMode.SLEEP) return@launch
+            repo.setDailyMode(DailyMode.NORMAL)
+            dev.jlz.presence.data.LocalLifeStore(applicationContext)
+                .recordTimeline("wake_confirmed", "我醒了", "老婆手动确认")
+            sleeper.react("wake", "idle")
+            FloatingPresenceService.wakeReaction()
+            Toast.makeText(this@DailyModeActivity, "早安，音音。醒来时间已记录。", Toast.LENGTH_SHORT).show()
+            delay(1500)
+            finish()
+        }
     }
 
     private fun apps() {
