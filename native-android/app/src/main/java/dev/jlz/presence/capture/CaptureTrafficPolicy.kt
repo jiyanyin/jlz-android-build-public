@@ -104,6 +104,8 @@ class CaptureTrafficPolicy(context: Context) {
         const val DAILY_BYTES = 6L * 1024 * 1024
         const val MONTHLY_BYTES = 120L * 1024 * 1024
         const val MONTHLY_SCREENSHOT_WARNING = 300L * 1024 * 1024
-        const val COOLDOWN_MS = 30L * 60 * 1000
+        // Allow an opt-in 5-minute follow-up after the 30-second capture.
+        // Retain the explicit package allowlist and total daily/byte budgets.
+        const val COOLDOWN_MS = 4L * 60 * 1000
     }
 }
