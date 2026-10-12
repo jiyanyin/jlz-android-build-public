@@ -134,6 +134,9 @@ class FocusRepository(private val context: Context) {
         context.focusDataStore.edit { prefs ->
             prefs[Keys.dailyMode] = mode.name
             prefs[Keys.active] = mode in setOf(DailyMode.FOCUS, DailyMode.BREAK)
+            // Daily mode uses LocalAppClassifier; do not carry legacy Focus
+            // per-package blocks into BREAK or a future session.
+            prefs[Keys.blocked] = emptySet()
             prefs[Keys.startedAt] = now
             prefs[Keys.pausedAt] = 0L
             prefs[Keys.endsAt] = if (mode in setOf(DailyMode.FOCUS, DailyMode.BREAK)) now + minutes.coerceIn(1, 120) * 60_000L else 0L
