@@ -36,6 +36,13 @@ class PresenceCallbackAdapter(private val context: Context) {
         val quiet = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { dev.jlz.presence.focus.FocusRepository(context).current().modeNow() == dev.jlz.presence.focus.DailyMode.SLEEP }
         if (quiet) { dev.jlz.presence.notification.NotificationAdapter(context).showMessage(message = reason, eventId = eventId, intentId = intentId); return CallbackResult(true, "sleep_quiet_notification_only", eventId, intentId) }
         ensureChannel()
+        if (!manager.areNotificationsEnabled()) {
+            return CallbackResult(false, "notifications_disabled", eventId, intentId)
+        }
+        if (Build.VERSION.SDK_INT >= 26 &&
+            manager.getNotificationChannel(CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE) {
+            return CallbackResult(false, "call_notification_channel_blocked", eventId, intentId)
+        }
         if (
             Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(
