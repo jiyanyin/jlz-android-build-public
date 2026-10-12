@@ -30,7 +30,8 @@ class PresenceCallbackAdapter(private val context: Context) {
         reason: String,
         topic: String = "",
         eventId: String = UUID.randomUUID().toString(),
-        intentId: String = UUID.randomUUID().toString()
+        intentId: String = UUID.randomUUID().toString(),
+        modeTarget: String = ""
     ): CallbackResult {
         val quiet = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { dev.jlz.presence.focus.FocusRepository(context).current().modeNow() == dev.jlz.presence.focus.DailyMode.SLEEP }
         if (quiet) { dev.jlz.presence.notification.NotificationAdapter(context).showMessage(message = reason, eventId = eventId, intentId = intentId); return CallbackResult(true, "sleep_quiet_notification_only", eventId, intentId) }
@@ -61,6 +62,7 @@ class PresenceCallbackAdapter(private val context: Context) {
             .putExtra(PresenceCallbackActivity.EXTRA_INTENT_ID, intentId)
             .putExtra(PresenceCallbackActivity.EXTRA_REASON, reason)
             .putExtra(PresenceCallbackActivity.EXTRA_TOPIC, topic)
+            .putExtra(PresenceCallbackActivity.EXTRA_TARGET_MODE, modeTarget)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
 
         val fullScreen = PendingIntent.getActivity(
@@ -70,7 +72,9 @@ class PresenceCallbackAdapter(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val fullScreenEligible = Build.VERSION.SDK_INT < 34 ||
+            manager.canUseFullScreenIntent()
+        val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_world_between_v3)
             .setLargeIcon(BitmapFactory.decodeResource(context.resources, R.drawable.jlz_chat_avatar))
             .setContentTitle("纪临洲正在找你")
@@ -78,10 +82,12 @@ class PresenceCallbackAdapter(private val context: Context) {
             .setStyle(NotificationCompat.BigTextStyle().bigText(reason))
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setFullScreenIntent(fullScreen, true)
             .setContentIntent(fullScreen)
             .setAutoCancel(true)
-            .build()
+        // Android 14+ decides whether this app may post an actual full-screen
+        // intent. Do not pretend a heads-up notification is a displayed call.
+        if (fullScreenEligible) notificationBuilder.setFullScreenIntent(fullScreen, true)
+        val notification = notificationBuilder.build()
 
         try {
             manager.notify(requestCode, notification)
@@ -100,8 +106,6 @@ class PresenceCallbackAdapter(private val context: Context) {
             // Stable row id so accept/later results update THIS event, not a new card.
             id = stableRowId(eventId, intentId)
         )
-        val fullScreenEligible = Build.VERSION.SDK_INT < 34 ||
-            manager.canUseFullScreenIntent()
         return CallbackResult(
             true,
             if (fullScreenEligible) "call_notification_posted_fullscreen_allowed"
