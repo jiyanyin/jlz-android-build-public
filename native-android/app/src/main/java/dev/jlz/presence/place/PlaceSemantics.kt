@@ -123,7 +123,8 @@ class DeviceLocationAdapter(private val context: Context) {
             val live = withTimeoutOrNull(8_000L) { requestOnce(provider) }
             if (live != null) return live
         }
-        return last
+        // Do not revive a cached fix older than the five-minute freshness window.
+        return null
     }
 
     // Only called by permission-checked currentLocation; failures resume with null.

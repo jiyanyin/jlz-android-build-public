@@ -28,6 +28,7 @@ class AutomaticCaptureCoordinator(context: Context) {
 
     @Volatile private var currentPackage: String? = null
     @Volatile private var generation: Long = 0L
+    private var shortStayJob: Job? = null
     private var longStayJob: Job? = null
 
     fun enabled(): Boolean = preferences.getBoolean("enabled", true)
@@ -50,11 +51,20 @@ class AutomaticCaptureCoordinator(context: Context) {
         currentPackage = pkg
         generation += 1L
         val myGeneration = generation
+        shortStayJob?.cancel()
+        shortStayJob = null
         longStayJob?.cancel()
         longStayJob = null
 
         if (pkg in NO_AUTOMATIC_CAPTURE_PACKAGES || pkg in SYSTEM_SURFACE_PACKAGES) {
             return
+        }
+
+        shortStayJob = scope.launch {
+            delay((observedAtMs + SHORT_STAY_DELAY_MS - System.currentTimeMillis()).coerceAtLeast(0L))
+            if (stillOn(pkg, myGeneration) && enabled() && traffic.canCapture(pkg)) {
+                captureAndUpload(pkg, myGeneration, "automatic_rule_app_switch_30s")
+            }
         }
 
         longStayJob = scope.launch {
@@ -76,6 +86,8 @@ class AutomaticCaptureCoordinator(context: Context) {
 
     @Synchronized
     fun close() {
+        shortStayJob?.cancel()
+        shortStayJob = null
         longStayJob?.cancel()
         longStayJob = null
         currentPackage = null
@@ -144,6 +156,7 @@ class AutomaticCaptureCoordinator(context: Context) {
     }
 
     companion object {
+        private const val SHORT_STAY_DELAY_MS = 30_000L
         private const val LONG_STAY_DELAY_MS = 5 * 60_000L
 
         private val NO_AUTOMATIC_CAPTURE_PACKAGES = setOf(
