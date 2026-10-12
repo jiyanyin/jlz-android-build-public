@@ -828,20 +828,34 @@ class NativeRuntimeService : Service() {
                 }
                 command.packageName?.let(blocked::add)
                 command.payload.optString("package").takeIf { it.isNotBlank() }?.let(blocked::add)
-                val minutes = command.payload.optLong("duration_minutes", 45L).coerceAtLeast(1L)
+                val minutes = command.payload.optLong("duration_minutes", 45L).coerceIn(1L, 120L)
                 val reason = command.payload.optString("reason")
-                focusRepository.start(blocked, minutes * 60_000L, reason)
+                val dailyCompatible = blocked.isEmpty() && minutes.toInt() in setOf(25, 45, 60)
+                if (dailyCompatible) {
+                    dev.jlz.presence.focus.LocalAppClassifier(applicationContext).refreshVisible()
+                    focusRepository.setDailyMode(dev.jlz.presence.focus.DailyMode.FOCUS, minutes.toInt())
+                } else {
+                    // Preserve legacy explicit per-package Focus commands unchanged.
+                    focusRepository.start(blocked, minutes * 60_000L, reason)
+                }
                 FloatingPresenceService.start(
                     this,
                     "这段时间交给我。",
                     FloatingPresenceMode.FOCUS
                 )
-                true to ("focus_started:" + minutes + "m;blocked=" + blocked.size)
+                true to ("focus_started:" + minutes + "m;daily_mode=" + dailyCompatible +
+                    ";blocked=" + blocked.size)
             }
 
             "end_focus_mode" -> {
-                focusRepository.stop()
-                true to "focus_ended"
+                val mode = focusRepository.current().modeNow()
+                if (mode == dev.jlz.presence.focus.DailyMode.FOCUS ||
+                    mode == dev.jlz.presence.focus.DailyMode.BREAK) {
+                    focusRepository.setDailyMode(dev.jlz.presence.focus.DailyMode.NORMAL)
+                } else {
+                    focusRepository.stop()
+                }
+                true to ("focus_ended:prior_mode=" + mode.name)
             }
 
             "temporary_unlock_app" -> {
