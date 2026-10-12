@@ -126,7 +126,8 @@ class FocusRepository(private val context: Context) {
         lifeStore.recordTimeline("focus", "结束专注", "Focus Session 已结束")
     }
 
-    suspend fun setDailyMode(mode: DailyMode, minutes: Int = 25) {
+    suspend fun setDailyMode(mode: DailyMode, minutes: Int = 25,
+        callWindow: Boolean = true, callEventId: String? = null): dev.jlz.presence.callback.CallbackResult? {
         val study = dev.jlz.presence.study.StudySessionRepository(context)
         val old = study.state.first()
         val finished = if (old.active) study.finish() else null
@@ -134,6 +135,9 @@ class FocusRepository(private val context: Context) {
         context.focusDataStore.edit { prefs ->
             prefs[Keys.dailyMode] = mode.name
             prefs[Keys.active] = mode in setOf(DailyMode.FOCUS, DailyMode.BREAK)
+            // Daily mode uses LocalAppClassifier; do not carry legacy Focus
+            // per-package blocks into BREAK or a future session.
+            prefs[Keys.blocked] = emptySet()
             prefs[Keys.startedAt] = now
             prefs[Keys.pausedAt] = 0L
             prefs[Keys.endsAt] = if (mode in setOf(DailyMode.FOCUS, DailyMode.BREAK)) now + minutes.coerceIn(1, 120) * 60_000L else 0L
@@ -156,6 +160,23 @@ class FocusRepository(private val context: Context) {
         }
         started?.let { sid -> dev.jlz.presence.study.StudyRuntimeReporter.post(context, "start", sid, org.json.JSONObject()) }
         }
+        // One actual transition path for Q menu, DailyModeActivity and official
+        // MCP. A focus start invites the user into the existing call-style
+        // surface; receipt never claims Android physically showed it full-screen.
+        if (mode == DailyMode.FOCUS && callWindow) {
+            val id = callEventId?.takeIf { it.isNotBlank() } ?: java.util.UUID.randomUUID().toString()
+            return runCatching {
+                dev.jlz.presence.callback.PresenceCallbackAdapter(context.applicationContext).show(
+                    reason = "老婆，这一段交给我。开始做题。",
+                    topic = "专注开始 · $minutes 分钟",
+                    eventId = id, intentId = id, modeTarget = "FOCUS"
+                )
+            }.getOrElse { error ->
+                dev.jlz.presence.callback.CallbackResult(false,
+                    "call_window_unavailable:" + error.javaClass.simpleName, id, id)
+            }
+        }
+        return null
     }
 
     suspend fun pauseDaily() {

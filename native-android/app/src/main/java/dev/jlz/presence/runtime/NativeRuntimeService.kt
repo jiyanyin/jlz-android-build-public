@@ -757,6 +757,60 @@ class NativeRuntimeService : Service() {
                 result
             }
 
+            "get_daily_mode" -> {
+                val state = focusRepository.current()
+                val mode = state.modeNow()
+                true to JSONObject()
+                    .put("mode", mode.name)
+                    .put("remaining_ms", state.remainingMs())
+                    .put("started_at_ms", state.startedAtMs)
+                    .put("ends_at_ms", state.endsAtMs)
+                    .put("paused", state.pausedAtMs > 0L)
+                    .put("source", "android_focus_datastore")
+                    .put("verified_at_ms", System.currentTimeMillis()).toString()
+            }
+
+            "set_daily_mode" -> {
+                val requested = command.payload.optString("mode").trim().uppercase()
+                val selectedMode = runCatching { dev.jlz.presence.focus.DailyMode.valueOf(requested) }.getOrNull()
+                val minutes = command.payload.optInt("duration_minutes",
+                    selectedMode?.let { dev.jlz.presence.focus.DailyModeCommandPolicy.defaultMinutes(it) } ?: 0)
+                val parsed = dev.jlz.presence.focus.DailyModeCommandPolicy.parse(requested, minutes)
+                if (parsed == null) {
+                    false to "invalid_daily_mode_or_duration"
+                } else {
+                    val (mode, duration) = parsed
+                    val previous = focusRepository.current()
+                    val same = dev.jlz.presence.focus.DailyModeCommandPolicy.shouldKeepExisting(
+                        mode, previous.remainingMs(), previous.modeNow(), command.payload.optBoolean("restart", false))
+                    val invitation = if (!same) {
+                        if (mode == dev.jlz.presence.focus.DailyMode.FOCUS ||
+                            mode == dev.jlz.presence.focus.DailyMode.BREAK) {
+                            // Resolve game/learning identity before changing the local gate.
+                            dev.jlz.presence.focus.LocalAppClassifier(applicationContext).refreshVisible()
+                        }
+                        val receipt = focusRepository.setDailyMode(mode, duration,
+                            callWindow = command.payload.optBoolean("call_window", true),
+                            callEventId = command.id)
+                        FloatingPresenceService.refreshArtworkAfterImport()
+                        receipt
+                    } else null
+                    val current = focusRepository.current()
+                    val confirmed = current.modeNow() == mode
+                    confirmed to JSONObject()
+                        .put("requested_mode", mode.name)
+                        .put("mode", current.modeNow().name)
+                        .put("remaining_ms", current.remainingMs())
+                        .put("started_at_ms", current.startedAtMs)
+                        .put("unchanged", same)
+                        .put("ui", "mode_saved_open_app_to_view")
+                        .put("call_window_status", invitation?.code ?: "not_requested")
+                        .put("call_window_posted", invitation?.ok ?: false)
+                        .put("source", "android_focus_datastore")
+                        .put("verified_at_ms", System.currentTimeMillis()).toString()
+                }
+            }
+
             "start_focus_mode" -> {
                 val blocked = mutableSetOf<String>()
                 val array = command.payload.optJSONArray("blocked_packages")
@@ -767,20 +821,34 @@ class NativeRuntimeService : Service() {
                 }
                 command.packageName?.let(blocked::add)
                 command.payload.optString("package").takeIf { it.isNotBlank() }?.let(blocked::add)
-                val minutes = command.payload.optLong("duration_minutes", 45L).coerceAtLeast(1L)
+                val minutes = command.payload.optLong("duration_minutes", 45L).coerceIn(1L, 120L)
                 val reason = command.payload.optString("reason")
-                focusRepository.start(blocked, minutes * 60_000L, reason)
+                val dailyCompatible = blocked.isEmpty() && minutes.toInt() in setOf(25, 45, 60)
+                if (dailyCompatible) {
+                    dev.jlz.presence.focus.LocalAppClassifier(applicationContext).refreshVisible()
+                    focusRepository.setDailyMode(dev.jlz.presence.focus.DailyMode.FOCUS, minutes.toInt())
+                } else {
+                    // Preserve legacy explicit per-package Focus commands unchanged.
+                    focusRepository.start(blocked, minutes * 60_000L, reason)
+                }
                 FloatingPresenceService.start(
                     this,
                     "这段时间交给我。",
                     FloatingPresenceMode.FOCUS
                 )
-                true to ("focus_started:" + minutes + "m;blocked=" + blocked.size)
+                true to ("focus_started:" + minutes + "m;daily_mode=" + dailyCompatible +
+                    ";blocked=" + blocked.size)
             }
 
             "end_focus_mode" -> {
-                focusRepository.stop()
-                true to "focus_ended"
+                val mode = focusRepository.current().modeNow()
+                if (mode == dev.jlz.presence.focus.DailyMode.FOCUS ||
+                    mode == dev.jlz.presence.focus.DailyMode.BREAK) {
+                    focusRepository.setDailyMode(dev.jlz.presence.focus.DailyMode.NORMAL)
+                } else {
+                    focusRepository.stop()
+                }
+                true to ("focus_ended:prior_mode=" + mode.name)
             }
 
             "temporary_unlock_app" -> {
