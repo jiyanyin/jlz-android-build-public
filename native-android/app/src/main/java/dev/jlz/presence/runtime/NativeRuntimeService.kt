@@ -792,6 +792,16 @@ class NativeRuntimeService : Service() {
                         focusRepository.setDailyMode(mode, duration)
                         FloatingPresenceService.refreshArtworkAfterImport()
                     }
+                    val invitation = if (!same && mode == dev.jlz.presence.focus.DailyMode.FOCUS &&
+                        command.payload.optBoolean("call_window", true)) {
+                        PresenceCallbackAdapter(this).show(
+                            reason = "老婆，这段学习我陪你。从现在开始，先专注眼前的题。",
+                            topic = "专注开始 · $duration 分钟",
+                            eventId = command.id,
+                            intentId = command.payload.optString("intent_id").ifBlank { command.id },
+                            modeTarget = "FOCUS"
+                        )
+                    } else null
                     val current = focusRepository.current()
                     val confirmed = current.modeNow() == mode
                     confirmed to JSONObject()
@@ -801,6 +811,8 @@ class NativeRuntimeService : Service() {
                         .put("started_at_ms", current.startedAtMs)
                         .put("unchanged", same)
                         .put("ui", "mode_saved_open_app_to_view")
+                        .put("call_window_status", invitation?.code ?: "not_requested")
+                        .put("call_window_posted", invitation?.ok ?: false)
                         .put("source", "android_focus_datastore")
                         .put("verified_at_ms", System.currentTimeMillis()).toString()
                 }
