@@ -783,24 +783,17 @@ class NativeRuntimeService : Service() {
                     val previous = focusRepository.current()
                     val same = dev.jlz.presence.focus.DailyModeCommandPolicy.shouldKeepExisting(
                         mode, previous.remainingMs(), previous.modeNow(), command.payload.optBoolean("restart", false))
-                    if (!same) {
+                    val invitation = if (!same) {
                         if (mode == dev.jlz.presence.focus.DailyMode.FOCUS ||
                             mode == dev.jlz.presence.focus.DailyMode.BREAK) {
                             // Resolve game/learning identity before changing the local gate.
                             dev.jlz.presence.focus.LocalAppClassifier(applicationContext).refreshVisible()
                         }
-                        focusRepository.setDailyMode(mode, duration)
+                        val receipt = focusRepository.setDailyMode(mode, duration,
+                            callWindow = command.payload.optBoolean("call_window", true),
+                            callEventId = command.id)
                         FloatingPresenceService.refreshArtworkAfterImport()
-                    }
-                    val invitation = if (!same && mode == dev.jlz.presence.focus.DailyMode.FOCUS &&
-                        command.payload.optBoolean("call_window", true)) {
-                        PresenceCallbackAdapter(this).show(
-                            reason = "老婆，这段学习我陪你。从现在开始，先专注眼前的题。",
-                            topic = "专注开始 · $duration 分钟",
-                            eventId = command.id,
-                            intentId = command.payload.optString("intent_id").ifBlank { command.id },
-                            modeTarget = "FOCUS"
-                        )
+                        receipt
                     } else null
                     val current = focusRepository.current()
                     val confirmed = current.modeNow() == mode
