@@ -75,6 +75,8 @@ class PresenceAccessibilityService : AccessibilityService() {
         }
     }
 
+    private var lastDailyRestShownMs = 0L
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val packageName = event?.packageName?.toString()
         val eventType = event?.eventType ?: return
@@ -102,6 +104,26 @@ class PresenceAccessibilityService : AccessibilityService() {
         }
         val dailyMode = currentFocus.modeNow(now)
         val category = packageName?.let { classifier.classify(it) }
+        // Daily entertainment total triggers a five-minute APP rest, not
+        // an Android security lock. Phone, alarms, study and settings are safe.
+        val profile = dev.jlz.presence.focus.EntertainmentPolicy.profile(packageName)
+        val leisure = category == dev.jlz.presence.focus.LocalAppCategory.GAME ||
+            (category == dev.jlz.presence.focus.LocalAppCategory.FEED &&
+             profile?.tier != dev.jlz.presence.focus.EntertainmentTier.SHOPPING)
+        if (leisure && dailyMode == dev.jlz.presence.focus.DailyMode.NORMAL &&
+            eventType in setOf(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, AccessibilityEvent.TYPE_VIEW_SCROLLED)) {
+            val guard = dev.jlz.presence.life.DailyEntertainmentRestGuard(applicationContext)
+            val remaining = guard.beginIfDue(now)
+            if (remaining > 0L && now - lastDailyRestShownMs > 5_000L) {
+                lastDailyRestShownMs = now
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                scope.launch {
+                    delay(350L)
+                    dev.jlz.presence.life.DailyEntertainmentRestActivity.show(applicationContext)
+                }
+                return
+            }
+        }
         if (dailyMode == dev.jlz.presence.focus.DailyMode.BREAK && category == dev.jlz.presence.focus.LocalAppCategory.UNKNOWN && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && !packageName.isNullOrBlank() && unknownNotified.add(packageName)) {
             if (unknownNotified.size > 200) unknownNotified.clear()
             android.widget.Toast.makeText(this, "这个应用分类未确认，请在作息设置纠正；未知不等于已确认不是游戏。", android.widget.Toast.LENGTH_LONG).show()
