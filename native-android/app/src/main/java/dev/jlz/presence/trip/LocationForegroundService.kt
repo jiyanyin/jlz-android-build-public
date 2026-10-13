@@ -297,7 +297,7 @@ class LocationForegroundService : Service() {
                 dev.jlz.presence.usage.PendingActivityEventStore(applicationContext).enqueue(
                     id=id,source="user_opt_in_gps_trip",kind="trip_movement",
                     title="同行位置有变化",body="移动约${walked[0].toInt()}米",
-                    packageName=null,metadata=metadata,observedAtMs=point.timestampMs
+                    packageName="",metadata=metadata,observedAtMs=point.timestampMs
                 )
             }
         }
