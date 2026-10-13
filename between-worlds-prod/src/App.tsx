@@ -267,6 +267,21 @@ export default function BetweenWorlds() {
   }, [update]);
 
   const [contentOnline, setContentOnline] = useState(false);
+  const [nativeReceiptStatus, setNativeReceiptStatus] = useState<{pending_native_receipts:number;receipt_overflow_count:number}|null>(null);
+  useEffect(() => {
+    if(tab !== 'more') return;
+    const read = () => {
+      const bridge = (window as unknown as {WorldBetweenHome?: {contentReceiptStatus?:()=>string}}).WorldBetweenHome;
+      if (!bridge?.contentReceiptStatus) { setNativeReceiptStatus(null); return; }
+      try {
+        const value = JSON.parse(bridge.contentReceiptStatus()) as {pending_native_receipts?:number;receipt_overflow_count?:number};
+        setNativeReceiptStatus({pending_native_receipts:Math.max(0, Number(value.pending_native_receipts)||0), receipt_overflow_count:Math.max(0, Number(value.receipt_overflow_count)||0)});
+      } catch { setNativeReceiptStatus(null); }
+    };
+    read();
+    const timer=window.setInterval(read,15_000);
+    return ()=>window.clearInterval(timer);
+  }, [tab]);
   const contentBusy = useRef(false);
   const device = useRef(contentDevice());
   const appliedContent = useRef("");
@@ -640,7 +655,7 @@ export default function BetweenWorlds() {
       {tab === "timeline" && <TimelinePage notes={state.notes} remote={state.remoteRecords} />}
       {tab === "room" && <RoomPage records={state.remoteRecords} teaser={copy["jlz.room.teaser"]} portrait={homePortrait} />}
       {tab === "calendar" && <CalendarPage records={state.remoteRecords} notes={state.notes} plan={state.dailyPlan} month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
-      {tab === "more" && <section className="content-sync glass"><h3>同步与更改记录</h3>{state.outbox.filter(i=>i.rejected).map(i=><p key={i.event_id}>未同步：{String(i.body.text || (i.body.task as DailyTask|undefined)?.title || "一条记录")}<button onClick={()=>{update(s=>({...s,outbox:s.outbox.map(x=>x.event_id===i.event_id?{...x,rejected:false,error:undefined}:x)}));void connect();}}>重试</button></p>)}<p>{contentOnline ? '已连接' : '离线 · 使用本机有效内容'} · 内容版本 {state.worldContent?.revision ?? 0}</p><p>主题：{effectiveTheme} · 只有实际写入的内容来自官端</p><button className="secondary" onClick={()=>void pullContent()}>立即同步</button> <button className="secondary" disabled={!contentOnline || !state.worldContent?.revision} onClick={()=>void rollbackContent()}>恢复上一版</button>{state.worldContent?.recent_changes.map(change=><p key={change.revision}>v{change.revision} · {change.keys.join(' / ')}<small> {change.updated_at}</small></p>)}{state.worldContent?.devices?.map(d=><p key={d.device_id}>{d.device_type==="tablet"?"平板":"手机"} · {d.online_state==="online"?"在线":"暂不可达"} · {d.last_seen_age_seconds} 秒前连接</p>)}{state.worldContent?.receipts.map(r=><p key={r.device_id+r.surface}>{r.device_id} · {r.surface} 已应用 v{r.revision} · {(r.applied_keys||[]).join(" / ")}</p>)}</section>}
+      {tab === "more" && <section className="content-sync glass"><h3>同步与更改记录</h3>{state.outbox.filter(i=>i.rejected).map(i=><p key={i.event_id}>未同步：{String(i.body.text || (i.body.task as DailyTask|undefined)?.title || "一条记录")}<button onClick={()=>{update(s=>({...s,outbox:s.outbox.map(x=>x.event_id===i.event_id?{...x,rejected:false,error:undefined}:x)}));void connect();}}>重试</button></p>)}<p>{contentOnline ? '已连接' : '离线 · 使用本机有效内容'} · 内容版本 {state.worldContent?.revision ?? 0}</p><p>主题：{effectiveTheme} · 只有实际写入的内容来自官端</p>{nativeReceiptStatus && <p>原生页面：{nativeReceiptStatus.pending_native_receipts} 条显示回执待 Home Node 确认{nativeReceiptStatus.receipt_overflow_count > 0 ? ' · '+nativeReceiptStatus.receipt_overflow_count+' 次回执队列已满（需检查）' : ''}。后台保存不等于手机已经显示。</p>}<button className="secondary" onClick={()=>void pullContent()}>立即同步</button> <button className="secondary" disabled={!contentOnline || !state.worldContent?.revision} onClick={()=>void rollbackContent()}>恢复上一版</button>{state.worldContent?.recent_changes.map(change=><p key={change.revision}>v{change.revision} · {change.keys.join(' / ')}<small> {change.updated_at}</small></p>)}{state.worldContent?.devices?.map(d=><p key={d.device_id}>{d.device_type==="tablet"?"平板":"手机"} · {d.online_state==="online"?"在线":"暂不可达"} · {d.last_seen_age_seconds} 秒前连接</p>)}{state.worldContent?.receipts.map(r=><p key={r.device_id+r.surface}>{r.device_id} · {r.surface} 已应用 v{r.revision} · {(r.applied_keys||[]).join(" / ")}</p>)}</section>}
       {tab === "more" && <MorePage effectiveTheme={effectiveTheme} chooseTheme={theme => void changeTheme(theme)} state={state} update={update} setWelcome={setWelcome} banner={banner} reconnect={() => void connect()} />}
       <nav className="dock" aria-label="主导航">
         {([["home","now","现在"],["echo","echo","回响"],["timeline","between","你我之间"],["room","jilinzhou","纪临洲"],["calendar","calendar","共历"]] as [Tab,VintageIconName,string][]).map(([id, icon, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => switchTab(id)}><VintageIcon name={icon} size={29}/><span>{label}</span></button>)}
