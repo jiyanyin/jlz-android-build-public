@@ -116,7 +116,8 @@ class LocationForegroundService : Service() {
                 "位置分享已结束。未确认上传的精确位置不在本地持久化，重新同行需你亲自开启。"
             )
         }
-        tripPreferences.edit().remove("points").remove("session_id").apply()
+        tripPreferences.edit().remove("points").remove("session_id")
+            .putString("link_state", "interrupted_requires_new_consent").apply()
         NotificationIdentityMigration.ensureFresh(applicationContext)
         createChannel()
     }
@@ -243,17 +244,19 @@ class LocationForegroundService : Service() {
                 val ack = client.sendTripPoints(snap.sessionId, batch)
                 check(TripUploadPolicy.accepted(ack, expectedIds)) { "trip_exact_points_not_acknowledged" }
                 uploadedPoints += points.size
-                tripPreferences.edit().putString("link_state", "online_confirmed")
+                tripPreferences.edit().putString("link_state",
+                    if (reportedCapacityLimit) "point_limit_reached" else "online_confirmed")
                     .putLong("last_confirmed_at_ms", System.currentTimeMillis())
                     .putInt("pending_points", (_trip.value.points.size - uploadedPoints).coerceAtLeast(0)).apply()
-                if (lastConnectionState != "online_confirmed") {
+                if (!reportedCapacityLimit && lastConnectionState != "online_confirmed") {
                     lastConnectionState = "online_confirmed"
                     getSystemService(NotificationManager::class.java)?.notify(
                         NOTIF_ID, buildNotification("同行连接正常，定位正在同步"))
                 }
             } catch (_: Exception) {
                 remoteStarted = false // retry authenticated start for this SAME session, never new consent
-                tripPreferences.edit().putString("link_state", "offline_retrying")
+                tripPreferences.edit().putString("link_state",
+                    if (reportedCapacityLimit) "point_limit_offline" else "offline_retrying")
                     .putInt("pending_points", (_trip.value.points.size - uploadedPoints).coerceAtLeast(0)).apply()
                 if (lastConnectionState != "offline_retrying") {
                     lastConnectionState = "offline_retrying"
@@ -374,7 +377,10 @@ class LocationForegroundService : Service() {
         // Raw points cleared after summarisation.
         _trip.value = TripSession()
         TripController.setActive(false)
-        tripPreferences.edit().remove("points").remove("session_id").apply()
+        tripPreferences.edit().remove("points").remove("session_id")
+            .putString("link_state", "stopped")
+            .putInt("last_unsent_points", (session.points.size - uploadedPoints).coerceAtLeast(0))
+            .remove("pending_points").apply()
         return session
     }
 
