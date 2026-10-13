@@ -97,6 +97,15 @@ class HuaweiHealthObservationStore(context: Context) {
             return false
         }
         val verified = evidence == HuaweiSleepDateEvidence.Result.VERIFIED
+        val existingVerified = prefs.getBoolean("sleep_date_evidence_verified", false) &&
+            prefs.getString("sleep_observed_day", "") == date(observedAtMs)
+        if (!verified && existingVerified) {
+            // A generic summary card must not downgrade a correctly dated
+            // observation from this same day.
+            prefs.edit().putString("sleep_last_parse_status",
+                "sleep_visible_unverified_ignored").apply()
+            return false
+        }
         return prefs.edit().putInt("sleep_minutes", minutes)
             .putLong("sleep_observed_at_ms", observedAtMs)
             .putString("sleep_observed_day", date(observedAtMs))
