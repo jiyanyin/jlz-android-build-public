@@ -110,8 +110,8 @@ class AutomaticCaptureCoordinator(context: Context) {
         val pkg = packageName?.trim().orEmpty()
         if (pkg.isBlank() || pkg != currentPackage || !enabled()) return
         if (pkg in NO_AUTOMATIC_CAPTURE_PACKAGES || pkg in SYSTEM_SURFACE_PACKAGES) return
-        if (!traffic.canCapture(pkg, observedAtMs)) return
         if (observedAtMs - lastScrollAtMs < SCROLL_TRIGGER_COOLDOWN_MS) return
+        if (!traffic.canCapture(pkg, observedAtMs)) return
         lastScrollAtMs = observedAtMs
         val myGeneration = generation
         scrollJob?.cancel()
