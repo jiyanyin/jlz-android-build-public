@@ -91,6 +91,11 @@ class PresenceAccessibilityService : AccessibilityService() {
         }
         ForegroundUsageTracker.observe(packageName, now)
         AttentionRhythmTracker.observe(packageName, eventType, now)
+        if (eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED && ::automaticCapture.isInitialized) {
+            // Observe real scrolling, never indiscriminately screenshot on
+            // every text/content change, and only for explicit opt-in apps.
+            automaticCapture.onScroll(packageName, now)
+        }
         val currentFocus = focusState
         if (currentFocus.active && !currentFocus.isActiveNow()) {
             scope.launch { if (currentFocus.dailyMode == dev.jlz.presence.focus.DailyMode.NORMAL) focusRepository.stop() else focusRepository.setDailyMode(dev.jlz.presence.focus.DailyMode.NORMAL) }
