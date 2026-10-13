@@ -108,7 +108,8 @@ class AutomaticCaptureCoordinator(context: Context) {
     @Synchronized
     fun onScroll(packageName: String?, observedAtMs: Long = System.currentTimeMillis()) {
         val pkg = packageName?.trim().orEmpty()
-        if (pkg.isBlank() || pkg != currentPackage || !enabled()) return
+        if (pkg.isBlank() || pkg != currentPackage || !enabled() ||
+            dev.jlz.presence.cowatch.CoWatchState.active) return
         if (pkg in NO_AUTOMATIC_CAPTURE_PACKAGES || pkg in SYSTEM_SURFACE_PACKAGES) return
         if (observedAtMs - lastScrollAtMs < SCROLL_TRIGGER_COOLDOWN_MS) return
         if (!traffic.canCapture(pkg, observedAtMs)) return
@@ -147,7 +148,8 @@ class AutomaticCaptureCoordinator(context: Context) {
         expectedGeneration: Long,
         origin: String
     ): String = captureMutex.withLock {
-        if (!stillOn(packageName, expectedGeneration)) return@withLock "foreground_changed"
+        if (!stillOn(packageName, expectedGeneration) ||
+            dev.jlz.presence.cowatch.CoWatchState.active) return@withLock "foreground_changed_or_cowatch_active"
         // Fail closed if accessibility sees an editable, keyboard, payment,
         // password, foreign application or otherwise uncertain hierarchy.
         if (!dev.jlz.presence.screen.AccessibilityActionGateway.safeForCoWatch(packageName)) {
@@ -163,6 +165,7 @@ class AutomaticCaptureCoordinator(context: Context) {
         // The screen can change during the screenshot callback. Do not label a
         // later app's pixels as the earlier package.
         if (!stillOn(packageName, expectedGeneration) ||
+            dev.jlz.presence.cowatch.CoWatchState.active ||
             !dev.jlz.presence.screen.AccessibilityActionGateway.safeForCoWatch(packageName)) {
             return@withLock "foreground_changed_after_capture"
         }
