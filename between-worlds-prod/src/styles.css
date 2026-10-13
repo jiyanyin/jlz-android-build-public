@@ -565,3 +565,15 @@ body,button,input,select,textarea{font-size:var(--wb-body)}
 .trip-map-attribution{margin:0;padding:0 12px 12px;color:#c5cbdb}
 .trip-empty{display:grid;place-items:center;text-align:center;min-height:156px;background:#243a5b;color:#f0edf4;font-size:12px;padding:18px}
 .trip-error{font-size:12px;color:var(--rose);line-height:1.7}
+
+/* Echo, day-scoped browsing. Keep the existing ice-glass vocabulary. */
+.echo-day-nav{display:flex;align-items:center;justify-content:center;gap:10px;padding:9px 12px;margin:10px 0;border-radius:18px}
+.echo-day-nav button{border:0;border-radius:12px;min-width:34px;min-height:36px;color:var(--accent);background:var(--secondary);font-weight:700;font-size:15px;cursor:pointer}
+.echo-day-nav button:disabled{opacity:.35;cursor:default}
+.echo-day-nav input[type="date"]{max-width:172px;min-height:36px;border:0;border-radius:12px;background:var(--secondary);color:var(--text);font:inherit;font-size:13px;text-align:center;padding:0 5px}
+.echo-day-list{min-height:200px;max-height:min(62vh,650px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.echo-older{display:block;margin:6px auto 18px;padding:10px 14px;background:var(--secondary);color:var(--accent);border-radius:22px;border:0;cursor:pointer}
+.echo-older:disabled{opacity:.5}
+.echo-empty{padding:28px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.8}
+.echo-jump{display:block;margin:0 auto 6px;border:0;border-radius:22px;background:var(--accent);color:white;padding:8px 18px;box-shadow:0 4px 12px rgba(25,25,30,.14);cursor:pointer}
+@media(max-width:390px){.echo-day-nav{gap:5px;padding:6px}.echo-day-nav input[type="date"]{max-width:153px;font-size:12px}}
