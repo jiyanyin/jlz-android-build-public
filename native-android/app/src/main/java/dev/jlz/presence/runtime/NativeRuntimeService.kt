@@ -228,9 +228,15 @@ class NativeRuntimeService : Service() {
                     dev.jlz.presence.trip.PendingTripStop.flush(applicationContext, api)
                 }
                 if(settings.bridgeName.startsWith("Home")) runCatching { WorldContentCache(applicationContext).flushReceipt(api,settings.deviceId) }
-                if(settings.bridgeName.startsWith("Home") && System.currentTimeMillis()-contentCheckedAt >= 300000L) {
-                    contentCheckedAt=System.currentTimeMillis()
-                    runCatching { WorldContentCache(applicationContext).save(api.worldContent()) }
+                // Text/theme hot sync: 60 s while Home Node is reachable.
+                // A failed fetch retries at the next eligible loop; never label
+                // an unreceived version as applied to the UI.
+                if(settings.bridgeName.startsWith("Home") &&
+                    System.currentTimeMillis()-contentCheckedAt >= 60_000L) {
+                    val synced = runCatching {
+                        WorldContentCache(applicationContext).save(api.worldContent())
+                    }.isSuccess
+                    if (synced) contentCheckedAt=System.currentTimeMillis()
                     runCatching { dev.jlz.presence.overlay.TaskReactionTracker(applicationContext).accept(api.dailyPlanForReaction()) }
                 }
                 runCatching { cycleReminder.evaluateToday() }
