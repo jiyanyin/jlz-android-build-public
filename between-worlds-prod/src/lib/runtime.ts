@@ -91,6 +91,9 @@ export const runtime = {
   health: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, "/api/web/health"),
   state: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, `/api/web/state?${q}`),
   messages: (cfg: RuntimeConfig, limit = 80) => request<unknown>(cfg, `/api/web/messages?${q}&limit=${limit}`),
+  messagesForDay: (cfg: RuntimeConfig, date: string, beforeId = "", limit = 100) =>
+    request<{ ok: boolean; date: string; messages: unknown[]; has_more: boolean; next_before_id: string }>(
+      cfg, `/api/web/messages?${q}&date=${encodeURIComponent(date)}&limit=${limit}&before_id=${encodeURIComponent(beforeId)}`),
   dailyPlan: async (cfg: RuntimeConfig, date: string): Promise<DailyPlan> =>
     normalizeDailyPlan(
       await request<unknown>(cfg, `/api/web/daily-plan?${q}&date=${encodeURIComponent(date)}`),
