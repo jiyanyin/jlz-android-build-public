@@ -152,7 +152,7 @@ class LocalLifeReminderEngine(context: Context) {
     }
 
     fun weatherRain(weatherCode: Int?, precipitationMm: Double?, nowMs: Long = System.currentTimeMillis()) {
-        if (weatherCode in 51..99 || (precipitationMm ?: 0.0) >= 0.8)
+        if ((weatherCode != null && weatherCode in 51..99) || (precipitationMm ?: 0.0) >= 0.8)
             emitOnce("weather", "出行天气", nowMs)
     }
 
