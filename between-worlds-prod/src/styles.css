@@ -577,3 +577,7 @@ body,button,input,select,textarea{font-size:var(--wb-body)}
 .echo-empty{padding:28px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.8}
 .echo-jump{display:block;margin:0 auto 6px;border:0;border-radius:22px;background:var(--accent);color:white;padding:8px 18px;box-shadow:0 4px 12px rgba(25,25,30,.14);cursor:pointer}
 @media(max-width:390px){.echo-day-nav{gap:5px;padding:6px}.echo-day-nav input[type="date"]{max-width:153px;font-size:12px}}
+
+.echo-schedule{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;margin:5px 0 12px;padding:10px 13px;border-radius:14px;font-size:12px}
+.echo-schedule span{font-weight:650;color:var(--text)}
+.echo-schedule small{font-size:11px;color:var(--muted);line-height:1.5}
