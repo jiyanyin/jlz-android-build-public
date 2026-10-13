@@ -20,6 +20,9 @@ class CaptureTrafficPolicy(context: Context) {
 
     private fun roll(now: Long) {
         val (day, month) = periods(now)
+        // Scroll events can arrive many times per second. A read that stays
+        // within the same Shanghai day/month must never sync-write preferences.
+        if (prefs.getString("day", "") == day && prefs.getString("month", "") == month) return
         val edit = prefs.edit()
         if (prefs.getString("day", "") != day) {
             edit.putString("day", day)
