@@ -147,6 +147,12 @@ class PresenceAccessibilityService : AccessibilityService() {
         val text = collectVisibleText(root)
         observationCache.onSnapshotTaken(now)
         ScreenObservationBus.publish(ScreenObservation(packageName = packageName, visibleText = text, observedAtMs = now))
+        if (packageName == dev.jlz.presence.notification.HuaweiHealthNotificationReading.PACKAGE_NAME) {
+            // Only parse the actually visible Huawei page; no background UI
+            // traversal, automatic phone unlock or fabricated medical data.
+            dev.jlz.presence.life.HuaweiHealthObservationStore(applicationContext)
+                .recordVisibleHuaweiPage(text, now)
+        }
     }
 
     override fun onInterrupt() = Unit
