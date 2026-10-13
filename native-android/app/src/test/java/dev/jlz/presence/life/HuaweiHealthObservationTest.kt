@@ -1,0 +1,79 @@
+package dev.jlz.presence.life
+
+import android.content.Context
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
+import java.time.LocalDateTime
+import java.time.ZoneId
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [28])
+class HuaweiHealthObservationTest {
+    private lateinit var context: Context
+    @Before fun setup() {
+        context = RuntimeEnvironment.getApplication()
+        context.getSharedPreferences("jlz_huawei_observation_v1", Context.MODE_PRIVATE).edit().clear().commit()
+        context.getSharedPreferences("jlz_entertainment_daily_rest_v1", Context.MODE_PRIVATE).edit().clear().commit()
+    }
+
+    @Test fun parseOnlyLabeledSleepAndNeverInferFromUnlockTime() {
+        assertEquals(452, HuaweiSleepTextParser.minutes("昨晚睡眠 7小时32分钟"))
+        assertEquals(450, HuaweiSleepTextParser.minutes("睡眠时长：7.5小时"))
+        assertNull(HuaweiSleepTextParser.minutes("建议每天睡眠 8小时"))
+        assertNull(HuaweiSleepTextParser.minutes("23:30 07:20"))
+        assertNull(HuaweiSleepTextParser.minutes("睡眠时长 25小时30分钟"))
+    }
+
+    @Test fun retainOriginalSourceAndReturnMissingIfUnseenOrStale() {
+        val store = HuaweiHealthObservationStore(context)
+        val now = System.currentTimeMillis()
+        assertTrue(store.snapshot(now).isNull("sleep_minutes"))
+        assertTrue(store.snapshot(now).isNull("steps"))
+        store.recordNotificationSteps(3194, now)
+        val steps = store.snapshot(now)
+        assertEquals(3194, steps.getInt("steps"))
+        assertEquals("huawei_health_visible_notification", steps.getString("steps_source"))
+        assertFalse(steps.getBoolean("sleep_date_verified"))
+        assertTrue(store.recordVisibleHuaweiPage("总睡眠：7小时10分钟", now))
+        assertEquals(430, store.snapshot(now).getInt("sleep_minutes"))
+        assertTrue(store.snapshot(now + 37L * 60 * 60_000L).isNull("sleep_minutes"))
+        assertTrue(store.snapshot(now + 4L * 60 * 60_000L).isNull("steps"))
+    }
+
+    @Test fun timeScheduleUsesBeijingAndRollsToNextDay() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val now = LocalDateTime.of(2026,10,13,8,6).atZone(zone).toInstant().toEpochMilli()
+        val next = DailyHealthSchedule.nextOccurrence(now,8,5)
+        assertEquals(LocalDateTime.of(2026,10,14,8,5).atZone(zone).toInstant().toEpochMilli(), next)
+    }
+
+    @Test fun batteryAndEntertainmentThresholdsUseBounds() {
+        assertEquals(0, LocalLifeReminderPolicy.batteryBand(41))
+        assertEquals(40, LocalLifeReminderPolicy.batteryBand(40))
+        assertEquals(20, LocalLifeReminderPolicy.batteryBand(20))
+        assertEquals(10, LocalLifeReminderPolicy.batteryBand(10))
+        assertEquals(0, LocalLifeReminderPolicy.entertainmentStage(29))
+        assertEquals(30, LocalLifeReminderPolicy.entertainmentStage(30))
+        assertEquals(45, LocalLifeReminderPolicy.entertainmentStage(45))
+        val now = System.currentTimeMillis()
+        assertFalse(LocalLifeReminderPolicy.lowSteps(1234,now - 4 * 60 * 60_000L,now))
+        assertTrue(LocalLifeReminderPolicy.lowSteps(1234,now,now))
+    }
+
+    @Test fun oneFiveMinuteRestPerDayAndEmergencyRelease() {
+        val guard = DailyEntertainmentRestGuard(context)
+        val now = System.currentTimeMillis()
+        assertEquals(0L, guard.beginIfDue(now))
+        guard.requestOnceThresholdCrossed(now)
+        assertEquals(300_000L,guard.beginIfDue(now))
+        assertEquals(120_000L,guard.restRemainingMs(now+180_000L))
+        guard.finish(now)
+        assertEquals(0L,guard.beginIfDue(now))
+        assertEquals("rest_complete",guard.status(now))
+    }
+}
