@@ -36,6 +36,22 @@ class CaptureTrafficPolicyTest {
         assertFalse(policy.reserve("test.app", image, now + CaptureTrafficPolicy.COOLDOWN_MS))
         assertFalse(policy.reserve("test.app", ByteArray(CaptureTrafficPolicy.DAILY_BYTES.toInt()+1), now + CaptureTrafficPolicy.COOLDOWN_MS))
     }
+    @Test fun noFixedHourlyScreenshotCountCapButBytesRemainBounded() {
+        assertTrue(policy.configureAutomatic(true, setOf("test.app", "com.tencent.mm", "com.openai.chatgpt")))
+        assertTrue(policy.canCapture("test.app"))
+        assertFalse(policy.canCapture("com.tencent.mm"))
+        assertFalse(policy.canCapture("com.openai.chatgpt"))
+        val now = System.currentTimeMillis()
+        for (i in 0 until 27) {
+            val bytes = ByteArray(512) { i.toByte() }
+            assertTrue("capture $i should not hit a count cap",
+                policy.reserve("test.app", bytes, now + i * CaptureTrafficPolicy.COOLDOWN_MS))
+        }
+        assertEquals(27L, policy.snapshot().getLong("auto_bytes_today") / 512)
+        assertTrue(policy.configureAutomatic(false, setOf("test.app")))
+        assertFalse(policy.canCapture("test.app"))
+    }
+
     @Test fun retryBytesAreChargedBeforeSendingAndExplicitTrafficStillRecorded() {
         assertTrue(policy.reserveAutomaticTransfer(CaptureTrafficPolicy.DAILY_BYTES.toInt()))
         assertFalse(CaptureTrafficPolicy(context).reserveAutomaticTransfer(1))
