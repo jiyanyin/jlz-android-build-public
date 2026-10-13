@@ -109,10 +109,12 @@ class WorldContentCache(context: Context) {
             .put("receipt_overflow_count", prefs.getInt("receipt_overflow_count", 0))
     }
 
-    fun save(content: JSONObject) {
-        if (!content.has("revision") || !content.has("entries") || !content.has("view_id")) return
-        val old = runCatching { JSONObject(prefs.getString("content", "{}")!!) }.getOrDefault(JSONObject())
-        if (content.optLong("revision") < old.optLong("revision")) return
+    fun save(content: JSONObject): Boolean = synchronized(RECEIPT_LOCK) {
+        if (!content.has("revision") || !content.has("entries") ||
+            !content.has("view_id") || content.optString("view_id").isBlank()) return@synchronized false
+        val old = runCatching { JSONObject(prefs.getString("content", "{}")!!) }
+            .getOrDefault(JSONObject())
+        if (content.optLong("revision") < old.optLong("revision")) return@synchronized false
         prefs.edit().putString("content", content.toString()).commit()
     }
 
