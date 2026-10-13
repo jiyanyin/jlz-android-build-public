@@ -77,11 +77,13 @@ class EntertainmentGateBridge(context: Context) {
         )
         val seed = now xor packageName.hashCode().toLong()
 
-        val incoming = if (reason == "expired") {
+        val fallback = if (reason == "expired") {
             EntertainmentGateCopy.expired(profile.appName, seed)
         } else {
-            EntertainmentGateCopy.incoming(profile.appName, seed)
+            dev.jlz.presence.persona.JlzVoiceCopy.line(app, "gate.incoming", profile.appName, now)
+                .ifBlank { EntertainmentGateCopy.incoming(profile.appName, seed) }
         }
+        val incoming = dev.jlz.presence.runtime.WorldContentCache(app).text("gate.incoming", fallback)
 
         val stepText = when {
             pending == null -> ""
