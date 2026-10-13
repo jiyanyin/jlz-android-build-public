@@ -1210,29 +1210,160 @@ function PageHead({ kicker, title, en, copy }: { kicker: string; title: string; 
 function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask }: { onTask:(text:string,id:string)=>void; state: AppState; conn: Conn; update: (fn: (s: AppState) => AppState) => void; send: Send; notify: (s: string) => void; chatAvatar: string }) {
   const [text, setText] = useState("");
   const [replyTo,setReplyTo] = useState<{id:string;text:string}|null>(null);
-  const submit = () => { const value = text.trim(); if (!value) return; const id = newEventId(); update((s) => ({ ...s, messages: [...s.messages, { text: value, at: new Date().toISOString(), event_id: id, sync: "queued" as Sync }].slice(-80) })); send("/api/web/message", { text: value, reply_to:replyTo?.id, reply_to_text:replyTo?.text }, id); setText(""); setReplyTo(null); if (conn !== "online") notify("已存本机，连接后自动发送"); };
-  const remoteIds = new Set(state.remoteMessages.map((m) => m.id));
+  const [day, setDay] = useState(() => keyDate(new Date()));
+  const [dayMessages, setDayMessages] = useState<RemoteMessage[]>([]);
+  const [dayLoaded,setDayLoaded] = useState(false);
+  const [beforeId,setBeforeId] = useState("");
+  const [hasMore,setHasMore] = useState(false);
+  const [loadingOlder,setLoadingOlder] = useState(false);
+  const [newMessages,setNewMessages] = useState(false);
+  const viewport = useRef<HTMLDivElement>(null);
+  const nearBottom = useRef(true);
+  const renderedDay = useRef("");
+  const lastMessage = useRef("");
+  const activeDay = useRef(day);
+  const morePagesLoaded = useRef(false);
+  const preserveScroll = useRef<{height:number;top:number}|null>(null);
+  const today = keyDate(new Date());
+  const shiftDay=(step:number)=>{
+    const [y,m,d]=day.split("-").map(Number);
+    const next=new Date(y,m-1,d+step,12);
+    const nextKey=keyDate(next);
+    if(nextKey<=keyDate(new Date()))setDay(nextKey);
+  };
+  useEffect(()=>{
+    activeDay.current=day;
+    morePagesLoaded.current=false;
+    nearBottom.current=true;
+    setDayMessages([]);
+    setDayLoaded(false);
+    setHasMore(false);
+    setBeforeId("");
+    setNewMessages(false);
+    if(conn!=="online" || !state.webToken.trim()) return;
+    const c={baseUrl:state.runtimeUrl||DEFAULT_RUNTIME_URL,token:state.webToken.trim()};
+    let cancelled=false;
+    const refresh=async()=>{
+      try {
+        const page=await runtime.messagesForDay(c,day,"",100);
+        if(cancelled || activeDay.current!==day || page.date!==day)return;
+        const latest=extractMessages(page);
+        setDayMessages(previous=>{
+          const unique=new Map<string,RemoteMessage>();
+          for(const m of previous) unique.set(m.id,m);
+          for(const m of latest) unique.set(m.id,m);
+          return Array.from(unique.values()).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
+        });
+        if(!morePagesLoaded.current){
+          setHasMore(page.has_more);
+          setBeforeId(page.next_before_id||"");
+        }
+        setDayLoaded(true);
+      } catch {
+        if(!cancelled && activeDay.current===day)setDayLoaded(false);
+      }
+    };
+    void refresh();
+    const timer=window.setInterval(()=>{if(document.visibilityState==="visible" && day===keyDate(new Date()))void refresh()},8000);
+    return ()=>{cancelled=true;window.clearInterval(timer)};
+  },[day,conn,state.webToken,state.runtimeUrl]);
+
+  const loadOlder=async()=>{
+    if(loadingOlder||!hasMore||!beforeId||conn!=="online"||!state.webToken.trim())return;
+    const currentDay=day;
+    const box=viewport.current;
+    preserveScroll.current=box?{height:box.scrollHeight,top:box.scrollTop}:null;
+    setLoadingOlder(true);
+    try {
+      const c={baseUrl:state.runtimeUrl||DEFAULT_RUNTIME_URL,token:state.webToken.trim()};
+      const page=await runtime.messagesForDay(c,day,beforeId,100);
+      if(currentDay!==activeDay.current || page.date!==currentDay)return;
+      const older=extractMessages(page);
+      morePagesLoaded.current=true;
+      setDayMessages(prev=>{
+        const unique=new Map<string,RemoteMessage>();
+        for(const m of prev)unique.set(m.id,m);
+        for(const m of older)unique.set(m.id,m);
+        return Array.from(unique.values()).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
+      });
+      setHasMore(page.has_more);setBeforeId(page.next_before_id||"");
+    } catch {notify("这页历史暂时没有加载成功，稍后再试");preserveScroll.current=null;}
+    finally {setLoadingOlder(false);}
+  };
+  const submit = () => {
+    const value = text.trim(); if (!value) return;
+    const id = newEventId();
+    update((s) => ({ ...s, messages: [...s.messages, { text: value, at: new Date().toISOString(), event_id: id, sync: "queued" as Sync }].slice(-80) }));
+    send("/api/web/message", { text: value, reply_to:replyTo?.id, reply_to_text:replyTo?.text }, id);
+    setText(""); setReplyTo(null);
+    if(day!==keyDate(new Date()))setDay(keyDate(new Date()));
+    nearBottom.current=true;setNewMessages(false);
+    if(conn!=="online") notify("已存本机，连接后自动发送");
+  };
+  const shownRemote=conn==="online" && dayLoaded
+    ? dayMessages
+    : state.remoteMessages;
+  const remoteIds = new Set(shownRemote.map((m)=>m.id));
   const list = [
-    ...state.importedMessages.map((m) => ({ key: m.id, text: m.text, at: m.at, me: false, label: "离线指令包" })),
-    ...state.remoteMessages.map((m) => ({ key: m.id, text: m.text, at: m.at, me: !m.fromCompanion, label: m.handled ? "官端已处理" : m.fromCompanion ? "已送达回响" : "已入队 · 等待官端" })),
-    ...state.messages.filter((m) => !m.event_id || !remoteIds.has(m.event_id)).map((m, i) => ({ key: m.event_id ?? `${m.at}-${i}`, text: m.text, at: m.at, me: true, label: m.sync === "synced" ? "已发送" : "本地 · 待发送" })),
-  ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+    ...state.importedMessages.map((m)=>({key:m.id,text:m.text,at:m.at,me:false,label:"离线指令包"})),
+    ...shownRemote.map((m)=>({key:m.id,text:m.text,at:m.at,me:!m.fromCompanion,label:m.handled?"官端已处理":m.fromCompanion?"已送达回响":"已入队 · 等待官端"})),
+    ...state.messages.filter((m)=>!m.event_id||!remoteIds.has(m.event_id)).map((m,i)=>({key:m.event_id??m.at+"-"+i,text:m.text,at:m.at,me:true,label:m.sync==="synced"?"已发送":"本地 · 待发送"})),
+  ].filter((m)=>Number.isFinite(Date.parse(m.at)) && keyDate(new Date(m.at))===day)
+    .sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
+  const newest=list.length?list[list.length-1].key+"|"+list[list.length-1].text:"";
+
+  useEffect(()=>{
+    const box=viewport.current;
+    if(!box)return;
+    if(preserveScroll.current){
+      const prev=preserveScroll.current;
+      box.scrollTop=prev.top+(box.scrollHeight-prev.height);
+      preserveScroll.current=null;
+      return;
+    }
+    const entering=renderedDay.current!==day;
+    if(entering || nearBottom.current){
+      box.scrollTop=box.scrollHeight;
+      nearBottom.current=true;
+      setNewMessages(false);
+    } else if(lastMessage.current && newest!==lastMessage.current && day===keyDate(new Date())){
+      setNewMessages(true);
+    }
+    renderedDay.current=day;
+    lastMessage.current=newest;
+  },[day,newest,list.length,dayLoaded]);
+  const jumpLatest=()=>{const box=viewport.current;if(box)box.scrollTop=box.scrollHeight;nearBottom.current=true;setNewMessages(false);};
   return <section className="page active">
     <PageHead kicker="YOUR PRIVATE CONVERSATION" title="回响" en="Echo" copy="给你的回声，永远写在纸的另一面" />
-    <div className="echo-person glass"><img src={chatAvatar} alt="纪临洲" /><span><b>纪临洲</b><small>{conn === "online" ? "已连接 · 消息实时同步" : conn === "syncing" ? "正在同步……" : "未连接 · 消息先存本机"}</small></span></div>
-    {conn !== "online" && <div className="preview-tip">现在还没连上 Runtime。你写下的话会先排队保存在此浏览器，连上后自动送达。</div>}
-    <div className="message-list">
-      {list.length === 0 && <div className="message-row companion"><img className="message-avatar" src={chatAvatar} alt="" /><div className="message">音音，今天如果什么都不想做，就来坐一会儿。<time>纪临洲</time></div></div>}
-      {list.map((m) => <div className={`message-row ${m.me ? "me" : "companion"}`} key={m.key}>
-        {!m.me && <img className="message-avatar" src={chatAvatar} alt="" />}
-        <div className={`message ${m.me ? "me" : ""}`}>{m.text}<time>{new Date(m.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} · {m.label}</time><div className="echo-actions">{!m.me && <button onClick={()=>setReplyTo({id:m.key,text:m.text})}>回复这条</button>}<button onClick={()=>onTask(m.text,m.key)}>变成待办</button><button onClick={()=>{const id='echo-note-'+m.key.slice(-70);send('/api/web/journal',{kind:'echo_excerpt',text:m.text,source_ref:m.key},id);notify('片段已排队保存到你我之间');}}>留在共历</button></div></div>
+    <div className="echo-person glass"><img src={chatAvatar} alt="纪临洲" /><span><b>纪临洲</b><small>{conn==="online"?"已连接 · 消息实时同步":conn==="syncing"?"正在同步……":"未连接 · 消息先存本机"}</small></span></div>
+    <div className="echo-day-nav glass">
+      <button type="button" onClick={()=>shiftDay(-1)} aria-label="查看前一天">‹</button>
+      <input aria-label="聊天日期" type="date" max={today} value={day} onChange={e=>{if(e.target.value && e.target.value<=keyDate(new Date()))setDay(e.target.value)}} />
+      <button type="button" disabled={day>=today} onClick={()=>shiftDay(1)} aria-label="查看后一天">›</button>
+      <button type="button" onClick={()=>{setDay(keyDate(new Date()));nearBottom.current=true;setNewMessages(false)}}>今天</button>
+    </div>
+    {conn!=="online"&&<div className="preview-tip">离线时只能查看已缓存的消息；历史日期需连接 Home Node。你写的话会在本机排队。</div>}
+    {conn==="online"&&!dayLoaded&&<div className="preview-tip">正在取这一天的聊天；如果连接失败，只显示已有缓存，不冒充完整历史。</div>}
+    <div className="message-list echo-day-list" ref={viewport} onScroll={e=>{const target=e.currentTarget;nearBottom.current=target.scrollHeight-target.scrollTop-target.clientHeight<90;if(nearBottom.current)setNewMessages(false);}}>
+      {hasMore&&conn==="online"&&<button type="button" className="echo-older" onClick={()=>void loadOlder()} disabled={loadingOlder}>{loadingOlder?"加载中……":"加载当天更早的消息"}</button>}
+      {list.length===0&&<div className="echo-empty">这一天还没有加载到聊天。{day===today?"今天的话，就从这一句开始。":"可以换一天找我们说过的话。"}</div>}
+      {list.map(m=><div className={"message-row "+(m.me?"me":"companion")} key={m.key}>
+        {!m.me&&<img className="message-avatar" src={chatAvatar} alt="" />}
+        <div className={"message "+(m.me?"me":"")}>{m.text}
+          <time>{new Date(m.at).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})} · {m.label}</time>
+          <div className="echo-actions">
+            {!m.me&&<button onClick={()=>setReplyTo({id:m.key,text:m.text})}>回复这条</button>}
+            <button onClick={()=>onTask(m.text,m.key)}>变成待办</button>
+            <button onClick={()=>{const id="echo-note-"+m.key.slice(-70);send("/api/web/journal",{kind:"echo_excerpt",text:m.text,source_ref:m.key},id);notify("片段已排队保存到共历");}}>留在共历</button>
+          </div>
+        </div>
       </div>)}
     </div>
-    {replyTo && <div className="reply-context"><span>回复：{replyTo.text.slice(0,100)}</span><button onClick={()=>setReplyTo(null)} aria-label="取消引用回复">×</button></div>}
-    <div className="composer"><textarea maxLength={1200} placeholder="写点什么……" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }} /><button onClick={submit} aria-label="发送消息">↑</button></div>
+    {newMessages&&<button type="button" className="echo-jump" onClick={jumpLatest}>有新消息 ↓</button>}
+    {replyTo&&<div className="reply-context"><span>回复：{replyTo.text.slice(0,100)}</span><button onClick={()=>setReplyTo(null)} aria-label="取消引用回复">×</button></div>}
+    <div className="composer"><textarea maxLength={1200} placeholder="写点什么……" value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();submit()}}}/><button onClick={submit} aria-label="发送消息">↑</button></div>
   </section>;
 }
-
 const timelineNames: Record<string,string> = {
   between_status:"我们此刻", user_timeline:"老婆的日常",
   jlz_observation:"我看见的事", jlz_note:"我写下的话",
