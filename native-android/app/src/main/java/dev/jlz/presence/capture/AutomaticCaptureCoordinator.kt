@@ -71,7 +71,7 @@ class AutomaticCaptureCoordinator(context: Context) {
         shortStayJob = scope.launch {
             delay((observedAtMs + SHORT_STAY_DELAY_MS - System.currentTimeMillis()).coerceAtLeast(0L))
             if (stillOn(pkg, myGeneration) && enabled() && traffic.canCapture(pkg)) {
-                captureAndUpload(pkg, myGeneration, "automatic_rule_app_switch_30s")
+                captureAndUpload(pkg, myGeneration, "automatic_rule_app_switch_6s")
             }
         }
 
@@ -190,7 +190,7 @@ class AutomaticCaptureCoordinator(context: Context) {
             ).firstOrNull { it.eventId == eventId }
         }.getOrNull()
 
-        return if (sent?.sent == true) {
+        if (sent?.sent == true) {
             "uploaded:event_id=$eventId"
         } else {
             "saved_on_phone:event_id=$eventId"
