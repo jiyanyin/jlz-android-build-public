@@ -25,6 +25,17 @@ class QAvatarPriorityTest {
         assertEquals(QAvatarState.ANNOYED, q.resolve(false, false, false, false, true, true, true, true))
         assertEquals(QAvatarState.OFFLINE, q.resolve(false, false, false, false, false, false, false, true))
     }
+    @Test fun personaChangesOnlyIdlePoseWithoutOverridingSafetyModes() {
+        assertEquals("clingy", QAvatarVoicePresentation.idleSpriteMood(dev.jlz.presence.persona.JlzVoiceMood.LONGING))
+        assertEquals("proud", QAvatarVoicePresentation.idleSpriteMood(dev.jlz.presence.persona.JlzVoiceMood.PROUD))
+        assertEquals("thinking", QAvatarVoicePresentation.idleSpriteMood(dev.jlz.presence.persona.JlzVoiceMood.CONCERNED))
+        assertEquals("idle", QAvatarVoicePresentation.idleSpriteMood(dev.jlz.presence.persona.JlzVoiceMood.STEADY))
+        val q = QAvatarStateMachine()
+        assertEquals(QAvatarState.HIDDEN, q.resolve(true, false, false, false, false, false, false, false))
+        assertEquals(QAvatarState.SLEEP, q.resolve(false, true, false, false, false, false, false, false))
+        assertEquals(QAvatarState.STUDY, q.resolve(false, false, false, true, false, false, false, false))
+    }
+
     @Test fun cooldownKeepsSamePickWithinBurst() {
         val q = QAvatarStateMachine(); val pool = listOf("a", "b", "c")
         val first = q.pickAsset(pool)
