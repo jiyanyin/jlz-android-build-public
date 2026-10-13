@@ -55,7 +55,8 @@ class PresenceCallbackActivity : ComponentActivity() {
                         Text("纪临洲正在找你", color = TextPrimary, style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(top = 22.dp))
                         Text("世界之间 · 语音通话式邀请", color = TextSecondary, style = MaterialTheme.typography.labelMedium)
                         if (topic.isNotBlank()) Text(topic, color = VioletGlow, modifier = Modifier.padding(top = 12.dp))
-                        Text(contentCache.text(if(connected) "callback.connected" else "callback.incoming", if(connected) "接到了。我们去回响接着说。" else "我想找你。") , color = TextPrimary, modifier = Modifier.padding(top = 10.dp))
+                        Text(contentCache.text(if(connected) "callback.connected" else "callback.incoming", dev.jlz.presence.persona.JlzVoiceCopy.line(applicationContext,
+                            if(connected) "callback.connected" else "callback.incoming")) , color = TextPrimary, modifier = Modifier.padding(top = 10.dp))
                         Text(reason, color = TextSecondary, modifier = Modifier.padding(top = 10.dp, bottom = 28.dp))
                         if(connected) {
                             IceButton(if (modeTarget == "FOCUS") "去专注计时" else "去回响", onClick={
