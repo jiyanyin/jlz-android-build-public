@@ -67,6 +67,10 @@ class HuaweiHealthObservationTest {
         assertEquals(452, store.snapshot(now).getInt("sleep_minutes"))
         assertEquals("explicit_prior_night_date_on_visible_page",
             store.snapshot(now).getString("sleep_date_semantics"))
+        assertFalse(store.recordVisibleHuaweiPage("总睡眠：2小时15分钟", now + 1000L))
+        assertEquals(452, store.snapshot(now + 1000L).getInt("sleep_minutes"))
+        assertTrue(store.snapshot(now + 1000L).getBoolean("sleep_date_verified"))
+        assertEquals("sleep_visible_unverified_ignored", store.mostRecentParseStatus())
         assertTrue(store.snapshot(now + 23L * 60 * 60_000L).isNull("sleep_minutes"))
     }
 
