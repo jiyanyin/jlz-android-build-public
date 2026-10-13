@@ -1,0 +1,89 @@
+package dev.jlz.presence.life
+
+import android.content.Context
+import org.json.JSONObject
+import java.time.Instant
+import java.time.ZoneId
+
+/**
+ * Local observations only. No Health Connect assumptions or invented sleep.
+ * Huawei Health notifications expose steps; visible Huawei screen text may
+ * expose a sleep duration after the user opens that page.
+ */
+object HuaweiSleepTextParser {
+    private val duration = Regex("""(?:睡眠时长|昨晚睡眠|昨夜睡眠|总睡眠|睡了)\s*[:：]?\s*(?:(\d{1,2})\s*(?:小时|时|h))?\s*(\d{1,2})?\s*(?:分钟|分|min)?""", RegexOption.IGNORE_CASE)
+    private val hourMinute = Regex("""(?:睡眠时长|昨晚睡眠|昨夜睡眠|总睡眠)\s*[:：]?\s*(\d{1,2})\s*(?:小时|时|h)\s*(\d{1,2})\s*(?:分|分钟|min)""", RegexOption.IGNORE_CASE)
+    private val hoursOnly = Regex("""(?:睡眠时长|昨晚睡眠|昨夜睡眠|总睡眠)\s*[:：]?\s*(\d{1,2}(?:\.\d)?)\s*(?:小时|时|h)""", RegexOption.IGNORE_CASE)
+    fun minutes(text: String): Int? {
+        if (text.isBlank()) return null
+        val exact = hourMinute.find(text.take(3500))
+        val parsed = when {
+            exact != null -> {
+                val h = exact.groupValues[1].toIntOrNull() ?: return null
+                val m = exact.groupValues[2].toIntOrNull() ?: return null
+                if (m !in 0..59) return null
+                h * 60 + m
+            }
+            else -> {
+                val hours = hoursOnly.find(text.take(3500))?.groupValues?.get(1)?.toDoubleOrNull()
+                if (hours == null) return null
+                (hours * 60).toInt()
+            }
+        }
+        return parsed.takeIf { it in 20..1_080 }
+    }
+}
+
+class HuaweiHealthObservationStore(context: Context) {
+    private val prefs = context.applicationContext.getSharedPreferences("jlz_huawei_observation_v1", Context.MODE_PRIVATE)
+    private val zone = ZoneId.of("Asia/Shanghai")
+    private fun date(at: Long): String = Instant.ofEpochMilli(at).atZone(zone).toLocalDate().toString()
+
+    fun recordNotificationSteps(steps: Int, observedAtMs: Long = System.currentTimeMillis()) {
+        if (steps !in 0..200_000) return
+        synchronized(prefs) {
+            val today = date(observedAtMs)
+            // Older/late notifications must not replace a more recent observation.
+            val previous = prefs.getLong("steps_observed_at_ms", 0)
+            if (previous > observedAtMs && prefs.getString("steps_date", "") == today) return
+            prefs.edit().putInt("steps", steps).putString("steps_date", today)
+                .putLong("steps_observed_at_ms", observedAtMs)
+                .putString("steps_source", "huawei_health_visible_notification").apply()
+        }
+    }
+
+    fun recordVisibleHuaweiPage(text: String, observedAtMs: Long = System.currentTimeMillis()): Boolean {
+        val minutes = HuaweiSleepTextParser.minutes(text) ?: return false
+        prefs.edit().putInt("sleep_minutes", minutes)
+            .putLong("sleep_observed_at_ms", observedAtMs)
+            .putString("sleep_source", "huawei_health_accessibility_visible_page")
+            .putString("sleep_date_semantics", "shown_page_date_not_verified")
+            .apply()
+        return true
+    }
+
+    fun markMorningAttempt(atMs: Long = System.currentTimeMillis()) {
+        prefs.edit().putLong("morning_check_at_ms", atMs).apply()
+    }
+
+    fun snapshot(nowMs: Long = System.currentTimeMillis()): JSONObject {
+        val stepAt = prefs.getLong("steps_observed_at_ms", 0L)
+        val stepValid = stepAt > 0 && prefs.getString("steps_date", "") == date(nowMs)
+            && nowMs - stepAt in 0..(3 * 60 * 60_000L)
+        val sleepAt = prefs.getLong("sleep_observed_at_ms", 0L)
+        val sleepValid = sleepAt > 0 && nowMs - sleepAt in 0..(36 * 60 * 60_000L)
+        return JSONObject().put("ok", true).put("source", "on_device_verified_huawei_ui_or_notification")
+            .put("observed_at_ms", nowMs)
+            .put("steps", if (stepValid) prefs.getInt("steps", -1) else JSONObject.NULL)
+            .put("steps_source", if (stepValid) prefs.getString("steps_source", "") else JSONObject.NULL)
+            .put("steps_observed_at_ms", if (stepAt > 0) stepAt else JSONObject.NULL)
+            .put("steps_fresh", stepValid)
+            .put("sleep_minutes", if (sleepValid) prefs.getInt("sleep_minutes", -1) else JSONObject.NULL)
+            .put("sleep_source", if (sleepValid) prefs.getString("sleep_source", "") else JSONObject.NULL)
+            .put("sleep_observed_at_ms", if (sleepAt > 0) sleepAt else JSONObject.NULL)
+            .put("sleep_date_verified", false)
+            .put("sleep_fresh", sleepValid)
+            .put("morning_check_at_ms", prefs.getLong("morning_check_at_ms", 0L))
+            .put("medical_sensor_connected", false)
+    }
+}
