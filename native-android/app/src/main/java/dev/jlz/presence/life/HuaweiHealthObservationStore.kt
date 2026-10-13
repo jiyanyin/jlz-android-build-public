@@ -126,6 +126,7 @@ class HuaweiHealthObservationStore(context: Context) {
     fun markMorningResult(reason: String) {
         require(reason in setOf("sleep_visible_verified", "sleep_visible_date_unverified",
             "visible_page_wrong_date", "sleep_duration_missing",
+            "sleep_visible_unverified_ignored",
             "huawei_page_not_visible", "visible_source_check_failed"))
         prefs.edit().putString("morning_check_result", reason).apply()
     }
