@@ -21,7 +21,7 @@ class WorldContentCache(context: Context) {
         return (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }.toMutableList()
     }
     private fun encode(rows: List<JSONObject>) =
-        JSONArray().apply { rows.forEach(::put) }.toString()
+        JSONArray().apply { rows.forEach { put(it) } }.toString()
 
     /**
      * One receipt per visible surface and effective content view, not one slot
@@ -67,7 +67,11 @@ class WorldContentCache(context: Context) {
     /** Flush only the first queued observation and only remove it on server ACK.
      * A concurrent UI surface may append while the network call is in flight.
      */
-    fun flushReceipt(api: RuntimeApiClient, deviceId: String) {
+    fun flushReceipt(api: RuntimeApiClient, deviceId: String) =
+        flushPending(deviceId) { api.contentReceipt(it).optBoolean("ok", false) }
+
+    /** Testable network boundary; failures retain the same queued receipt. */
+    internal fun flushPending(deviceId: String, send: (JSONObject) -> Boolean) {
         val row = synchronized(RECEIPT_LOCK) { pending().firstOrNull()?.let { JSONObject(it.toString()) } }
             ?: return
         val id = row.optString("local_receipt_id")
@@ -75,8 +79,7 @@ class WorldContentCache(context: Context) {
         request.remove("local_receipt_id")
         var staleVersion = false
         val confirmed = try {
-            val reply = api.contentReceipt(request)
-            reply.optBoolean("ok", false)
+            send(request)
         } catch (e: IllegalStateException) {
             if (e.message?.contains("HTTP 409") != true) throw e
             staleVersion = true
