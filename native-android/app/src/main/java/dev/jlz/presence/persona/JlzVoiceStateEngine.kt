@@ -26,7 +26,7 @@ class JlzVoiceStateEngine(context: Context) {
     fun read(nowMs: Long = System.currentTimeMillis()): JlzVoiceSnapshot {
         val explicit = prefs.getString("official_mood", null)?.let { runCatching { JlzVoiceMood.valueOf(it) }.getOrNull() }
         val expiration = prefs.getLong("official_expiry_ms", 0L)
-        if (explicit != null && nowMs in 0 until expiration)
+        if (explicit != null && nowMs >= 0L && nowMs < expiration)
             return JlzVoiceSnapshot(explicit, prefs.getString("official_reason", "官端选择").orEmpty(),
                 "official_gpt", prefs.getLong("official_updated_at_ms", 0L), expiration)
         val local = prefs.getString("local_mood", "STEADY")?.let { runCatching { JlzVoiceMood.valueOf(it) }.getOrNull() }
