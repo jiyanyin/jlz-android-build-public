@@ -111,10 +111,12 @@ class LocationForegroundService : Service() {
             PendingTripStop.remember(applicationContext, it)
             // A killed FGS must never imply auto-resumed precision sharing.
             // Only a non-coordinate interruption receipt survives process death.
-            LocalLifeStore(applicationContext).recordTimeline(
-                "trip_interrupted", "同行意外中断",
-                "位置分享已结束。未确认上传的精确位置不在本地持久化，重新同行需你亲自开启。"
-            )
+            runCatching {
+                LocalLifeStore(applicationContext).recordTimeline(
+                    "trip_interrupted", "同行意外中断",
+                    "位置分享已结束。未确认上传的精确位置不在本地持久化，重新同行需你亲自开启。"
+                )
+            }
         }
         tripPreferences.edit().remove("points").remove("session_id")
             .putString("link_state", "interrupted_requires_new_consent").apply()
@@ -250,8 +252,8 @@ class LocationForegroundService : Service() {
                     .putInt("pending_points", (_trip.value.points.size - uploadedPoints).coerceAtLeast(0)).apply()
                 if (!reportedCapacityLimit && lastConnectionState != "online_confirmed") {
                     lastConnectionState = "online_confirmed"
-                    getSystemService(NotificationManager::class.java)?.notify(
-                        NOTIF_ID, buildNotification("同行连接正常，定位正在同步"))
+                    runCatching { getSystemService(NotificationManager::class.java)?.notify(
+                        NOTIF_ID, buildNotification("同行连接正常，定位正在同步")) }
                 }
             } catch (_: Exception) {
                 remoteStarted = false // retry authenticated start for this SAME session, never new consent
@@ -260,8 +262,8 @@ class LocationForegroundService : Service() {
                     .putInt("pending_points", (_trip.value.points.size - uploadedPoints).coerceAtLeast(0)).apply()
                 if (lastConnectionState != "offline_retrying") {
                     lastConnectionState = "offline_retrying"
-                    getSystemService(NotificationManager::class.java)?.notify(
-                        NOTIF_ID, buildNotification("网络暂不可用，同行仍在本机暂存并等待补传"))
+                    runCatching { getSystemService(NotificationManager::class.java)?.notify(
+                        NOTIF_ID, buildNotification("网络暂不可用，同行仍在本机暂存并等待补传")) }
                 }
                 // Never call STOP after 40 seconds offline. Bounded in-memory
                 // buffer and visible state remain active until consent ends.
@@ -289,8 +291,8 @@ class LocationForegroundService : Service() {
                     "trip_capture_limit", "同行定位点数已到上限",
                     "本次2000点隐私容量已满，新位置未继续记录。结束本次同行后可以手动再开启。"
                 )
-                getSystemService(NotificationManager::class.java)?.notify(
-                    NOTIF_ID, buildNotification("定位点已达上限，结束这段同行后可重新开启"))
+                runCatching { getSystemService(NotificationManager::class.java)?.notify(
+                    NOTIF_ID, buildNotification("定位点已达上限，结束这段同行后可重新开启")) }
             }
             return
         }
