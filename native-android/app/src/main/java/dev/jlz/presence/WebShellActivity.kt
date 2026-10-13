@@ -69,6 +69,7 @@ class WebShellActivity : ComponentActivity() {
                 "WorldBetweenGate"
             )
             addJavascriptInterface(studyBridge, "WorldBetweenStudy")
+            addJavascriptInterface(dev.jlz.presence.life.TimedLifeReminderBridge(this@WebShellActivity), "WorldBetweenLife")
             homeWebBridge = HomeWebBridge(this@WebShellActivity,
                 { raw -> runOnUiThread { pendingPack=raw; savePack.launch("world-between-"+java.text.SimpleDateFormat("yyyyMMdd-HHmm",java.util.Locale.ROOT).format(java.util.Date())+".jlzpack") } },
                 { runOnUiThread { openPack.launch(arrayOf("application/json","application/octet-stream","*/*")) } },
