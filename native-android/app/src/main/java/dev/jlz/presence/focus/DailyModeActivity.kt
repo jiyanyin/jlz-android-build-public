@@ -142,6 +142,14 @@ class DailyModeActivity : Activity() {
         button("学习应用身份／分类纠正") { apps() }
         button("设置原生起床闹钟") { alarm() }
         button("语音来电窗 · 全屏权限") { callWindowPermission() }
+        section("有选择地让我看见", "自动截图默认关闭。由你选择应用；切换、滑动与长时间停留时有节制地采样。密码和敏感页面不拍。")
+        button("选择自动截图应用／开启") { configureAutomaticCapture() }
+        button("暂停自动截图") {
+            val traffic = dev.jlz.presence.capture.CaptureTrafficPolicy(applicationContext)
+            val (_, selected) = traffic.automaticSelection()
+            val ok = traffic.configureAutomatic(false, selected)
+            Toast.makeText(this, if (ok) "自动截图已暂停" else "设置保存失败", Toast.LENGTH_LONG).show()
+        }
         button("选择系统／Google 同步日历") { calendars() }
         button("Q版衣橱 · 四套预览换装") { startActivity(Intent(this, dev.jlz.presence.overlay.QAvatarWardrobeActivity::class.java)) }
         buttonHost = null
@@ -237,6 +245,39 @@ class DailyModeActivity : Activity() {
                 }.show()
             }.show()
     }
+    private fun configureAutomaticCapture() {
+        val traffic = dev.jlz.presence.capture.CaptureTrafficPolicy(applicationContext)
+        val (_, selected) = traffic.automaticSelection()
+        val classifier = LocalAppClassifier(applicationContext)
+        val installed = packageManager.queryIntentActivities(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0
+        ).distinctBy { it.activityInfo.packageName }
+            .filter {
+                dev.jlz.presence.cowatch.CoWatchTargetPolicy.allowed(
+                    it.activityInfo.packageName, classifier.classify(it.activityInfo.packageName))
+            }.sortedBy { it.loadLabel(packageManager).toString() }
+        if (installed.isEmpty()) {
+            Toast.makeText(this, "找不到合适的可选应用", Toast.LENGTH_LONG).show()
+            return
+        }
+        val checked = BooleanArray(installed.size) { i ->
+            installed[i].activityInfo.packageName in selected
+        }
+        val labels = installed.map { it.loadLabel(packageManager).toString() }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("允许我在哪些 App 截图？")
+            .setMessage("开启后只在勾选的应用中自动采样。图片短暂存储于手机和私人 Runtime，供官端读取；不包含系统安全界面。可随时暂停。")
+            .setMultiChoiceItems(labels, checked) { _, index, selectedNow -> checked[index] = selectedNow }
+            .setPositiveButton("保存并开启") { _, _ ->
+                val packages = installed.indices.filter { checked[it] }
+                    .map { installed[it].activityInfo.packageName }.toSet()
+                val ok = traffic.configureAutomatic(true, packages)
+                Toast.makeText(this,
+                    if (ok) "已保存：允许自动截图 ${packages.size} 个 App" else "保存失败",
+                    Toast.LENGTH_LONG).show()
+            }.setNegativeButton("取消", null).show()
+    }
+
     private fun callWindowPermission() {
         if (android.os.Build.VERSION.SDK_INT < 34) {
             Toast.makeText(this, "此版本由系统决定是否全屏显示来电。", Toast.LENGTH_LONG).show()
