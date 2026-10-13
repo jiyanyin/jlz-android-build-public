@@ -91,6 +91,11 @@ export const runtime = {
   health: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, "/api/web/health"),
   state: (cfg: RuntimeConfig) => request<Record<string, unknown>>(cfg, `/api/web/state?${q}`),
   messages: (cfg: RuntimeConfig, limit = 80) => request<unknown>(cfg, `/api/web/messages?${q}&limit=${limit}`),
+  nextHourEcho: (cfg: RuntimeConfig) => request<{
+    ok:boolean;scheduled:number;notifications:number;
+    next_execute_at_ms:number|null;semantics:string;
+    slots:{id:string;execute_at_ms:number;device_id:string;notify:boolean}[];
+  }>(cfg,`/api/web/presence-queue?${q}`),
   messagesForDay: (cfg: RuntimeConfig, date: string, beforeId = "", limit = 100) =>
     request<{ ok: boolean; date: string; messages: unknown[]; has_more: boolean; next_before_id: string }>(
       cfg, `/api/web/messages?${q}&date=${encodeURIComponent(date)}&limit=${limit}&before_id=${encodeURIComponent(beforeId)}`),
