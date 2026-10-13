@@ -151,6 +151,10 @@ class PresenceNotificationListenerService :
                 HuaweiHealthNotificationReading.stepsIfShown(sbn.packageName, rawTitle, rawBody)
             } else null
             if (isHealth) {
+                if (stepCount != null) {
+                    dev.jlz.presence.life.HuaweiHealthObservationStore(appContext)
+                        .recordNotificationSteps(stepCount, System.currentTimeMillis())
+                }
                 val kcal = HuaweiHealthNotificationReading.caloriesIfShown(
                     sbn.packageName, rawTitle, rawBody
                 )
