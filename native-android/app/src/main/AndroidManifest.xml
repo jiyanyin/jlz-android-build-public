@@ -125,6 +125,7 @@
             <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
         </service>
         <receiver android:name=".notification.NotificationReplyReceiver" android:exported="false" />
+        <receiver android:name=".life.DailyHealthCheckReceiver" android:exported="false" />
         <receiver android:name=".runtime.PresenceBootReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
