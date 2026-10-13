@@ -52,6 +52,51 @@ class HuaweiHealthObservationTest {
         assertEquals(LocalDateTime.of(2026,10,14,8,5).atZone(zone).toInstant().toEpochMilli(), next)
     }
 
+    @Test fun onlyExplicitPriorNightDateCanVerifySleep() {
+        val now = LocalDateTime.of(2026,10,13,8,7)
+            .atZone(ZoneId.of("Asia/Shanghai")).toInstant().toEpochMilli()
+        val store = HuaweiHealthObservationStore(context)
+        assertTrue(store.recordVisibleHuaweiPage("昨晚睡眠 7小时32分钟", now))
+        assertFalse(store.snapshot(now).getBoolean("sleep_date_verified"))
+        assertEquals("sleep_visible_date_unverified",
+            store.snapshot(now).getString("sleep_parse_status"))
+
+        assertTrue(store.recordVisibleHuaweiPage(
+            "总睡眠：7小时32分钟 入睡日期：2026年10月12日", now))
+        assertTrue(store.snapshot(now).getBoolean("sleep_date_verified"))
+        assertEquals(452, store.snapshot(now).getInt("sleep_minutes"))
+        assertEquals("explicit_prior_night_date_on_visible_page",
+            store.snapshot(now).getString("sleep_date_semantics"))
+        assertTrue(store.snapshot(now + 23L * 60 * 60_000L).isNull("sleep_minutes"))
+    }
+
+    @Test fun mismatchedOrNapDateCannotBeLabeledLastNight() {
+        val now = LocalDateTime.of(2026,10,13,8,7)
+            .atZone(ZoneId.of("Asia/Shanghai")).toInstant().toEpochMilli()
+        val store = HuaweiHealthObservationStore(context)
+        assertFalse(store.recordVisibleHuaweiPage(
+            "总睡眠 8小时20分钟 入睡日期：2026年10月11日", now))
+        assertTrue(store.snapshot(now).isNull("sleep_minutes"))
+        assertEquals("visible_page_wrong_date", store.mostRecentParseStatus())
+
+        assertTrue(store.recordVisibleHuaweiPage(
+            "总睡眠 1小时 起床日期：2026-10-13", now))
+        assertFalse(store.snapshot(now).getBoolean("sleep_date_verified"))
+        assertEquals(HuaweiSleepDateEvidence.Result.MISMATCH,
+            HuaweiSleepDateEvidence.check("昨晚睡眠 7小时30分钟 起床日期：2026-10-12", now))
+    }
+
+    @Test fun morningStatusNeverPretendsTheHealthAppWasOpened() {
+        val store = HuaweiHealthObservationStore(context)
+        store.markMorningAttempt()
+        assertEquals("checking_visible_sources", store.snapshot().getString("morning_check_result"))
+        store.markMorningResult("huawei_page_not_visible")
+        val snap = store.snapshot()
+        assertEquals("huawei_page_not_visible", snap.getString("morning_check_result"))
+        assertTrue(snap.isNull("sleep_minutes"))
+        assertFalse(snap.getBoolean("sleep_date_verified"))
+    }
+
     @Test fun batteryAndEntertainmentThresholdsUseBounds() {
         assertEquals(0, LocalLifeReminderPolicy.batteryBand(41))
         assertEquals(40, LocalLifeReminderPolicy.batteryBand(40))
