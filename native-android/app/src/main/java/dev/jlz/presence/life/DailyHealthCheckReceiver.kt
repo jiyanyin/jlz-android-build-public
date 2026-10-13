@@ -64,12 +64,23 @@ class DailyHealthCheckReceiver : BroadcastReceiver() {
                     // Check already visible Health notification and UI only.
                     // The sleep field remains unavailable unless actual Huawei
                     // sleep text is visible to the authorized accessibility reader.
-                    dev.jlz.presence.notification.PresenceNotificationListenerService.rescanActive()
+                    val scanned = runCatching {
+                        dev.jlz.presence.notification.PresenceNotificationListenerService.rescanActive()
+                    }.isSuccess
                     val visible = dev.jlz.presence.screen.ScreenObservationBus.observations.value
-                    if (visible?.packageName == "com.huawei.health" &&
-                        System.currentTimeMillis() - visible.observedAtMs in 0..60_000L) {
-                        store.recordVisibleHuaweiPage(visible.visibleText, visible.observedAtMs)
+                    val activeHuaweiPage = visible?.packageName == "com.huawei.health" &&
+                        System.currentTimeMillis() - visible.observedAtMs in 0..60_000L
+                    val result = when {
+                        activeHuaweiPage -> {
+                            // The page is visible under an already authorized observer.
+                            // Do not assert "last night" without a labelled date.
+                            store.recordVisibleHuaweiPage(visible!!.visibleText, visible.observedAtMs)
+                            store.mostRecentParseStatus()
+                        }
+                        !scanned -> "visible_source_check_failed"
+                        else -> "huawei_page_not_visible"
                     }
+                    store.markMorningResult(result)
                 } else {
                     LocalLifeReminderEngine(app).eveningSteps()
                 }
