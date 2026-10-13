@@ -24,6 +24,7 @@ class PresenceBootReceiver : BroadcastReceiver() {
                 val tripCache = app.getSharedPreferences("jlz_manual_trip_cache", Context.MODE_PRIVATE)
                 tripCache.getString("session_id", null)?.let { dev.jlz.presence.trip.PendingTripStop.remember(app, it) }
                 tripCache.edit().remove("points").remove("session_id").apply()
+                dev.jlz.presence.life.DailyHealthSchedule.scheduleAll(app)
                 val prefs = PresenceDevicePreferencesRepository(app).load()
                 val settings = RuntimeSettingsRepository(app).load()
                 val focus = dev.jlz.presence.focus.FocusRepository(app)
