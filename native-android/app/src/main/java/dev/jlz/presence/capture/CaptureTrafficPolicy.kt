@@ -32,6 +32,23 @@ class CaptureTrafficPolicy(context: Context) {
         check(edit.commit()) { "traffic_ledger_not_saved" }
     }
 
+    /** Visible user opt-in only, not silently enabled by an hourly wakeup. */
+    fun configureAutomatic(enabled: Boolean, packages: Set<String>): Boolean = synchronized(LOCK) {
+        val safePackages = packages.filter { pkg ->
+            pkg.isNotBlank() && pkg != "com.openai.chatgpt" &&
+            !pkg.startsWith("com.android.") && !pkg.startsWith("com.google.android.") &&
+            !pkg.contains("bank", ignoreCase = true) &&
+            pkg !in setOf("com.tencent.mm", "com.eg.android.AlipayGphone")
+        }.toSet()
+        prefs.edit().putBoolean("automatic_enabled", enabled && safePackages.isNotEmpty())
+            .putStringSet("automatic_packages", safePackages).commit()
+    }
+
+    fun automaticSelection(): Pair<Boolean, Set<String>> = synchronized(LOCK) {
+        prefs.getBoolean("automatic_enabled", false) to
+            prefs.getStringSet("automatic_packages", emptySet()).orEmpty().toSet()
+    }
+
     fun enabledFor(pkg: String): Boolean = synchronized(LOCK) {
         prefs.getBoolean("automatic_enabled", false) &&
             prefs.getStringSet("automatic_packages", emptySet()).orEmpty().contains(pkg) &&
@@ -40,7 +57,7 @@ class CaptureTrafficPolicy(context: Context) {
 
     fun canCapture(pkg: String, now: Long = System.currentTimeMillis()): Boolean = synchronized(LOCK) {
         roll(now)
-        enabledFor(pkg) && prefs.getLong("auto_count_today", 0) < DAILY_COUNT &&
+        enabledFor(pkg) &&
             prefs.getLong("auto_bytes_today", 0) < DAILY_BYTES &&
             prefs.getLong("auto_bytes_month", 0) < MONTHLY_BYTES &&
             prefs.getLong("screenshot_bytes_month", 0) < MONTHLY_SCREENSHOT_WARNING &&
@@ -91,7 +108,8 @@ class CaptureTrafficPolicy(context: Context) {
     fun snapshot(): JSONObject = synchronized(LOCK) {
         roll(System.currentTimeMillis())
         JSONObject().put("source", "android_http_body_bytes").put("excludes", "TLS/headers,Runtime-Storage,MCP-client")
-            .put("automatic_default", false).put("automatic_daily_count_limit", DAILY_COUNT)
+            .put("automatic_default", false).put("automatic_daily_count_limit", JSONObject.NULL)
+            .put("automatic_count_semantics", "no_hourly_or_daily_frame_count_cap;bounded_by_bytes_and_dedupe")
             .put("automatic_daily_byte_limit", DAILY_BYTES).put("automatic_monthly_byte_limit", MONTHLY_BYTES)
             .also { json -> for (name in listOf("upload_bytes", "download_bytes", "screenshot_bytes", "auto_bytes")) {
                 for (period in listOf("today", "month")) json.put("${name}_$period", prefs.getLong("${name}_$period", 0))
@@ -100,12 +118,11 @@ class CaptureTrafficPolicy(context: Context) {
 
     companion object {
         private val LOCK = Any()
-        const val DAILY_COUNT = 24L
-        const val DAILY_BYTES = 6L * 1024 * 1024
-        const val MONTHLY_BYTES = 120L * 1024 * 1024
-        const val MONTHLY_SCREENSHOT_WARNING = 300L * 1024 * 1024
-        // Allow an opt-in 5-minute follow-up after the 30-second capture.
-        // Retain the explicit package allowlist and total daily/byte budgets.
-        const val COOLDOWN_MS = 4L * 60 * 1000
+        // No hourly or daily frame-count cap. Durable local byte budgets,
+        // per-app cooldown, pixel dedupe and bounded outbox still protect phone.
+        const val DAILY_BYTES = 48L * 1024 * 1024
+        const val MONTHLY_BYTES = 768L * 1024 * 1024
+        const val MONTHLY_SCREENSHOT_WARNING = 1024L * 1024 * 1024
+        const val COOLDOWN_MS = 18_000L
     }
 }
