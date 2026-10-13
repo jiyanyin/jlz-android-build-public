@@ -22,6 +22,9 @@ object LocalLifeReminderPolicy {
         percent in 21..40 -> 40
         else -> 0
     }
+    fun shouldWarnBattery(band: Int, lowestNotified: Int): Boolean =
+        band != 0 && (lowestNotified == 0 || band < lowestNotified)
+
     fun entertainmentStage(minutes: Long): Int = when {
         minutes >= 45 -> 45
         minutes >= 30 -> 30
@@ -122,7 +125,7 @@ class LocalLifeReminderEngine(context: Context) {
 
         val band = LocalLifeReminderPolicy.batteryBand(percent)
         val alreadyWarned = prefs.getInt("battery_lowest_band", 0)
-        if (band == 0 || (alreadyWarned != 0 && band >= alreadyWarned)) return
+        if (!LocalLifeReminderPolicy.shouldWarnBattery(band, alreadyWarned)) return
         val name = if (band == 40) "电量提醒" else "低电量"
         if (emitOnce("battery$band", name,
                 scope = "discharge:${prefs.getInt("battery_cycle", 0)}")) {
