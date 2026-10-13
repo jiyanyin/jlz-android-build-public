@@ -82,6 +82,7 @@ class NativeRuntimeService : Service() {
     private lateinit var activityOutbox: PendingActivityEventStore
     private lateinit var deviceSystem: DeviceSystemController
     private lateinit var localLifeReminders: dev.jlz.presence.life.LocalLifeReminderEngine
+    private lateinit var sensorMonitor: dev.jlz.presence.life.LocalLifeSensorMonitor
     private var lifeTickJob: Job? = null
 
     private val deviceEventReceiver = object : BroadcastReceiver() {
@@ -105,6 +106,9 @@ class NativeRuntimeService : Service() {
                 )
                 if (::localLifeReminders.isInitialized && type in setOf("SCREEN_ON", "SCREEN_OFF")) {
                     localLifeReminders.screen(type == "SCREEN_ON")
+                    if (::sensorMonitor.isInitialized) {
+                        if (type == "SCREEN_ON") sensorMonitor.start() else sensorMonitor.stop()
+                    }
                 }
             }
         }
@@ -132,6 +136,8 @@ class NativeRuntimeService : Service() {
         activityOutbox = PendingActivityEventStore(applicationContext)
         deviceSystem = DeviceSystemController(applicationContext)
         localLifeReminders = dev.jlz.presence.life.LocalLifeReminderEngine(applicationContext)
+        sensorMonitor = dev.jlz.presence.life.LocalLifeSensorMonitor(applicationContext)
+        sensorMonitor.start()
         dev.jlz.presence.life.DailyHealthSchedule.scheduleAll(applicationContext)
         val eventFilter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
@@ -171,6 +177,7 @@ class NativeRuntimeService : Service() {
         lifeTickJob = scope.launch {
             while (isActive) {
                 runCatching { localLifeReminders.tick(focusRepository.current().modeNow()) }
+                runCatching { if (localLifeReminders.enabled()) sensorMonitor.start() else sensorMonitor.stop() }
                 delay(60_000L)
             }
         }
@@ -181,6 +188,7 @@ class NativeRuntimeService : Service() {
         commandJob?.cancel()
         planJob?.cancel()
         lifeTickJob?.cancel()
+        sensorMonitor.stop()
         scope.cancel()
         runCatching { unregisterReceiver(deviceEventReceiver) }
         runCatching {

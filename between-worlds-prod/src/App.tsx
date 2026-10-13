@@ -1218,13 +1218,24 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask }: { o
   </section>;
 }
 
+const timelineNames: Record<string,string> = {
+  between_status:"我们此刻", user_timeline:"老婆的日常",
+  jlz_observation:"我看见的事", jlz_note:"我写下的话",
+  jlz_state:"我的心情", night_letter:"写给老婆的夜信",
+  life_log:"生活片段", correction:"我们修正的记录",
+  study:"学习片段", status:"最近的心情",
+  trip_movement:"一起走过的路"
+};
+const timelineName = (type: string) => timelineNames[type] || (type.includes("_") ? "我们记下的事" : type);
+const timelineBody = (text: string) => text.replace(/用户/g,"老婆");
+
 function TimelinePage({ notes, remote }: { notes: RecordItem[]; remote: RemoteRecord[] }) {
   const remoteIds = new Set(remote.map((r) => r.id));
   const items = [
     ...remote.map((r) => ({ key: `r-${r.id}`, type: r.type, body: r.body, at: r.at, label: r.provenance === "correction" ? "纠正" : r.type === "jlz_observation" ? "我看见的事" : r.actor === "jlz" ? "纪临洲" : "老婆的记录" })),
     ...notes.filter((n) => !n.event_id || !remoteIds.has(n.event_id)).map((n) => ({ key: `l-${n.id}`, type: n.type, body: n.body, at: n.at, label: syncLabel(n.sync) })),
   ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-  return <section className="page active"><PageHead kicker="OUR LITTLE HISTORY" title="你我之间" en="Timeline" copy="主动记录会在这里长成一条时间线" /><div className="timeline">{items.length ? items.map((x) => <article className="timeline-entry" key={x.key}><b>{x.type}</b><p>{x.body}</p><time>{new Date(x.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · {x.label}</time></article>) : <div className="preview-tip">还没有记录。去首页留第一条吧。</div>}</div></section>;
+  return <section className="page active"><PageHead kicker="OUR LITTLE HISTORY" title="你我之间" en="Timeline" copy="主动记录会在这里长成一条时间线" /><div className="timeline">{items.length ? items.map((x) => <article className="timeline-entry" key={x.key}><b>{timelineName(x.type)}</b><p>{timelineBody(x.body)}</p><time>{new Date(x.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · {x.label}</time></article>) : <div className="preview-tip">还没有记录。去首页留第一条吧。</div>}</div></section>;
 }
 function RoomPage({ records, teaser, portrait }: { records: RemoteRecord[]; teaser?: string; portrait: string }) {
   const groups = [
