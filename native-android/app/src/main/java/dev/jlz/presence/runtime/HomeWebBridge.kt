@@ -74,6 +74,10 @@ class HomeWebBridge(private val context: Context, private val save: (String)->Un
             .put("gate",JSONObject().put("enabled",EntertainmentGateRepository(context).enabled()))
             .put("bridge",BridgeStore(context).diagnostics()).toString()
     }
+    /** Non-secret local ack diagnostics: server_current != rendered != ACKed. */
+    @JavascriptInterface fun contentReceiptStatus(): String =
+        WorldContentCache(context).receiptDiagnostics().toString()
+
     @JavascriptInterface fun voiceState(): String {
         val s=dev.jlz.presence.persona.JlzVoiceStateEngine(context).read()
         return JSONObject().put("mood",s.mood.name).put("reason",s.reason)
