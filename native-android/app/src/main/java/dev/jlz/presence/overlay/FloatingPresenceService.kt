@@ -543,7 +543,9 @@ class FloatingPresenceService : Service() {
             QAvatarState.NIGHT -> "night"
             QAvatarState.BREAK -> "break"
             QAvatarState.OFFLINE -> "offline"
-            else -> if (suspended) "hidden" else if (hour >= 22 || hour < 6) "sleepy" else "idle"
+            else -> if (suspended) "hidden" else if (hour >= 22 || hour < 6) "sleepy"
+                else QAvatarVoicePresentation.idleSpriteMood(
+                    dev.jlz.presence.persona.JlzVoiceStateEngine(applicationContext).read().mood)
         }
         avatar?.setMood(mood)
     }
