@@ -25,7 +25,7 @@ class CoWatchActivity : Activity() {
         super.onCreate(savedInstanceState)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(36, 60, 36, 36); setBackgroundColor(0xFFF5F3F8.toInt()) }
         root.addView(TextView(this).apply { text = "视频通话"; textSize = 24f })
-        root.addView(TextView(this).apply { text = "5／10分钟屏幕陪看\n这是每20秒一张的屏幕采样，不是摄像头或双向实时视频。GPT需要主动读取才看见。\n仅分享你本次选择的游戏或 B 站；锁屏、输入框与检测到的敏感页面会暂停采样。游戏或视频内嵌隐私画面不能保证全部识别，请先退出聊天和支付页面；可随时挂断。断线即停止，最多30张，只暂存最新一帧。"; textSize = 13f; setPadding(0, 20, 0, 24) })
+        root.addView(TextView(this).apply { text = "5／10分钟屏幕陪看\n这是约每5秒一张的屏幕采样，不是摄像头或双向实时视频。GPT需要主动读取才看见。\n只分享本次选定的应用，包括小红书等内容应用；锁屏、输入框与检测到的敏感页面会暂停采样。部分内嵌隐私画面无法完整识别，请避开聊天、支付及身份信息；可随时挂断。最长10分钟，最多120次采样，仅暂存最近90秒有限画面，挂断立即清除。"; textSize = 13f; setPadding(0, 20, 0, 24) })
         status = TextView(this).apply { textSize = 13f }; root.addView(status)
         for (m in listOf(5, 10)) root.addView(Button(this).apply { text = "开始 $m 分钟"; textSize = 13f; setOnClickListener { minutes = m; chooseTarget() } })
         root.addView(Button(this).apply { text = "挂断"; setOnClickListener { stopService(Intent(this@CoWatchActivity, CoWatchService::class.java)); CoWatchState.active = false } })
@@ -37,7 +37,13 @@ class CoWatchActivity : Activity() {
         if (!dev.jlz.presence.screen.ScreenObservationBus.isAvailable()) { Toast.makeText(this, "需要连接无障碍来避让隐私页面；请先检查权限", Toast.LENGTH_LONG).show(); return }
         val classifier = LocalAppClassifier(this)
         val apps = packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)
-            .distinctBy { it.activityInfo.packageName }.filter { it.activityInfo.packageName == "tv.danmaku.bili" || classifier.classify(it.activityInfo.packageName) == LocalAppCategory.GAME }
+            .distinctBy { it.activityInfo.packageName }
+            .filter { CoWatchTargetPolicy.allowed(it.activityInfo.packageName, classifier.classify(it.activityInfo.packageName)) }
+            .sortedBy { it.loadLabel(packageManager).toString() }
+        if (apps.isEmpty()) {
+            Toast.makeText(this, "没有适合屏幕陪看的应用；请先检查安装和无障碍权限。", Toast.LENGTH_LONG).show()
+            return
+        }
         AlertDialog.Builder(this).setTitle("只分享本次选定应用")
             .setItems(apps.map { it.loadLabel(packageManager).toString() }.toTypedArray()) { _, i ->
                 target = apps[i].activityInfo.packageName

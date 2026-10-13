@@ -60,7 +60,14 @@ class CoWatchService : Service() {
         val minutes = intent?.getIntExtra("minutes", 0) ?: 0
         val target = intent?.getStringExtra("target").orEmpty()
         @Suppress("DEPRECATION") val consent = intent?.getParcelableExtra<Intent>("consent")
-        if (minutes !in listOf(5, 10) || target.isBlank() || consent == null || intent?.getIntExtra("result", 0) != Activity.RESULT_OK) { stopSelf(); return START_NOT_STICKY }
+        val targetCategory = dev.jlz.presence.focus.LocalAppClassifier(applicationContext).classify(target)
+        if (minutes !in listOf(5, 10) ||
+            !CoWatchTargetPolicy.allowed(target, targetCategory) ||
+            consent == null || intent?.getIntExtra("result", 0) != Activity.RESULT_OK) {
+            CoWatchState.reason = "屏幕陪看未获有效应用及系统许可；没有采集"
+            stopSelf()
+            return START_NOT_STICKY
+        }
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel("jlz_cowatch_v1", "主动屏幕陪看", NotificationManager.IMPORTANCE_LOW))
         startForeground(4555, notification())
@@ -91,7 +98,7 @@ class CoWatchService : Service() {
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader!!.surface, null, null)
                 CoWatchState.active = true; CoWatchState.sessionId = sid
                 CoWatchState.uploaded = 0; CoWatchState.expiresAt = System.currentTimeMillis() + minutes * 60_000L
-                CoWatchState.reason = "仅采样选定应用；切去其他页面暂停采样，GPT未自动读取"
+                CoWatchState.reason = "约5秒一帧，仅限选定应用；切出或敏感页暂停。GPT需通过MCP按帧读取。"
                 while (isActive && System.currentTimeMillis() < CoWatchState.expiresAt) {
                     check(connectivity.activeNetwork != null) { "网络已断开" }
                     if (safe(target)) {
@@ -110,7 +117,7 @@ class CoWatchService : Service() {
                         }
                     } else CoWatchState.reason = "非授权应用／隐私页面，暂停采样"
                     manager.notify(4555, notification())
-                    delay(20_000L)
+                    delay(5_000L)
                 }
                 CoWatchState.reason = "时限已到，已停止共享"
             } catch (error: Exception) {
