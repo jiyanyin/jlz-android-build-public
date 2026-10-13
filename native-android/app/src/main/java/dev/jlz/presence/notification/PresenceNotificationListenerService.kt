@@ -85,6 +85,13 @@ class PresenceNotificationListenerService :
                 NotificationSourceRepository(appContext)
 
             sources.noteSeen(sbn.packageName)
+            // Huawei steps are a local health observation, not a request to
+            // forward all Huawei notifications or other app data to Runtime.
+            if (HuaweiHealthNotificationReading.isHuaweiHealth(sbn.packageName)) {
+                HuaweiHealthNotificationReading.stepsIfShown(sbn.packageName, rawTitle, rawBody)
+                    ?.let { dev.jlz.presence.life.HuaweiHealthObservationStore(appContext)
+                        .recordNotificationSteps(it, System.currentTimeMillis()) }
+            }
             if (!sources.isAllowed(sbn.packageName)) {
                 return@launch
             }
