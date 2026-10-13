@@ -3,7 +3,7 @@ import { NativeCalendarPanel } from "./NativeCalendarPanel";
 import { NotificationDynamicsPanel } from "./NotificationDynamicsPanel";
 import { TripMapPanel } from "./TripMapPanel";
 import { DEFAULT_RUNTIME_URL, extractMessages, extractRecords, newEventId, runtime, RuntimeError, type OutboxItem, type RemoteMessage, type RemoteRecord, type RuntimeConfig, type WritePath } from "./lib/runtime";
-import { EMPTY_VOICE_MEMORY, formatVoiceClock, formatVoiceDate, selectVoiceCard, type VoiceMemory, type VoiceStatus } from "./lib/voiceEngine";
+import { EMPTY_VOICE_MEMORY, formatVoiceClock, formatVoiceDate, selectVoiceCard, type VoiceMemory, type VoiceStatus, type VoiceInput } from "./lib/voiceEngine";
 import { emptyDailyPlan, optimisticTaskMutation, planSections, taskDetailText, TASK_CATEGORIES, type DailyPlan, type DailyTask } from "./lib/dailyPlan";
 import { emptyStudySummary, formatStudyClock, formatStudyMinutes, liveStudyTotals, studyDeviceLabel, type StudySummary } from "./lib/studySession";
 import { appHubActions, appHubCategories, appHubHomeItems, emptyAppHubSnapshot, readNativeAppHub, type AppHubItem, type AppHubSnapshot } from "./lib/appHub";
@@ -490,6 +490,24 @@ export default function BetweenWorlds() {
 
   const savedText = (what: string) => (conn === "online" ? `${what}已存本机，正在同步给纪临洲` : `${what}已存本机，连接后自动同步`);
 
+  const [nativeMood, setNativeMood] = useState<VoiceInput["nativeMood"]>(null);
+  useEffect(() => {
+    if (!loaded) return;
+    const load = () => {
+      const bridge = homeBridge();
+      if (!bridge?.voiceState) { setNativeMood(null); return; }
+      try {
+        const response = JSON.parse(bridge.voiceState()) as {mood?: string};
+        const moods = ["STEADY","FOCUSED","CONCERNED","LONGING","QUIET","PROUD"] as const;
+        const found = moods.find(m => m === response.mood);
+        setNativeMood(found ?? null);
+      } catch { setNativeMood(null); }
+    };
+    load();
+    const ticker = window.setInterval(load, 30_000);
+    return () => window.clearInterval(ticker);
+  }, [loaded]);
+
   const voiceStatus: VoiceStatus | null = state.status ? {
     at: state.status.at,
     axes: state.status.axes && typeof state.status.axes === "object" ? state.status.axes as Record<string, number> : undefined,
@@ -499,6 +517,7 @@ export default function BetweenWorlds() {
     now: now ?? new Date(),
     activeLife: state.activeLife,
     status: voiceStatus,
+    nativeMood,
   }, state.voiceMemory);
   useEffect(() => {
     if (!loaded || !now || voiceCard.nextMemory === state.voiceMemory) return;
