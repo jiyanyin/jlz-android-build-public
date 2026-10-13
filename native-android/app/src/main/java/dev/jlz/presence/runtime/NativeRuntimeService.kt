@@ -380,6 +380,15 @@ class NativeRuntimeService : Service() {
                     .put("recent_screen_events_truncated", screenHistory.optString("next_cursor").isNotBlank())
                 usageJson.put("daily_mode", focusRepository.current().modeNow().name)
                     .put("notification_listener_connected", dev.jlz.presence.notification.PresenceNotificationListenerService.isConnected())
+                val voiceEngine = dev.jlz.presence.persona.JlzVoiceStateEngine(applicationContext)
+                val observedVoice = voiceEngine.observe(focusRepository.current().modeNow(),
+                    entertainmentMinutes = null, focusMinutes = null)
+                usageJson.put("jlz_voice_state", JSONObject()
+                    .put("mood", observedVoice.mood.name)
+                    .put("reason", observedVoice.reason)
+                    .put("source", observedVoice.source)
+                    .put("updated_at_ms", observedVoice.updatedAtMs)
+                    .put("expires_at_ms", observedVoice.expiresAtMs))
                 // V2: Health Connect telemetry removed by product decision.
                 api.postDeviceState(
                     DeviceStateSnapshot(
@@ -1001,6 +1010,42 @@ class NativeRuntimeService : Service() {
             }
 
             "get_persona_state" -> true to "persona_state_local"
+
+            "get_voice_state" -> {
+                val current = dev.jlz.presence.persona.JlzVoiceStateEngine(applicationContext).read()
+                true to JSONObject().put("mood", current.mood.name)
+                    .put("reason", current.reason).put("source", current.source)
+                    .put("updated_at_ms", current.updatedAtMs)
+                    .put("expires_at_ms", current.expiresAtMs)
+                    .put("source_semantics", "official_state_or_android_mode_observation")
+                    .toString()
+            }
+
+            "set_voice_state" -> {
+                val mood = runCatching {
+                    dev.jlz.presence.persona.JlzVoiceMood.valueOf(
+                        command.payload.optString("mood").uppercase())
+                }.getOrNull()
+                val reason = command.payload.optString("reason")
+                val duration = command.payload.optInt("duration_minutes", 180)
+                val intentId = command.payload.optString("intent_id").ifBlank { command.id }
+                if (mood == null || reason.isBlank() || duration !in 5..1440) {
+                    false to "invalid_voice_state_request"
+                } else {
+                    runCatching {
+                        val result = dev.jlz.presence.persona.JlzVoiceStateEngine(applicationContext)
+                            .setOfficial(mood, reason, duration, intentId)
+                        true to JSONObject().put("mood", result.mood.name)
+                            .put("source", result.source)
+                            .put("reason", result.reason)
+                            .put("expires_at_ms", result.expiresAtMs)
+                            .put("verified_at_ms", System.currentTimeMillis())
+                            .toString()
+                    }.getOrElse { false to (it.message ?: "voice_state_failed") }
+                }
+            }
+
+
 
             "set_study_config" -> {
                 val packages = mutableSetOf<String>()
