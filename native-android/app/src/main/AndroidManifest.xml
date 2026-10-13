@@ -34,6 +34,7 @@
         android:icon="@drawable/world_between_app_icon" android:roundIcon="@drawable/world_between_app_icon" android:usesCleartextTraffic="false">
         <meta-data android:name="asset_statements" android:resource="@string/asset_statements" />
         <activity android:name=".focus.DailyModeActivity" android:exported="false" />
+        <activity android:name=".life.DailyEntertainmentRestActivity" android:exported="false" />
         <activity android:name=".overlay.QAvatarWardrobeActivity" android:exported="false" />
         <activity android:name=".cowatch.CoWatchActivity" android:exported="false" />
         <activity android:name=".focus.FocusGateActivity" android:exported="false" android:excludeFromRecents="true" />
@@ -125,6 +126,7 @@
             <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
         </service>
         <receiver android:name=".notification.NotificationReplyReceiver" android:exported="false" />
+        <receiver android:name=".life.DailyHealthCheckReceiver" android:exported="false" />
         <receiver android:name=".runtime.PresenceBootReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

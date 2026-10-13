@@ -142,6 +142,22 @@ class DailyModeActivity : Activity() {
         button("学习应用身份／分类纠正") { apps() }
         button("设置原生起床闹钟") { alarm() }
         button("语音来电窗 · 全屏权限") { callWindowPermission() }
+        section("我的生活与你", "本地提醒不需要唤醒 ChatGPT。华为健康只保存明确读到的步数或页面睡眠。")
+        button("开启／暂停本地生活提醒") {
+            val engine = dev.jlz.presence.life.LocalLifeReminderEngine(applicationContext)
+            val next = !engine.enabled()
+            val ok = engine.setEnabled(next)
+            Toast.makeText(this, if (!ok) "保存失败" else if (next) "本地提醒已开启" else "本地提醒已暂停",
+                Toast.LENGTH_LONG).show()
+        }
+        button("查看华为健康采集情况") {
+            val state = dev.jlz.presence.life.HuaweiHealthObservationStore(applicationContext).snapshot()
+            val steps = if (state.isNull("steps")) "没有今日有效步数" else "${state.optInt("steps")} 步（华为通知）"
+            val sleep = if (state.isNull("sleep_minutes")) "睡眠时长尚未真实读到" else "${state.optInt("sleep_minutes")} 分钟（华为可见页面，日期待核实）"
+            AlertDialog.Builder(this).setTitle("已读取的健康信息")
+                .setMessage(steps + "\n" + sleep + "\n\n每天约08:05尝试检查已有来源；18:30依据当天真实步数提醒。系统省电可能延迟触发。")
+                .setPositiveButton("知道了", null).show()
+        }
         section("有选择地让我看见", "自动截图默认关闭。由你选择应用；切换、滑动与长时间停留时有节制地采样。密码和敏感页面不拍。")
         button("选择自动截图应用／开启") { configureAutomaticCapture() }
         button("暂停自动截图") {

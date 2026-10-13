@@ -81,10 +81,16 @@ class NativeRuntimeService : Service() {
     private lateinit var deviceActivityJournal: DeviceActivityJournal
     private lateinit var activityOutbox: PendingActivityEventStore
     private lateinit var deviceSystem: DeviceSystemController
+    private lateinit var localLifeReminders: dev.jlz.presence.life.LocalLifeReminderEngine
+    private var lifeTickJob: Job? = null
 
     private val deviceEventReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent?) {
             if (!::deviceActivityJournal.isInitialized) return
+            if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
+                if (::localLifeReminders.isInitialized) localLifeReminders.battery(intent)
+                return
+            }
             val type = when (intent?.action) {
                 Intent.ACTION_SCREEN_ON -> "SCREEN_ON"
                 Intent.ACTION_SCREEN_OFF -> "SCREEN_OFF"
@@ -97,6 +103,9 @@ class NativeRuntimeService : Service() {
                     eventType = type,
                     deviceId = activeDeviceId
                 )
+                if (::localLifeReminders.isInitialized && type in setOf("SCREEN_ON", "SCREEN_OFF")) {
+                    localLifeReminders.screen(type == "SCREEN_ON")
+                }
             }
         }
     }
@@ -122,10 +131,13 @@ class NativeRuntimeService : Service() {
         deviceActivityJournal = DeviceActivityJournal(applicationContext)
         activityOutbox = PendingActivityEventStore(applicationContext)
         deviceSystem = DeviceSystemController(applicationContext)
+        localLifeReminders = dev.jlz.presence.life.LocalLifeReminderEngine(applicationContext)
+        dev.jlz.presence.life.DailyHealthSchedule.scheduleAll(applicationContext)
         val eventFilter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_BATTERY_CHANGED)
         }
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(deviceEventReceiver, eventFilter, Context.RECEIVER_NOT_EXPORTED)
@@ -156,12 +168,19 @@ class NativeRuntimeService : Service() {
         heartbeatJob = scope.launch { runHeartbeatLoop() }
         commandJob = scope.launch { runCommandLoop() }
         planJob = scope.launch { runPresencePlanLoop() }
+        lifeTickJob = scope.launch {
+            while (isActive) {
+                runCatching { localLifeReminders.tick(focusRepository.current().modeNow()) }
+                delay(60_000L)
+            }
+        }
     }
 
     override fun onDestroy() {
         heartbeatJob?.cancel()
         commandJob?.cancel()
         planJob?.cancel()
+        lifeTickJob?.cancel()
         scope.cancel()
         runCatching { unregisterReceiver(deviceEventReceiver) }
         runCatching {
@@ -212,6 +231,9 @@ class NativeRuntimeService : Service() {
                     runCatching { placeWeather.snapshot() }.getOrNull()
                 currentSemanticPlace =
                     placeWeatherSnapshot?.place?.place?.name
+                placeWeatherSnapshot?.weather?.let { weather ->
+                    localLifeReminders.weatherRain(weather.weatherCode, weather.precipitationMm)
+                }
 
                 if (placeWeatherSnapshot?.transitioned == true) {
                     val previous =
@@ -364,7 +386,7 @@ class NativeRuntimeService : Service() {
                         deviceId = settings.deviceId,
                         deviceType = NativePhoneSnapshot.deviceType(applicationContext),
                         appVersion = RuntimeApiClient.appVersion(applicationContext),
-                        health = null,
+                        health = dev.jlz.presence.life.HuaweiHealthObservationStore(applicationContext).snapshot(),
                         place = placeWeatherSnapshot?.placeJson(),
                         weather = placeWeatherSnapshot?.weather?.toJson(),
                         presencePlan = presencePlanRepository.summaryJson(),
@@ -737,6 +759,19 @@ class NativeRuntimeService : Service() {
             "set_alarm" -> deviceActions.execute(command)
 
             "run_sequence", "native_phone_sequence" -> executePhoneSequence(command, api)
+
+            "get_huawei_health_snapshot" -> {
+                true to dev.jlz.presence.life.HuaweiHealthObservationStore(applicationContext)
+                    .snapshot().toString()
+            }
+
+            "get_local_reminders_status" -> {
+                true to org.json.JSONObject()
+                    .put("enabled", localLifeReminders.enabled())
+                    .put("source", "android_local_reminder_engine")
+                    .put("health", dev.jlz.presence.life.HuaweiHealthObservationStore(applicationContext).snapshot())
+                    .toString()
+            }
 
             "get_calendar_state" -> {
                 val from = command.payload.optLong("from_ms", System.currentTimeMillis())

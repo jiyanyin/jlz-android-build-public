@@ -88,6 +88,9 @@ class LocationForegroundService : Service() {
     private val maxPoints = 2000
     private val maxAccuracyM = 60f
     private val minDisplacementM = 8f
+    private var lastMovementEventAtMs = 0L
+    private var lastMovementLat: Double? = null
+    private var lastMovementLng: Double? = null
 
     private val locationListener = object : LocationListener {
         override fun onLocationChanged(location: Location) = ingest(location)
@@ -166,6 +169,9 @@ class LocationForegroundService : Service() {
             startedAtMs = System.currentTimeMillis(), sessionId = UUID.randomUUID().toString())
         tripPreferences.edit().putString("session_id", _trip.value.sessionId).remove("points").apply()
         uploadedPoints = 0
+        lastMovementEventAtMs = 0L
+        lastMovementLat = null
+        lastMovementLng = null
         TripController.setActive(true)
         runCatching {
             // Coarse/fine, GPS + network; drift is filtered in ingest().
@@ -259,6 +265,42 @@ class LocationForegroundService : Service() {
         // Bounded raw buffer: oldest points are dropped (cleanup strategy).
         val merged = current.points + point
         _trip.value = current.copy(points = merged)
+        // Semantic home/office labels are irrelevant here: emit a coarsened
+        // movement event for every genuine opt-in GPS trail, while coordinates
+        // continue through the existing protected /trips API only.
+        val fromLat = lastMovementLat
+        val fromLng = lastMovementLng
+        if (fromLat == null || fromLng == null) {
+            lastMovementLat = point.lat
+            lastMovementLng = point.lng
+        } else {
+            val walked = FloatArray(1)
+            Location.distanceBetween(fromLat, fromLng, point.lat, point.lng, walked)
+            if (walked[0] >= 30f &&
+                point.timestampMs - lastMovementEventAtMs >= 60_000L) {
+                lastMovementLat = point.lat
+                lastMovementLng = point.lng
+                lastMovementEventAtMs = point.timestampMs
+                val metadata = JSONObject()
+                    .put("source", "user_opt_in_gps_trip")
+                    .put("accuracy_m", point.accuracy)
+                    .put("distance_since_prior_event_m", walked[0].toDouble())
+                    .put("observed_at_ms", point.timestampMs)
+                    .put("trip_session_id", current.sessionId)
+                    .put("coordinates_in_event", false)
+                val id = UUID.randomUUID().toString()
+                LocalLifeStore(applicationContext).recordTimeline(
+                    "trip_movement", "我和老婆正在移动",
+                    "移动约${walked[0].toInt()}米", id=id,
+                    createdAtMs=point.timestampMs, metadataJson=metadata.toString()
+                )
+                dev.jlz.presence.usage.PendingActivityEventStore(applicationContext).enqueue(
+                    id=id,source="user_opt_in_gps_trip",kind="trip_movement",
+                    title="同行位置有变化",body="移动约${walked[0].toInt()}米",
+                    packageName="",metadata=metadata,observedAtMs=point.timestampMs
+                )
+            }
+        }
         // Precision coordinates stay in bounded RAM only. No crash leftovers on disk.
 
     }
