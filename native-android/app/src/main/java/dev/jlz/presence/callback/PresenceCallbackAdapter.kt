@@ -34,7 +34,21 @@ class PresenceCallbackAdapter(private val context: Context) {
         modeTarget: String = ""
     ): CallbackResult {
         val quiet = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { dev.jlz.presence.focus.FocusRepository(context).current().modeNow() == dev.jlz.presence.focus.DailyMode.SLEEP }
-        if (quiet) { dev.jlz.presence.notification.NotificationAdapter(context).showMessage(message = reason, eventId = eventId, intentId = intentId); return CallbackResult(true, "sleep_quiet_notification_only", eventId, intentId) }
+        if (quiet) {
+            // A silent fallback must preserve the real OS notification receipt.
+            // Posting was not a full-screen call, nor a success if notifications
+            // are refused by user permissions or Huawei channel settings.
+            val notice = runCatching {
+                dev.jlz.presence.notification.NotificationAdapter(context)
+                    .showMessage(message = reason, eventId = eventId, intentId = intentId)
+            }.getOrElse {
+                return CallbackResult(false, "sleep_quiet_notification_failed:" +
+                    it.javaClass.simpleName, eventId, intentId)
+            }
+            return CallbackResult(notice.ok,
+                if (notice.ok) "sleep_quiet_notification_only" else
+                    "sleep_quiet_notification_rejected:" + notice.code, eventId, intentId)
+        }
         ensureChannel()
         if (!manager.areNotificationsEnabled()) {
             return CallbackResult(false, "notifications_disabled", eventId, intentId)
