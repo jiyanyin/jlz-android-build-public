@@ -54,6 +54,16 @@ class NotificationAdapter(private val context: Context) {
             )
         }
 
+        // Disabled channels may silently discard notify() without throwing.
+        // Treat them as refused delivery: local reminders must remain retryable.
+        if (!manager.areNotificationsEnabled()) {
+            return NotificationResult(ok = false, code = "notifications_disabled")
+        }
+        if (Build.VERSION.SDK_INT >= 26 &&
+            manager.getNotificationChannel(CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE) {
+            return NotificationResult(ok = false, code = "notification_channel_disabled")
+        }
+
         val notificationId = nextNotificationId()
         if (!sleepQuiet) dev.jlz.presence.overlay.FloatingPresenceService.privateMessageReaction()
         val avatar = createAvatarBitmap()
@@ -63,7 +73,7 @@ class NotificationAdapter(private val context: Context) {
             notificationId,
             Intent(
                 Intent.ACTION_VIEW,
-                android.net.Uri.parse("https://between-worlds-prod.onrender.com/?shell=android#echo"),
+                android.net.Uri.parse("https://between-worlds-prod.pages.dev/?shell=android#echo"),
                 context,
                 WebShellActivity::class.java
             )
@@ -199,7 +209,7 @@ class NotificationAdapter(private val context: Context) {
             notificationId,
             Intent(
                 Intent.ACTION_VIEW,
-                android.net.Uri.parse("https://between-worlds-prod.onrender.com/?shell=android#echo"),
+                android.net.Uri.parse("https://between-worlds-prod.pages.dev/?shell=android#echo"),
                 context,
                 WebShellActivity::class.java
             )
