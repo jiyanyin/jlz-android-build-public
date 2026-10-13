@@ -1210,6 +1210,7 @@ function PageHead({ kicker, title, en, copy }: { kicker: string; title: string; 
 function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask }: { onTask:(text:string,id:string)=>void; state: AppState; conn: Conn; update: (fn: (s: AppState) => AppState) => void; send: Send; notify: (s: string) => void; chatAvatar: string }) {
   const [text, setText] = useState("");
   const [replyTo,setReplyTo] = useState<{id:string;text:string}|null>(null);
+  const [scheduledEcho, setScheduledEcho] = useState<{scheduled:number;notifications:number;next_execute_at_ms:number|null}|null>(null);
   const [day, setDay] = useState(() => keyDate(new Date()));
   const [dayMessages, setDayMessages] = useState<RemoteMessage[]>([]);
   const [dayLoaded,setDayLoaded] = useState(false);
@@ -1225,6 +1226,21 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask }: { o
   const morePagesLoaded = useRef(false);
   const preserveScroll = useRef<{height:number;top:number}|null>(null);
   const today = keyDate(new Date());
+  useEffect(()=>{
+    if(conn!=="online" || !state.webToken.trim()){setScheduledEcho(null);return;}
+    const c={baseUrl:state.runtimeUrl||DEFAULT_RUNTIME_URL,token:state.webToken.trim()};
+    let active=true;
+    const refresh=async()=>{
+      try {
+        const q=await runtime.nextHourEcho(c);
+        if(active)setScheduledEcho({scheduled:q.scheduled,notifications:q.notifications,
+          next_execute_at_ms:q.next_execute_at_ms});
+      }catch{if(active)setScheduledEcho(null)}
+    };
+    void refresh();
+    const timer=window.setInterval(()=>{if(document.visibilityState==="visible")void refresh()},30000);
+    return ()=>{active=false;window.clearInterval(timer)};
+  },[conn,state.webToken,state.runtimeUrl]);
   const shiftDay=(step:number)=>{
     const [y,m,d]=day.split("-").map(Number);
     const next=new Date(y,m-1,d+step,12);
@@ -1336,6 +1352,11 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask }: { o
   return <section className="page active">
     <PageHead kicker="YOUR PRIVATE CONVERSATION" title="回响" en="Echo" copy="给你的回声，永远写在纸的另一面" />
     <div className="echo-person glass"><img src={chatAvatar} alt="纪临洲" /><span><b>纪临洲</b><small>{conn==="online"?"已连接 · 消息实时同步":conn==="syncing"?"正在同步……":"未连接 · 消息先存本机"}</small></span></div>
+    {scheduledEcho&&<div className="echo-schedule glass" role="status">
+      <span>未来一小时：{scheduledEcho.scheduled>0?("已安排 "+scheduledEcho.scheduled+" 条"):"尚无预排消息"}</span>
+      {scheduledEcho.scheduled>0&&<small>下一条计划 {scheduledEcho.next_execute_at_ms?new Date(scheduledEcho.next_execute_at_ms).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"}):"待定"} · {scheduledEcho.notifications} 条会请求原生提醒</small>}
+      <small>排队不等于已送达；仍须以实际回响和通知回执为准。</small>
+    </div>}
     <div className="echo-day-nav glass">
       <button type="button" onClick={()=>shiftDay(-1)} aria-label="查看前一天">‹</button>
       <input aria-label="聊天日期" type="date" max={today} value={day} onChange={e=>{if(e.target.value && e.target.value<=keyDate(new Date()))setDay(e.target.value)}} />
