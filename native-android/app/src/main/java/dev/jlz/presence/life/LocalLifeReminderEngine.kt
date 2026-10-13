@@ -57,23 +57,31 @@ class LocalLifeReminderEngine(context: Context) {
     private val prefs = app.getSharedPreferences("jlz_local_reminders_v1", Context.MODE_PRIVATE)
     private val zone = ZoneId.of("Asia/Shanghai")
     private val notify = NotificationAdapter(app)
+    private val delivery = LocalReminderDeliveryLedger(prefs)
     private fun date(now: Long) = Instant.ofEpochMilli(now).atZone(zone).toLocalDate().toString()
     fun enabled(): Boolean = prefs.getBoolean("enabled", true)
     fun setEnabled(value: Boolean): Boolean = prefs.edit().putBoolean("enabled", value).commit()
 
-    @Synchronized
-    private fun emitOnce(key: String, name: String, nowMs: Long = System.currentTimeMillis()): Boolean {
+    private fun emitOnce(
+        key: String,
+        name: String,
+        nowMs: Long = System.currentTimeMillis(),
+        scope: String = date(nowMs)
+    ): Boolean {
         if (!enabled()) return false
-        val stamp = date(nowMs) + ":" + key
-        if (prefs.getString("sent:$key", "") == stamp) return false
-        val count = prefs.getInt("copy_count:$key", 0)
-        // Record the dedupe key before notifying to prevent burst delivery.
-        if (!prefs.edit().putString("sent:$key", stamp)
-                .putInt("copy_count:$key", count + 1).commit()) return false
-        val result = notify.showMessage("纪临洲 · $name", LocalLifeCopy.choose(key, count))
-        return result.ok
+        return delivery.send(key, scope) { ordinal ->
+            notify.showMessage("纪临洲 · $name", LocalLifeCopy.choose(key, ordinal)).ok
+        }
     }
 
+    /**
+     * The battery is a discharge cycle, not a calendar day.
+     *
+     * A charging period only rearms the 40/20/10 thresholds after the battery
+     * actually climbs above 40%. When the level rebounds without charging,
+     * do not repeat yesterday's low-battery warnings. Rejected notifications
+     * remain retryable on the next battery update.
+     */
     @Synchronized
     fun battery(intent: Intent?) {
         if (!enabled() || intent?.action != Intent.ACTION_BATTERY_CHANGED) return
@@ -84,15 +92,41 @@ class LocalLifeReminderEngine(context: Context) {
         val charging = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
         val priorCharging = prefs.getBoolean("charging", false)
         val initial = !prefs.contains("charging")
-        prefs.edit().putBoolean("charging", charging).apply()
+
         if (charging) {
-            if (!initial && !priorCharging) emitOnce("charging", "正在充电")
+            val change = prefs.edit().putBoolean("charging", true)
+            if (percent > 40) change.putBoolean("battery_rearm_ready", true)
+            if (!initial && !priorCharging) {
+                change.putInt("charging_session", prefs.getInt("charging_session", 0) + 1)
+                    .putBoolean("charging_alert_pending", true)
+            }
+            if (!change.commit()) return
+            if (prefs.getBoolean("charging_alert_pending", false)) {
+                val session = prefs.getInt("charging_session", 0)
+                if (emitOnce("charging", "正在充电", scope = "session:$session")) {
+                    prefs.edit().putBoolean("charging_alert_pending", false).commit()
+                }
+            }
             return
         }
-        when (LocalLifeReminderPolicy.batteryBand(percent)) {
-            10 -> emitOnce("battery10", "低电量")
-            20 -> emitOnce("battery20", "低电量")
-            40 -> emitOnce("battery40", "电量提醒")
+
+        val newCycle = priorCharging && prefs.getBoolean("battery_rearm_ready", false)
+        val change = prefs.edit().putBoolean("charging", false)
+            .putBoolean("charging_alert_pending", false)
+        if (newCycle) {
+            change.putInt("battery_cycle", prefs.getInt("battery_cycle", 0) + 1)
+                .putInt("battery_lowest_band", 0)
+                .putBoolean("battery_rearm_ready", false)
+        }
+        if (!change.commit()) return
+
+        val band = LocalLifeReminderPolicy.batteryBand(percent)
+        val alreadyWarned = prefs.getInt("battery_lowest_band", 0)
+        if (band == 0 || (alreadyWarned != 0 && band >= alreadyWarned)) return
+        val name = if (band == 40) "电量提醒" else "低电量"
+        if (emitOnce("battery$band", name,
+                scope = "discharge:${prefs.getInt("battery_cycle", 0)}")) {
+            prefs.edit().putInt("battery_lowest_band", band).commit()
         }
     }
 
