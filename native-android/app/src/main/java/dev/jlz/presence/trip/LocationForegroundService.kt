@@ -221,6 +221,10 @@ class LocationForegroundService : Service() {
                 val client = RuntimeApiClient(cfg)
                 check(client.canTransferCapture()) { "trip_home_link_required" }
                 if (!remoteStarted) {
+                    // A killed previous session must close before this newly
+                    // user-approved session can claim the same device.
+                    // Only the old session ID is stored, never raw coordinates.
+                    runCatching { PendingTripStop.flush(applicationContext, client) }
                     val started = client.startTrip(snap.sessionId, snap.startedAtMs)
                     check(started.optBoolean("ok", false) &&
                         started.optString("status", "") == "active") { "trip_session_not_confirmed" }
