@@ -57,6 +57,7 @@ const CLEANUP_MARKER = "world-between-cleanup-20261002-v1";
 const INSTALL_GUIDE_DISMISSED = "world-between-install-guide-dismissed-v1";
 const ANDROID_SHELL = new URLSearchParams(window.location.search).get("shell") === "android";
 const ENTRY_MODE = new URLSearchParams(window.location.search).get("entry");
+const OPEN_LIFE_FROM_NOTICE = new URLSearchParams(window.location.search).get("open") === "life";
 const GATE_PACKAGE = new URLSearchParams(window.location.search).get("gate_pkg") || "";
 const GATE_REASON = new URLSearchParams(window.location.search).get("gate_reason") || "entry";
 const defaults: AppState = { worldContent: null, lastContextPack: null, theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
@@ -90,9 +91,9 @@ const GROUPS: Record<string, [string, boolean][]> = {
 export default function BetweenWorlds() {
   const [state, setState] = useState<AppState>(defaults);
   const [tab, setTab] = useState<Tab>(() => window.location.hash === "#echo" ? "echo" : "home");
-  const [welcome, setWelcome] = useState(() => !ENTRY_MODE);
+  const [welcome, setWelcome] = useState(() => !ENTRY_MODE && !OPEN_LIFE_FROM_NOTICE);
   const [unlockHello, setUnlockHello] = useState(() => ENTRY_MODE === "unlock");
-  const [sheet, setSheet] = useState<"status" | "note" | "life" | "task" | "apps" | null>(null);
+  const [sheet, setSheet] = useState<"status" | "note" | "life" | "task" | "apps" | null>(() => OPEN_LIFE_FROM_NOTICE ? "life" : null);
   const [appHub, setAppHub] = useState<AppHubSnapshot>(() => emptyAppHubSnapshot());
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
   const [taskDate, setTaskDate] = useState(() => keyDate(new Date()));
