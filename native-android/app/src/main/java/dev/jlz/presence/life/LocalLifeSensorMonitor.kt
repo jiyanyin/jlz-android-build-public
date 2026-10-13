@@ -21,10 +21,11 @@ class LocalLifeSensorMonitor(context: Context) : SensorEventListener {
 
     fun start() {
         if (registered || power?.isInteractive != true || !alerts.enabled()) return
-        val light = manager?.getDefaultSensor(Sensor.TYPE_LIGHT)
-        val acceleration = manager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        val l = light?.let { manager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) } ?: false
-        val a = acceleration?.let { manager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) } ?: false
+        val sensorManager = manager ?: return
+        val light = sensorManager.getDefaultSensor(Sensor.TYPE_LIGHT)
+        val acceleration = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        val l = light?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) } ?: false
+        val a = acceleration?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) } ?: false
         registered = l || a
     }
     fun stop() {
