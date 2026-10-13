@@ -235,7 +235,7 @@ class NativeRuntimeService : Service() {
                     System.currentTimeMillis()-contentCheckedAt >= 60_000L) {
                     val synced = runCatching {
                         WorldContentCache(applicationContext).save(api.worldContent())
-                    }.isSuccess
+                    }.getOrDefault(false)
                     if (synced) contentCheckedAt=System.currentTimeMillis()
                     runCatching { dev.jlz.presence.overlay.TaskReactionTracker(applicationContext).accept(api.dailyPlanForReaction()) }
                 }
