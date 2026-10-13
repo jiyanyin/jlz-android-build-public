@@ -381,8 +381,32 @@ class NativeRuntimeService : Service() {
                 usageJson.put("daily_mode", focusRepository.current().modeNow().name)
                     .put("notification_listener_connected", dev.jlz.presence.notification.PresenceNotificationListenerService.isConnected())
                 val voiceEngine = dev.jlz.presence.persona.JlzVoiceStateEngine(applicationContext)
+                val actualStudyMinutes = runCatching {
+                    dev.jlz.presence.study.StudyMetricsStore(applicationContext).use {
+                        it.dayMetrics(dayStart, System.currentTimeMillis() + 1).effectiveStudyMs / 60_000L
+                    }
+                }.getOrNull()
+                val actualEntertainmentMinutes = if (
+                    usageJson.optBoolean("usage_permission_ready") ||
+                    ScreenObservationBus.isAvailable()) {
+                    val classifier = dev.jlz.presence.focus.LocalAppClassifier(applicationContext)
+                    val rows = usageJson.optJSONArray("totals") ?: JSONArray()
+                    var ms = 0L
+                    for (index in 0 until rows.length()) {
+                        val item = rows.optJSONObject(index) ?: continue
+                        val pkg = item.optString("package_name")
+                        val category = classifier.classify(pkg)
+                        val profile = dev.jlz.presence.focus.EntertainmentPolicy.profile(pkg)
+                        if (category == dev.jlz.presence.focus.LocalAppCategory.GAME ||
+                            (category == dev.jlz.presence.focus.LocalAppCategory.FEED &&
+                             profile?.tier != dev.jlz.presence.focus.EntertainmentTier.SHOPPING)) {
+                            ms += item.optLong("duration_ms", 0L).coerceAtLeast(0L)
+                        }
+                    }
+                    ms / 60_000L
+                } else null
                 val observedVoice = voiceEngine.observe(focusRepository.current().modeNow(),
-                    entertainmentMinutes = null, focusMinutes = null)
+                    entertainmentMinutes = actualEntertainmentMinutes, focusMinutes = actualStudyMinutes)
                 usageJson.put("jlz_voice_state", JSONObject()
                     .put("mood", observedVoice.mood.name)
                     .put("reason", observedVoice.reason)
