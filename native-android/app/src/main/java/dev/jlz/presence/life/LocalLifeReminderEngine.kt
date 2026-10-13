@@ -136,6 +136,7 @@ class LocalLifeReminderEngine(context: Context) {
             45 -> {
                 emitOnce("entertain30", "娱乐时间")
                 emitOnce("entertain45", "先休息")
+                DailyEntertainmentRestGuard(app).requestOnceThresholdCrossed(nowMs)
             }
             30 -> emitOnce("entertain30", "娱乐时间")
         }
