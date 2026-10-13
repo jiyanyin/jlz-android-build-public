@@ -3,7 +3,7 @@ import { NativeCalendarPanel } from "./NativeCalendarPanel";
 import { NotificationDynamicsPanel } from "./NotificationDynamicsPanel";
 import { TripMapPanel } from "./TripMapPanel";
 import { DEFAULT_RUNTIME_URL, extractMessages, extractRecords, newEventId, runtime, RuntimeError, type OutboxItem, type RemoteMessage, type RemoteRecord, type RuntimeConfig, type WritePath } from "./lib/runtime";
-import { EMPTY_VOICE_MEMORY, formatVoiceClock, formatVoiceDate, selectVoiceCard, type VoiceMemory, type VoiceStatus } from "./lib/voiceEngine";
+import { EMPTY_VOICE_MEMORY, formatVoiceClock, formatVoiceDate, selectVoiceCard, type VoiceMemory, type VoiceStatus, type VoiceInput } from "./lib/voiceEngine";
 import { emptyDailyPlan, optimisticTaskMutation, planSections, taskDetailText, TASK_CATEGORIES, type DailyPlan, type DailyTask } from "./lib/dailyPlan";
 import { emptyStudySummary, formatStudyClock, formatStudyMinutes, liveStudyTotals, studyDeviceLabel, type StudySummary } from "./lib/studySession";
 import { appHubActions, appHubCategories, appHubHomeItems, emptyAppHubSnapshot, readNativeAppHub, type AppHubItem, type AppHubSnapshot } from "./lib/appHub";
@@ -490,6 +490,24 @@ export default function BetweenWorlds() {
 
   const savedText = (what: string) => (conn === "online" ? `${what}已存本机，正在同步给纪临洲` : `${what}已存本机，连接后自动同步`);
 
+  const [nativeMood, setNativeMood] = useState<VoiceInput["nativeMood"]>(null);
+  useEffect(() => {
+    if (!loaded) return;
+    const load = () => {
+      const bridge = homeBridge();
+      if (!bridge?.voiceState) { setNativeMood(null); return; }
+      try {
+        const response = JSON.parse(bridge.voiceState()) as {mood?: string};
+        const moods = ["STEADY","FOCUSED","CONCERNED","LONGING","QUIET","PROUD"] as const;
+        const found = moods.find(m => m === response.mood);
+        setNativeMood(found ?? null);
+      } catch { setNativeMood(null); }
+    };
+    load();
+    const ticker = window.setInterval(load, 30_000);
+    return () => window.clearInterval(ticker);
+  }, [loaded]);
+
   const voiceStatus: VoiceStatus | null = state.status ? {
     at: state.status.at,
     axes: state.status.axes && typeof state.status.axes === "object" ? state.status.axes as Record<string, number> : undefined,
@@ -499,6 +517,7 @@ export default function BetweenWorlds() {
     now: now ?? new Date(),
     activeLife: state.activeLife,
     status: voiceStatus,
+    nativeMood,
   }, state.voiceMemory);
   useEffect(() => {
     if (!loaded || !now || voiceCard.nextMemory === state.voiceMemory) return;
@@ -609,7 +628,7 @@ export default function BetweenWorlds() {
       <div className="welcome-card">
         <div className="welcome-kicker">BETWEEN WORLDS · PRIVATE SPACE</div>
         <div className="welcome-portrait-wrap"><img className="welcome-portrait" src={welcomePortrait} alt="纪临洲立绘" /></div>
-        <div className="welcome-copy"><h1>世界之间</h1><p className="welcome-en">Between Worlds</p><p>{copy["welcome.line"] || "世界再喧哗，也有一扇门，只向你和我打开。"}</p></div>
+        <div className="welcome-copy"><h1>世界之间</h1><p className="welcome-en">Between Worlds</p><p>{copy["welcome.line"] || `${voiceCard.headline} ${voiceCard.body}`}</p></div>
         <button className="enter-btn" onClick={() => setWelcome(false)}>进入我们的世界 <span>↗</span></button>
       </div>
     </div>
@@ -1058,7 +1077,7 @@ function HomePage({
 
     <SectionHead title="先从这里走" english="APP HUB" />
     <div className="app-hub-card glass">
-      <div className="app-hub-copy"><span>{unlockHello ? "UNLOCKED · 先看我一眼" : "START HERE · 少一点乱跑"}</span><b>{unlockHello ? copy["unlock.line"] || "解锁了。先决定你现在要去哪。" : copy["study.nudge"] || "学习放前面，其他的都还在。"}</b><small>{"伴读、粉笔与常用应用"}</small></div>
+      <div className="app-hub-copy"><span>{unlockHello ? "UNLOCKED · 先看我一眼" : "START HERE · 少一点乱跑"}</span><b>{unlockHello ? copy["unlock.line"] || `${voice.headline} ${voice.body}` : copy["study.nudge"] || "学习放前面，其他的都还在。"}</b><small>{"伴读、粉笔与常用应用"}</small></div>
       <div className="app-hub-grid">
         <button className="hub-tile study" onClick={openBanduread}><span className="hub-mark"><VintageIcon name="study" size={36}/></span><b>伴读</b><small>刷题 / 复盘</small></button>
         {homeApps.map((item) => <button className={`hub-tile ${item.category === "学习" ? "study" : ""}`} key={item.package_name} onClick={() => launchApp(item)}><span className="hub-mark">{item.label.slice(0, 1)}</span><b>{item.label}</b><small>{item.category}</small></button>)}
@@ -1202,7 +1221,7 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask }: { o
 function TimelinePage({ notes, remote }: { notes: RecordItem[]; remote: RemoteRecord[] }) {
   const remoteIds = new Set(remote.map((r) => r.id));
   const items = [
-    ...remote.map((r) => ({ key: `r-${r.id}`, type: r.type, body: r.body, at: r.at, label: r.provenance === "correction" ? "纠正" : r.type === "jlz_observation" ? "纪临洲的观察" : r.actor === "jlz" ? "纪临洲" : "用户记录" })),
+    ...remote.map((r) => ({ key: `r-${r.id}`, type: r.type, body: r.body, at: r.at, label: r.provenance === "correction" ? "纠正" : r.type === "jlz_observation" ? "我看见的事" : r.actor === "jlz" ? "纪临洲" : "老婆的记录" })),
     ...notes.filter((n) => !n.event_id || !remoteIds.has(n.event_id)).map((n) => ({ key: `l-${n.id}`, type: n.type, body: n.body, at: n.at, label: syncLabel(n.sync) })),
   ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   return <section className="page active"><PageHead kicker="OUR LITTLE HISTORY" title="你我之间" en="Timeline" copy="主动记录会在这里长成一条时间线" /><div className="timeline">{items.length ? items.map((x) => <article className="timeline-entry" key={x.key}><b>{x.type}</b><p>{x.body}</p><time>{new Date(x.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · {x.label}</time></article>) : <div className="preview-tip">还没有记录。去首页留第一条吧。</div>}</div></section>;

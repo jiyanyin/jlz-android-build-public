@@ -74,6 +74,12 @@ class HomeWebBridge(private val context: Context, private val save: (String)->Un
             .put("gate",JSONObject().put("enabled",EntertainmentGateRepository(context).enabled()))
             .put("bridge",BridgeStore(context).diagnostics()).toString()
     }
+    @JavascriptInterface fun voiceState(): String {
+        val s=dev.jlz.presence.persona.JlzVoiceStateEngine(context).read()
+        return JSONObject().put("mood",s.mood.name).put("reason",s.reason)
+            .put("source",s.source).put("updated_at_ms",s.updatedAtMs)
+            .put("expires_at_ms",s.expiresAtMs).toString()
+    }
     @JavascriptInterface fun setGateEnabled(value: Boolean) { EntertainmentGateRepository(context).setEnabled(value) }
     @JavascriptInterface fun savePack(raw: String) { if(raw.toByteArray().size<=524288) save(raw) }
     @JavascriptInterface fun openPack() { open() }

@@ -289,7 +289,8 @@ private fun IncomingGate(
     val message = contentCache.text("gate.incoming", if (reason == "expired") {
         EntertainmentGateCopy.expired(appName, seed)
     } else {
-        EntertainmentGateCopy.incoming(appName, seed)
+        dev.jlz.presence.persona.JlzVoiceCopy.line(
+            androidx.compose.ui.platform.LocalContext.current, "gate.incoming", appName)
     })
 
     Column(

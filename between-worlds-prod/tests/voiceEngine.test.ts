@@ -87,3 +87,25 @@ test("no-analysis preference chooses a non-analytic affectionate bank", () => {
   }, EMPTY_VOICE_MEMORY);
   assert.equal(card.signal, "style:affection");
 });
+
+test("native JLZ mood changes voice without inventing user activity", () => {
+  const now = local(20, 10);
+  const card = selectVoiceCard({now, nativeMood:"LONGING"}, EMPTY_VOICE_MEMORY);
+  assert.equal(card.signal, "jlz:longing");
+  assert.match(card.id, /^jlz-long-/);
+  assert.notEqual(card.signal, "activity:study");
+});
+test("an explicit user quiet preference takes priority over native mood", () => {
+  const now = local(20, 10);
+  const card = selectVoiceCard({now,nativeMood:"FOCUSED",status:{
+    at: now.toISOString(), detail: {"想听我怎样回应":["现在先不用回复"]}
+  }}, EMPTY_VOICE_MEMORY);
+  assert.equal(card.signal, "style:silent");
+});
+test("local study still takes priority over companion's evening mood", () => {
+  const now = local(20, 10);
+  const card = selectVoiceCard({
+    now,nativeMood:"LONGING",activeLife:{action:"刷题",startAt:now.getTime()-15*60_000}
+  }, EMPTY_VOICE_MEMORY);
+  assert.equal(card.signal, "activity:study");
+});

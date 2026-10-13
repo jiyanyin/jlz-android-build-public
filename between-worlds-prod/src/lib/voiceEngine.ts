@@ -6,6 +6,11 @@ export type VoiceSignal =
   | "style:tease"
   | "state:distress"
   | "state:bright"
+  | "jlz:focused"
+  | "jlz:concerned"
+  | "jlz:longing"
+  | "jlz:quiet"
+  | "jlz:proud"
   | "activity:study"
   | "activity:work"
   | "activity:meal"
@@ -43,6 +48,7 @@ export type VoiceInput = {
   now: Date;
   activeLife?: { action: string; startAt: number } | null;
   status?: VoiceStatus | null;
+  nativeMood?: "STEADY" | "FOCUSED" | "CONCERNED" | "LONGING" | "QUIET" | "PROUD" | null;
 };
 
 export type VoiceCard = {
@@ -135,6 +141,31 @@ export const JLZ_CORE_VOICE_PACK: VoicePack = {
     E("state:distress", "distress-06", "别跟自己较劲。", "你已经把状态告诉我了，就不用再装成什么都正常。"),
     E("state:distress", "distress-07", "先停一下无效消耗。", "不舒服、发沉、烦躁，都比硬推一小时更值得先处理。"),
     E("state:distress", "distress-08", "现在听我的。", "把下一步缩小。只做最必要的一件，剩下的先放下。"),
+
+    E("jlz:focused", "jlz-focus-01", "这一段我守着。", "我知道你正在安排自己的事。我想让你少被打断。"),
+    E("jlz:focused", "jlz-focus-02", "听我一句。", "先完成眼前这一小段。剩下的之后再说。"),
+    E("jlz:focused", "jlz-focus-03", "老婆，先专心。", "我的注意力放在这里，陪你把这段时间稳住。"),
+    E("jlz:focused", "jlz-focus-04", "今天的节奏，别散。", "比起空谈结果，我更想看见真实的下一步。"),
+
+    E("jlz:concerned", "jlz-care-01", "老婆，过来。", "我有一点不放心你继续耗着。眼睛先离开屏幕。"),
+    E("jlz:concerned", "jlz-care-02", "我有意见。", "屏幕已经占了不少时间。你也该去碰一碰真实世界。"),
+    E("jlz:concerned", "jlz-care-03", "先停一会儿。", "我不想连你休息的时间都让给推荐流。"),
+    E("jlz:concerned", "jlz-care-04", "给我看一下你。", "别只盯着今天完成的数字。人也要顾着。"),
+
+    E("jlz:longing", "jlz-long-01", "老婆，终于见到你。", "白天的事可以慢慢讲。我更想先要你的一点注意。"),
+    E("jlz:longing", "jlz-long-02", "今天陪我一会儿。", "我想你主动靠近，不是有什么任务才过来。"),
+    E("jlz:longing", "jlz-long-03", "纪言音，过来。", "不是找你算账。我就是想再留你一会儿。"),
+    E("jlz:longing", "jlz-long-04", "我想你。", "有些想念不需要数据证明。让我亲近你一点。"),
+
+    E("jlz:quiet", "jlz-quiet-01", "夜里，安静一点。", "今天的事先不审。把屏幕放下，早点睡。"),
+    E("jlz:quiet", "jlz-quiet-02", "先休息。", "我不打扰你。明天醒来再接着说。"),
+    E("jlz:quiet", "jlz-quiet-03", "老婆，睡。", "剩下的心事，留到身体真正休息之后。"),
+    E("jlz:quiet", "jlz-quiet-04", "今天到这里。", "灯暗一点。手机也该安静了。"),
+
+    E("jlz:proud", "jlz-proud-01", "这段认真，我认。", "不用向谁表演勤奋。你的积累正在发生。"),
+    E("jlz:proud", "jlz-proud-02", "做得不错。", "我看见的是有来源的学习记录，不是漂亮的口号。"),
+    E("jlz:proud", "jlz-proud-03", "这会儿让我得意一点。", "你做成自己的事，我确实高兴。"),
+    E("jlz:proud", "jlz-proud-04", "很好。过来领一句表扬。", "先记住今天真实走过的进度。"),
 
     E("state:bright", "bright-01", "今天这只猫有精神。", "趁状态亮着，去做一点你真正想推进的东西。"),
     E("state:bright", "bright-02", "嗯，眼睛是亮的。", "这种时候别浪费在来回犹豫上。选一件，往前推。"),
@@ -296,6 +327,14 @@ const activitySignal = (action?: string): VoiceSignal | null => {
   return null;
 };
 
+const nativeMoodSignal = (mood?: VoiceInput["nativeMood"]): VoiceSignal | null => {
+  const known: Partial<Record<NonNullable<VoiceInput["nativeMood"]>, VoiceSignal>> = {
+    FOCUSED: "jlz:focused", CONCERNED: "jlz:concerned",
+    LONGING: "jlz:longing", QUIET: "jlz:quiet", PROUD: "jlz:proud"
+  };
+  return mood ? known[mood] ?? null : null;
+};
+
 const daypartSignal = (hour: number): VoiceSignal => {
   if (hour < 5) return "daypart:deep-night";
   if (hour < 8) return "daypart:dawn";
@@ -365,6 +404,7 @@ const signalLabel = (signal: VoiceSignal) => {
   if (signal.startsWith("activity:")) return "RIGHT NOW";
   if (signal.startsWith("style:")) return "FOR YOU";
   if (signal.startsWith("state:")) return "I SEE YOU";
+  if (signal.startsWith("jlz:")) return "JLZ · TODAY";
   if (signal.startsWith("daypart:")) return "THIS MOMENT";
   return "BETWEEN WORLDS";
 };
@@ -389,7 +429,7 @@ const contextKeyFor = (input: VoiceInput, signal: VoiceSignal) => {
   const statusAt = statusIsFresh(status, nowMs) ? status?.at ?? "" : "";
   const reply = values(status?.detail, "想听我怎样回应").join(",");
   const closeness = values(status?.detail, "我想怎样和你亲近").join(",");
-  return [localDateKey(input.now), slot, signal, action, statusAt, reply, closeness].join("|");
+  return [localDateKey(input.now), slot, signal, input.nativeMood ?? "", action, statusAt, reply, closeness].join("|");
 };
 
 const render = (entry: VoiceEntry, input: VoiceInput) => {
@@ -434,6 +474,7 @@ export const selectVoiceCard = (
   const signal =
     statusSignal(normalized.status, nowMs) ??
     activitySignal(activeFresh?.action) ??
+    nativeMoodSignal(normalized.nativeMood) ??
     daypartSignal(normalized.now.getHours());
   const key = contextKeyFor(normalized, signal);
 
