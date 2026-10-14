@@ -1246,6 +1246,11 @@ function SectionHead({ title, english }: { title: string; english: string }) { r
 function PageHead({ kicker, title, en, copy }: { kicker: string; title: string; en: string; copy: string }) { return <div className="page-head"><div><span>{kicker}</span><h2>{title} <em>{en}</em></h2><p>{copy}</p></div></div>; }
 
 function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask, emptyCopy }: { onTask:(text:string,id:string)=>void; emptyCopy?:string; state: AppState; conn: Conn; update: (fn: (s: AppState) => AppState) => void; send: Send; notify: (s: string) => void; chatAvatar: string }) {
+  const echoConfig = (): RuntimeConfig | null => {
+    if (homeBridge()?.available()) return {baseUrl:"native",token:"native-managed"};
+    const token=state.webToken.trim();
+    return token ? {baseUrl:state.runtimeUrl||DEFAULT_RUNTIME_URL,token} : null;
+  };
   const [text, setText] = useState("");
   const [replyTo,setReplyTo] = useState<{id:string;text:string}|null>(null);
   const [scheduledEcho, setScheduledEcho] = useState<{scheduled:number;notifications:number;next_execute_at_ms:number|null}|null>(null);
@@ -1257,6 +1262,7 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask, empty
   const [loadingOlder,setLoadingOlder] = useState(false);
   const [newMessages,setNewMessages] = useState(false);
   const viewport = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
   const renderedDay = useRef("");
   const lastMessage = useRef("");
@@ -1265,8 +1271,8 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask, empty
   const preserveScroll = useRef<{height:number;top:number}|null>(null);
   const today = keyDate(new Date());
   useEffect(()=>{
-    if(conn!=="online" || !state.webToken.trim()){setScheduledEcho(null);return;}
-    const c={baseUrl:state.runtimeUrl||DEFAULT_RUNTIME_URL,token:state.webToken.trim()};
+    const c=echoConfig();
+    if(conn!=="online" || !c){setScheduledEcho(null);return;}
     let active=true;
     const refresh=async()=>{
       try {
@@ -1294,8 +1300,8 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask, empty
     setHasMore(false);
     setBeforeId("");
     setNewMessages(false);
-    if(conn!=="online" || !state.webToken.trim()) return;
-    const c={baseUrl:state.runtimeUrl||DEFAULT_RUNTIME_URL,token:state.webToken.trim()};
+    const c=echoConfig();
+    if(conn!=="online" || !c) return;
     let cancelled=false;
     const refresh=async()=>{
       try {
@@ -1323,13 +1329,13 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask, empty
   },[day,conn,state.webToken,state.runtimeUrl]);
 
   const loadOlder=async()=>{
-    if(loadingOlder||!hasMore||!beforeId||conn!=="online"||!state.webToken.trim())return;
+    const c=echoConfig();
+    if(loadingOlder||!hasMore||!beforeId||conn!=="online"||!c)return;
     const currentDay=day;
     const box=viewport.current;
     preserveScroll.current=box?{height:box.scrollHeight,top:box.scrollTop}:null;
     setLoadingOlder(true);
     try {
-      const c={baseUrl:state.runtimeUrl||DEFAULT_RUNTIME_URL,token:state.webToken.trim()};
       const page=await runtime.messagesForDay(c,day,beforeId,100);
       if(currentDay!==activeDay.current || page.date!==currentDay)return;
       const older=extractMessages(page);
@@ -1380,14 +1386,15 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask, empty
       box.scrollTop=box.scrollHeight;
       nearBottom.current=true;
       setNewMessages(false);
+      if(entering)requestAnimationFrame(()=>composerRef.current?.scrollIntoView({block:"end"}));
     } else if(lastMessage.current && newest!==lastMessage.current && day===keyDate(new Date())){
       setNewMessages(true);
     }
     renderedDay.current=day;
     lastMessage.current=newest;
   },[day,newest,list.length,dayLoaded]);
-  const jumpLatest=()=>{const box=viewport.current;if(box)box.scrollTop=box.scrollHeight;nearBottom.current=true;setNewMessages(false);};
-  return <section className="page active">
+  const jumpLatest=()=>{const box=viewport.current;if(box)box.scrollTop=box.scrollHeight;composerRef.current?.scrollIntoView({block:"end"});nearBottom.current=true;setNewMessages(false);};
+  return <section className="page active echo-page">
     <PageHead kicker="YOUR PRIVATE CONVERSATION" title="回响" en="Echo" copy="给你的回声，永远写在纸的另一面" />
     <div className="echo-person glass"><img src={chatAvatar} alt="纪临洲" /><span><b>纪临洲</b><small>{conn==="online"?"已连接 · 消息实时同步":conn==="syncing"?"正在同步……":"未连接 · 消息先存本机"}</small></span></div>
     {scheduledEcho&&<div className="echo-schedule glass" role="status">
@@ -1420,7 +1427,7 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask, empty
     </div>
     {newMessages&&<button type="button" className="echo-jump" onClick={jumpLatest}>有新消息 ↓</button>}
     {replyTo&&<div className="reply-context"><span>回复：{replyTo.text.slice(0,100)}</span><button onClick={()=>setReplyTo(null)} aria-label="取消引用回复">×</button></div>}
-    <div className="composer"><textarea maxLength={1200} placeholder="写点什么……" value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();submit()}}}/><button onClick={submit} aria-label="发送消息">↑</button></div>
+    <div className="composer" ref={composerRef}><textarea maxLength={1200} placeholder="写点什么……" value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();submit()}}}/><button onClick={submit} aria-label="发送消息">↑</button></div>
   </section>;
 }
 const timelineNames: Record<string,string> = {
