@@ -13,6 +13,7 @@ export type DailyTask = {
   task_id: string;
   date: string;
   title: string;
+  description?: string;
   category: string;
   priority: DailyTaskPriority;
   status: DailyTaskStatus;
@@ -26,6 +27,7 @@ export type DailyTask = {
   source: string;
   sort_order: number;
   created_at: string;
+  completed_at?: string;
   updated_at: string;
 };
 export type DailyPlan = {
@@ -58,6 +60,17 @@ const priority = (value: unknown): DailyTaskPriority =>
   ["high", "normal", "low"].includes(str(value))
     ? str(value) as DailyTaskPriority : "normal";
 
+/** Display legacy next_action text in the one visible task detail field.
+ * The storage schema still accepts next_action for old GPT clients, but the
+ * user-facing editor uses only title and concrete content.
+ */
+export const taskDetailText = (task: Pick<DailyTask, "description" | "next_action"> | null | undefined): string => {
+  const content = (task?.description ?? "").trim();
+  const legacyNext = (task?.next_action ?? "").trim();
+  if (!legacyNext || content.includes(legacyNext)) return content;
+  return content ? `${content}\n${legacyNext}` : legacyNext;
+};
+
 export const emptyDailyPlan = (date: string): DailyPlan => ({
   version: "daily-plan-1",
   space_id: "world-between-primary",
@@ -88,10 +101,12 @@ export const normalizeDailyPlan = (payload: unknown, fallbackDate: string): Dail
       owner: str(task.owner) || "user",
       estimated_minutes: Math.max(0, Math.min(1440, num(task.estimated_minutes))),
       due_at: str(task.due_at),
+      description: str(task.description),
       next_action: str(task.next_action),
       source: str(task.source),
       sort_order: Math.max(0, num(task.sort_order, 100)),
       created_at: str(task.created_at),
+      completed_at: str(task.completed_at),
       updated_at: str(task.updated_at),
     };
   }).filter((task) => task.task_id && task.title);
@@ -176,14 +191,15 @@ export const optimisticTaskMutation = (
     source: "world_between_web",
     sort_order: 100,
     created_at: new Date().toISOString(),
+    completed_at: "",
     updated_at: new Date().toISOString(),
   };
   const task: DailyTask = { ...base, ...payload, date, updated_at: new Date().toISOString() };
-  if (action === "complete") task.status = "done";
-  if (action === "start") task.status = "in_progress";
-  if (action === "reopen") task.status = "todo";
-  if (action === "postpone") task.status = "postponed";
-  if (action === "incomplete") task.status = "incomplete";
+  if (action === "complete") { task.status = "done"; task.completed_at = task.completed_at || new Date().toISOString(); }
+  if (action === "start") { task.status = "in_progress"; task.completed_at = ""; }
+  if (action === "reopen") { task.status = "todo"; task.completed_at = ""; }
+  if (action === "postpone") { task.status = "postponed"; task.completed_at = ""; }
+  if (action === "incomplete") { task.status = "incomplete"; task.completed_at = ""; }
   if (action === "pin") task.user_pinned = true;
   if (action === "unpin") task.user_pinned = false;
   const tasks = [...plan.tasks.filter((item) => item.task_id !== task.task_id), task];

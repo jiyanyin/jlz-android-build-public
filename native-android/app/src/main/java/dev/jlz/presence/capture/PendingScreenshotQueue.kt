@@ -106,7 +106,7 @@ class PendingScreenshotQueue(
         limit: Int = 4,
         priorityEventId: String? = null
     ): List<SendResult> {
-        if (!root.isDirectory) return emptyList()
+        if (!root.isDirectory || !api.canTransferCapture()) return emptyList()
         cleanupExpired()
         val now = System.currentTimeMillis()
         val transportPrefs = context.applicationContext.getSharedPreferences(
@@ -336,7 +336,7 @@ class PendingScreenshotQueue(
      */
     @Synchronized
     fun reconcileWithRuntime(api: RuntimeApiClient): Int {
-        if (!root.isDirectory) return 0
+        if (!root.isDirectory || !api.canTransferCapture()) return 0
         cleanupExpired()
         // A durable outbox directory can exist forever after the first capture.
         // Empty queues must not download the 100-record index every heartbeat.

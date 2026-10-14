@@ -1,19 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { NativeCalendarPanel } from "./NativeCalendarPanel";
+import { NotificationDynamicsPanel } from "./NotificationDynamicsPanel";
+import { TripMapPanel } from "./TripMapPanel";
 import { DEFAULT_RUNTIME_URL, extractMessages, extractRecords, newEventId, runtime, RuntimeError, type OutboxItem, type RemoteMessage, type RemoteRecord, type RuntimeConfig, type WritePath } from "./lib/runtime";
-import { EMPTY_VOICE_MEMORY, formatVoiceClock, formatVoiceDate, selectVoiceCard, type VoiceMemory, type VoiceStatus } from "./lib/voiceEngine";
-import { emptyDailyPlan, optimisticTaskMutation, planSections, TASK_CATEGORIES, type DailyPlan, type DailyTask } from "./lib/dailyPlan";
+import { EMPTY_VOICE_MEMORY, formatVoiceClock, formatVoiceDate, selectVoiceCard, type VoiceMemory, type VoiceStatus, type VoiceInput } from "./lib/voiceEngine";
+import { emptyDailyPlan, optimisticTaskMutation, planSections, taskDetailText, TASK_CATEGORIES, type DailyPlan, type DailyTask } from "./lib/dailyPlan";
 import { emptyStudySummary, formatStudyClock, formatStudyMinutes, liveStudyTotals, studyDeviceLabel, type StudySummary } from "./lib/studySession";
 import { appHubActions, appHubCategories, appHubHomeItems, emptyAppHubSnapshot, readNativeAppHub, type AppHubItem, type AppHubSnapshot } from "./lib/appHub";
 import { finishNativeStudy, liveNativeStudy, nativeStudyAvailable, openNativeBanduread, openNativeFenbi, pauseNativeStudy, readNativeStudy, resumeNativeStudy, startNativeStudy, type NativeStudySnapshot } from "./lib/nativeStudy";
 import { cancelGateSmallStep, declineGate, gateBridgeAvailable, gateResponse, grantGate, readGateSnapshot, startGateSmallStep, type EntertainmentGateSnapshot, type GateChoice } from "./lib/entertainmentGate";
+import { homeBridge } from "./lib/runtime";
+import { exportWorldPack, type InstructionPack } from "./lib/jlzpack";
+import { beginNativeLife, finishNativeLife, pendingNativeLifeEnds, acknowledgedNativeLifeEnd, nativeLifeAvailable } from "./lib/nativeLife";
+import { stageInstructionPack } from "./lib/packApply";
+import { roomEntries, cycleWindow } from "./lib/worldEntries";
+import { RescuePanel } from "./RescuePanel";
+import { VintageIcon, type VintageIconName } from "./VintageIcons";
 
-type Theme = "mist" | "gothic";
-type Tab = "home" | "echo" | "timeline" | "calendar" | "more";
+import { contentValues, contentPart, contentDevice, THEMES, type Theme, type WorldContent } from "./lib/worldContent";
+type Tab = "home" | "echo" | "timeline" | "calendar" | "room" | "more";
 type Sync = "queued" | "synced";
 type RecordItem = { id: number | string; type: string; at: string; body: string; event_id?: string; sync?: Sync; [key: string]: unknown };
 type Message = { text: string; at: string; event_id?: string; sync?: Sync };
 type ActiveLife = { action: string; session: string; startAt: number } | null;
-type AppState = { theme: Theme; notes: RecordItem[]; messages: Message[]; status: RecordItem | null; life: RecordItem[]; journal: RecordItem[]; activeLife: ActiveLife;
+type AppState = { worldContent: WorldContent | null; lastContextPack: Record<string,unknown> | null; theme: Theme; notes: RecordItem[]; messages: Message[]; status: RecordItem | null; life: RecordItem[]; journal: RecordItem[]; activeLife: ActiveLife;
+  importedMessages: RemoteMessage[]; packAudit: {id:string;at:string;count:number}[]; pendingPackGate: boolean | null;
   runtimeUrl: string; webToken: string; outbox: OutboxItem[]; remoteRecords: RemoteRecord[]; remoteMessages: RemoteMessage[]; seenCompanion: string[]; voiceMemory: VoiceMemory; dailyPlan: DailyPlan | null; studySummary: StudySummary | null };
 type Conn = "local" | "syncing" | "online";
 type Send = (path: WritePath, body: Record<string, unknown>, eventId?: string) => string;
@@ -46,10 +57,11 @@ const CLEANUP_MARKER = "world-between-cleanup-20261002-v1";
 const INSTALL_GUIDE_DISMISSED = "world-between-install-guide-dismissed-v1";
 const ANDROID_SHELL = new URLSearchParams(window.location.search).get("shell") === "android";
 const ENTRY_MODE = new URLSearchParams(window.location.search).get("entry");
+const OPEN_LIFE_FROM_NOTICE = new URLSearchParams(window.location.search).get("open") === "life";
 const GATE_PACKAGE = new URLSearchParams(window.location.search).get("gate_pkg") || "";
 const GATE_REASON = new URLSearchParams(window.location.search).get("gate_reason") || "entry";
-const OUTBOX_CAP = 300;
-const defaults: AppState = { theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
+const defaults: AppState = { worldContent: null, lastContextPack: null, theme: "mist", notes: [], messages: [], status: null, life: [], journal: [], activeLife: null,
+  importedMessages: [], packAudit: [], pendingPackGate: null,
   runtimeUrl: DEFAULT_RUNTIME_URL, webToken: "", outbox: [], remoteRecords: [], remoteMessages: [], seenCompanion: [], voiceMemory: EMPTY_VOICE_MEMORY, dailyPlan: null, studySummary: null };
 const markSynced = (s: AppState, id: string): AppState => {
   const fix = <T extends { event_id?: string; sync?: Sync }>(arr: T[]) => arr.map((x) => (x.event_id === id ? { ...x, sync: "synced" as Sync } : x));
@@ -79,14 +91,16 @@ const GROUPS: Record<string, [string, boolean][]> = {
 export default function BetweenWorlds() {
   const [state, setState] = useState<AppState>(defaults);
   const [tab, setTab] = useState<Tab>(() => window.location.hash === "#echo" ? "echo" : "home");
-  const [welcome, setWelcome] = useState(() => !ENTRY_MODE);
+  const [welcome, setWelcome] = useState(() => !ENTRY_MODE && !OPEN_LIFE_FROM_NOTICE);
   const [unlockHello, setUnlockHello] = useState(() => ENTRY_MODE === "unlock");
-  const [sheet, setSheet] = useState<"status" | "note" | "life" | "task" | "apps" | null>(null);
+  const [sheet, setSheet] = useState<"status" | "note" | "life" | "task" | "apps" | null>(() => OPEN_LIFE_FROM_NOTICE ? "life" : null);
   const [appHub, setAppHub] = useState<AppHubSnapshot>(() => emptyAppHubSnapshot());
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
+  const [taskDate, setTaskDate] = useState(() => keyDate(new Date()));
+  const taskDateRef = useRef(taskDate);
   const [toast, setToast] = useState("");
   const [now, setNow] = useState<Date | null>(null);
-  const [month, setMonth] = useState(() => new Date(2026, 8, 1));
+  const [month, setMonth] = useState(() => new Date());
   const [conn, setConn] = useState<Conn>("local");
   const [loaded, setLoaded] = useState(false);
   const [lastError, setLastError] = useState("");
@@ -103,21 +117,10 @@ export default function BetweenWorlds() {
       // Study state is a live Runtime reflection. Never revive a stale active
       // timer from yesterday's localStorage snapshot before Runtime confirms it.
       current.studySummary = null;
-      if (!localStorage.getItem(CLEANUP_MARKER)) {
-        const cleaned: AppState = {
-          ...defaults,
-          theme: current.theme,
-          runtimeUrl: current.runtimeUrl || DEFAULT_RUNTIME_URL,
-          webToken: current.webToken || "",
-        };
-        localStorage.setItem(STORE, JSON.stringify(cleaned));
-        localStorage.setItem(CLEANUP_MARKER, "done");
-        stateRef.current = cleaned;
-        setState(cleaned);
-      } else {
-        stateRef.current = current;
-        setState(current);
-      }
+      // Preserve all existing records, pending writes and pairing on upgrade.
+      localStorage.setItem(CLEANUP_MARKER, "done");
+      stateRef.current = current;
+      setState(current);
     } catch {
       stateRef.current = defaults;
       setState(defaults);
@@ -138,11 +141,7 @@ export default function BetweenWorlds() {
     return () => window.clearTimeout(timer);
   }, [unlockHello]);
 
-  useEffect(() => {
-    if (!welcome) return;
-    const timer = window.setTimeout(() => setWelcome(false), 1_800);
-    return () => window.clearTimeout(timer);
-  }, [welcome]);
+
 
   useEffect(() => {
     document.body.dataset.theme = state.theme;
@@ -170,7 +169,9 @@ export default function BetweenWorlds() {
   const update = useCallback((fn: (draft: AppState) => AppState) => {
     const next = fn(stateRef.current);
     stateRef.current = next;
-    try { localStorage.setItem(STORE, JSON.stringify(next)); } catch { /* storage may be unavailable */ }
+    try { localStorage.setItem(STORE, JSON.stringify(next)); } catch {
+      setToast("本机存储不足，最新内容尚未持久保存。请保持页面打开并连接 Home Node。");
+    }
     setState(next);
   }, []);
   const notify = useCallback((message: string) => { setToast(message); window.setTimeout(() => setToast(""), 2600); }, []);
@@ -194,10 +195,11 @@ export default function BetweenWorlds() {
     else if (window.location.hash) history.replaceState(null, "", window.location.pathname + window.location.search);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  const flipTheme = () => update((s) => ({ ...s, theme: s.theme === "mist" ? "gothic" : "mist" }));
+  const flipTheme = () => { void changeTheme(); };
 
   const cfg = (): RuntimeConfig | null => {
     const s = stateRef.current;
+    if(homeBridge()?.available()) return {baseUrl:"native",token:"native-managed"};
     return s.webToken.trim() ? { baseUrl: s.runtimeUrl, token: s.webToken.trim() } : null;
   };
 
@@ -207,14 +209,15 @@ export default function BetweenWorlds() {
     if (!c || flushing.current) return false;
     flushing.current = true;
     try {
-      while (stateRef.current.outbox.length) {
-        const item = stateRef.current.outbox[0];
+      while (stateRef.current.outbox.some(item=>!item.rejected)) {
+        const item = stateRef.current.outbox.find(item=>!item.rejected)!;
         try {
           await runtime.write(c, item);
           update((s) => markSynced({ ...s, outbox: s.outbox.filter((x) => x.event_id !== item.event_id) }, item.event_id));
         } catch (e) {
           if (e instanceof RuntimeError && e.permanent) {
-            update((s) => ({ ...s, outbox: s.outbox.filter((x) => x.event_id !== item.event_id) }));
+            update((s) => ({ ...s, outbox: s.outbox.map(x=>x.event_id===item.event_id?{...x,rejected:true,error:e.message}:x) }));
+            notify("有一条记录未被服务端接受，已保留在本机，去更多查看");
             continue;
           }
           update((s) => ({ ...s, outbox: s.outbox.map((x) => (x.event_id === item.event_id ? { ...x, tries: x.tries + 1 } : x)) }));
@@ -242,12 +245,21 @@ export default function BetweenWorlds() {
     }
   }, [update, notify]);
 
-  const pullDailyPlan = useCallback(async (date = keyDate(new Date())) => {
+  const pullDailyPlan = useCallback(async (date = taskDateRef.current) => {
     const c = cfg();
     if (!c) return;
     const plan = await runtime.dailyPlan(c, date);
-    update((s) => ({ ...s, dailyPlan: plan }));
+    if (date !== taskDateRef.current) return;
+    update((s) => ({ ...s, dailyPlan: s.outbox.filter(i=>i.path==="/api/web/daily-plan/task" && i.body.date===date).reduce((p,i)=>optimisticTaskMutation(p,date,String(i.body.action),i.body.task as Partial<DailyTask>),plan) }));
   }, [update]);
+
+  const selectTaskDate = (date: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    taskDateRef.current = date;
+    setTaskDate(date);
+    if (!cfg()) notify("离线时仅保留上次加载的日期，新增任务会排队同步");
+    else void pullDailyPlan(date).catch(() => notify("这个日期暂时没能同步，已有记录仍保留"));
+  };
 
   const pullStudySummary = useCallback(async (date = keyDate(new Date())) => {
     const c = cfg();
@@ -256,18 +268,96 @@ export default function BetweenWorlds() {
     update((s) => ({ ...s, studySummary }));
   }, [update]);
 
+  const [contentOnline, setContentOnline] = useState(false);
+  const [nativeReceiptStatus, setNativeReceiptStatus] = useState<{pending_native_receipts:number;receipt_overflow_count:number}|null>(null);
+  useEffect(() => {
+    if(tab !== 'more') return;
+    const read = () => {
+      const bridge = (window as unknown as {WorldBetweenHome?: {contentReceiptStatus?:()=>string}}).WorldBetweenHome;
+      if (!bridge?.contentReceiptStatus) { setNativeReceiptStatus(null); return; }
+      try {
+        const value = JSON.parse(bridge.contentReceiptStatus()) as {pending_native_receipts?:number;receipt_overflow_count?:number};
+        setNativeReceiptStatus({pending_native_receipts:Math.max(0, Number(value.pending_native_receipts)||0), receipt_overflow_count:Math.max(0, Number(value.receipt_overflow_count)||0)});
+      } catch { setNativeReceiptStatus(null); }
+    };
+    read();
+    const timer=window.setInterval(read,15_000);
+    return ()=>window.clearInterval(timer);
+  }, [tab]);
+  const contentBusy = useRef(false);
+  const device = useRef(contentDevice());
+  const appliedContent = useRef("");
+  const pullContent = useCallback(async () => {
+    const c = cfg();
+    if (!c || contentBusy.current) return;
+    contentBusy.current = true;
+    try {
+      const {content} = await runtime.worldContent(c, device.current.device_scope);
+      update(s => ({...s, worldContent: content}));
+      setContentOnline(true);
+    } catch { setContentOnline(false); }
+    finally { contentBusy.current = false; }
+  }, [update]);
+  useEffect(() => {
+    if (!loaded) return;
+    void pullContent();
+    const visible = () => { if(document.visibilityState === 'visible') void pullContent(); };
+    window.addEventListener('focus', visible);
+    window.addEventListener('online', visible);
+    document.addEventListener('visibilitychange', visible);
+    const timer = window.setInterval(visible, 60000);
+    return () => { window.clearInterval(timer); window.removeEventListener('focus',visible); window.removeEventListener('online',visible); document.removeEventListener('visibilitychange',visible); };
+  }, [loaded, state.runtimeUrl, state.webToken, pullContent]);
+  const copy = contentValues(state.worldContent, now ?? new Date());
+  const displayedPart = contentPart(now ?? new Date());
+  const effectiveTheme: Theme = THEMES.includes(copy['theme.id'] as Theme) ? copy['theme.id'] as Theme : state.theme;
+  useEffect(() => { document.body.dataset.theme = effectiveTheme; }, [effectiveTheme]);
+  useEffect(() => {
+    const content=state.worldContent, c=cfg();
+    if(!contentOnline || !content || !c || document.visibilityState !== 'visible') return;
+    const appliedKeys=['theme.id',...(welcome?['welcome.line']:tab==='home'?['home.moment','greetings.'+displayedPart,unlockHello?'unlock.line':'study.nudge']:tab==='room'?['jlz.room.teaser']:[])].filter(k=>!!copy[k]);
+    const key=content.revision+':'+content.view_id+':'+(welcome?'welcome':tab)+':'+appliedKeys.join(',');
+    if(appliedContent.current === key) return;
+    const frame=requestAnimationFrame(() => {
+      void runtime.contentReceipt(c,{...device.current,surface:'web',revision:content.revision,view_id:content.view_id,applied_keys:appliedKeys}).then(()=>{appliedContent.current=key;}).catch(()=>{setContentOnline(false);});
+    });
+    return ()=>cancelAnimationFrame(frame);
+  },[state.worldContent,contentOnline,effectiveTheme,welcome,tab,unlockHello,displayedPart]);
+  const changeTheme = async (selected?: Theme) => {
+    const theme=selected ?? THEMES[(THEMES.indexOf(effectiveTheme)+1)%THEMES.length];
+    const c=cfg();
+    if(!c || !contentOnline || !state.worldContent) { notify('离线时保留上次主题，连接后再换装'); return; }
+    try {
+      const {content}=await runtime.changeContent(c,{expected_revision:state.worldContent.revision,intent_id:newEventId(),device_scope:device.current.device_scope,patch:[{key:'theme.id',value:theme}]});
+      update(s=>({...s,worldContent:content}));
+    } catch { notify('版本已变或暂未连接，正在重新读取'); void pullContent(); }
+  };
+  const rollbackContent = async () => {
+    const c=cfg(), content=state.worldContent;
+    if(!c || !contentOnline || !content?.revision) return;
+    try {
+      const result=await runtime.changeContent(c,{expected_revision:content.revision,target_revision:content.revision-1,intent_id:newEventId(),device_scope:device.current.device_scope},true);
+      update(s=>({...s,worldContent:result.content})); notify('已恢复上一版');
+    } catch { notify('版本已变或暂未连接，撤销未生效'); void pullContent(); }
+  };
+
   const connect = useCallback(async () => {
     const c = cfg();
     if (!c) { setConn("local"); setLastError(""); return; }
     setConn("syncing");
     try {
       await runtime.health(c);
+      await pullContent();
       await flush();
       const st = await runtime.state(c);
       update((s) => ({ ...s, remoteRecords: extractRecords(st).slice(0, 300) }));
       await pullMessages();
       await pullDailyPlan();
       await pullStudySummary();
+      if(c.baseUrl === "native") {
+        // One bounded snapshot per reconnect, cached for offline export. Optional on older servers.
+        try { const snapshot=await runtime.exportContext(c); update(s=>({...s,lastContextPack:snapshot.context_pack})); } catch { /* retain last known snapshot */ }
+      }
       setConn("online");
       setLastError("");
     } catch (e) {
@@ -275,7 +365,7 @@ export default function BetweenWorlds() {
       const status = e instanceof RuntimeError ? e.status : 0;
       setLastError(status === 401 || status === 403 ? "钥匙不正确或已失效" : status ? `Runtime 返回 ${status}` : "暂时连不上 Runtime");
     }
-  }, [flush, pullMessages, pullDailyPlan, pullStudySummary, update]);
+  }, [flush, pullMessages, pullDailyPlan, pullStudySummary, pullContent, update]);
 
   const presence = useCallback(async (stateName: string) => {
     const c = cfg();
@@ -326,13 +416,49 @@ export default function BetweenWorlds() {
 
   const send: Send = useCallback((path, body, eventId = newEventId()) => {
     const item: OutboxItem = { event_id: eventId, path, body: { ...body, client_at: new Date().toISOString() }, queuedAt: new Date().toISOString(), tries: 0 };
-    update((s) => ({ ...s, outbox: [...s.outbox.filter((x) => x.event_id !== eventId), item].slice(-OUTBOX_CAP) }));
+    update((s) => ({ ...s, outbox: [...s.outbox.filter((x) => x.event_id !== eventId), item] }));
     if (cfg()) flush().then(() => setConn((c) => (c === "local" ? c : "online"))).catch(() => setConn("local"));
     return eventId;
   }, [update, flush]);
 
+  // Notification '结束' works even with WebShell closed. On next visible
+  // session, append one deterministic end event to the durable Web outbox and
+  // acknowledge the native pending receipt only after it was enqueued.
+  useEffect(()=>{
+    if(!loaded||!nativeLifeAvailable())return;
+    const reconcile=()=>{
+      for(const event of pendingNativeLifeEnds()){
+        const id=event.event_id;
+        const already=stateRef.current.outbox.some(x=>x.event_id===id) ||
+          stateRef.current.life.some(x=>x.event_id===id);
+        if(!already){
+          const at=new Date(event.end_at_ms).toISOString();
+          const item: RecordItem={id,event_id:id,sync:"queued",type:"此刻我在",at,
+            body:event.action+" · 从通知结束",session:event.session_id,
+            startAt:event.start_at_ms,endAt:event.end_at_ms};
+          update(state=>({...state,activeLife:state.activeLife?.session===event.session_id?null:state.activeLife,
+            life:[item,...state.life].slice(0,120),notes:[item,...state.notes].slice(0,120)}));
+          send("/api/web/life/action",{phase:"end",action:event.action,session_id:event.session_id,
+            start_at_ms:event.start_at_ms,end_at_ms:event.end_at_ms,created_at_ms:event.end_at_ms},id);
+        }else{
+          update(state=>({...state,activeLife:state.activeLife?.session===event.session_id?null:state.activeLife}));
+        }
+        if(stateRef.current.outbox.some(x=>x.event_id===id) ||
+           stateRef.current.life.some(x=>x.event_id===id)){
+          acknowledgedNativeLifeEnd(id);
+        }
+      }
+    };
+    reconcile();
+    const timer=window.setInterval(reconcile,15000);
+    window.addEventListener("focus",reconcile);
+    document.addEventListener("visibilitychange",reconcile);
+    return ()=>{window.clearInterval(timer);window.removeEventListener("focus",reconcile);
+      document.removeEventListener("visibilitychange",reconcile)};
+  },[loaded,send,update]);
+
   const mutateDailyTask = useCallback((action: string, payload: Partial<DailyTask> & { task_id?: string }) => {
-    const date = keyDate(new Date());
+    const date = payload.date || taskDateRef.current;
     const taskPayload = {
       ...payload,
       task_id: payload.task_id || newEventId(),
@@ -347,12 +473,36 @@ export default function BetweenWorlds() {
       ),
     }));
     send("/api/web/daily-plan/task", { date, action, task: taskPayload });
+    if (action === "complete") { try { window.WorldBetweenStudy?.taskCompleted?.(); } catch { /* Local artwork never blocks task persistence. */ } }
   }, [send, update]);
 
   const openTaskEditor = useCallback((task: DailyTask | null = null) => {
     setEditingTask(task);
     setSheet("task");
   }, []);
+
+  const applyInstructionPack = (pack: InstructionPack) => {
+    if(pack.actions.some(a=>a.type==="gate_config") && !homeBridge()) throw new Error("Gate 配置需要 Android 本机桥接。");
+    const oldAudit = JSON.parse(localStorage.getItem("world-between-pack-audit-v1") || "[]") as {id:string}[];
+    if(oldAudit.some(e=>e.id===pack.pack_id)) throw new Error("这个包已经应用过。");
+    const next = stageInstructionPack(stateRef.current, pack, keyDate(new Date()), new Date().toISOString());
+    // One durable write includes content, queue and replay guard. Failure changes nothing.
+    localStorage.setItem(STORE, JSON.stringify(next));
+    stateRef.current = next;
+    setState(next);
+    if(cfg()) void flush().catch(()=>setConn("local"));
+  };
+
+  useEffect(() => {
+    if(!loaded || state.pendingPackGate === null) return;
+    const bridge = homeBridge();
+    if(!bridge) return;
+    try {
+      // Idempotent native setting; pending intent survives interruption between stores.
+      bridge.setGateEnabled(state.pendingPackGate);
+      update(s=>({...s,pendingPackGate:null}));
+    } catch { setLastError("Gate 配置待重试，重新打开后会继续应用。"); }
+  }, [loaded, state.pendingPackGate, update]);
 
   // (Re)connect when the key or URL changes, on network return, and periodically.
   useEffect(() => { if (loaded) void connect(); }, [loaded, state.webToken, state.runtimeUrl, connect]);
@@ -370,7 +520,7 @@ export default function BetweenWorlds() {
       if (document.visibilityState !== "visible") return;
       presence("foreground");
       if (conn === "local" && cfg()) void connect();
-      else if (conn === "online") { void pullDailyPlan(); void pullStudySummary(); }
+      else if (conn === "online") { void pullDailyPlan(); void pullStudySummary(); const c=cfg(); if(c) void runtime.state(c).then(st=>update(s=>({...s,remoteRecords:extractRecords(st).slice(0,300)}))).catch(()=>{}); }
     }, 60000);
     return () => { window.removeEventListener("online", onOnline); window.removeEventListener("focus", onFocus); window.removeEventListener("blur", onBlur); document.removeEventListener("visibilitychange", onVis); window.clearInterval(beat); };
   }, [loaded, conn, connect, presence, pullDailyPlan, pullStudySummary]);
@@ -391,7 +541,25 @@ export default function BetweenWorlds() {
     return () => window.clearInterval(id);
   }, [conn, state.studySummary?.active, pullStudySummary]);
 
-  const savedText = (what: string) => (conn === "online" ? `${what}已同步给纪临洲` : `${what}已存本机，连接后自动同步`);
+  const savedText = (what: string) => (conn === "online" ? `${what}已存本机，正在同步给纪临洲` : `${what}已存本机，连接后自动同步`);
+
+  const [nativeMood, setNativeMood] = useState<VoiceInput["nativeMood"]>(null);
+  useEffect(() => {
+    if (!loaded) return;
+    const load = () => {
+      const bridge = homeBridge();
+      if (!bridge?.voiceState) { setNativeMood(null); return; }
+      try {
+        const response = JSON.parse(bridge.voiceState()) as {mood?: string};
+        const moods = ["STEADY","FOCUSED","CONCERNED","LONGING","QUIET","PROUD"] as const;
+        const found = moods.find(m => m === response.mood);
+        setNativeMood(found ?? null);
+      } catch { setNativeMood(null); }
+    };
+    load();
+    const ticker = window.setInterval(load, 30_000);
+    return () => window.clearInterval(ticker);
+  }, [loaded]);
 
   const voiceStatus: VoiceStatus | null = state.status ? {
     at: state.status.at,
@@ -402,6 +570,7 @@ export default function BetweenWorlds() {
     now: now ?? new Date(),
     activeLife: state.activeLife,
     status: voiceStatus,
+    nativeMood,
   }, state.voiceMemory);
   useEffect(() => {
     if (!loaded || !now || voiceCard.nextMemory === state.voiceMemory) return;
@@ -494,6 +663,7 @@ export default function BetweenWorlds() {
   }
 
   return <div className="bw-root">
+    {tab==="more" && <RescuePanel snapshot={()=>exportWorldPack(stateRef.current,{...JSON.parse(homeBridge()?.snapshot()||"{}"),study_summary:nativeStudyAvailable()?readNativeStudy():undefined})} apply={applyInstructionPack}/>}
     {installGuide && <div className="install-guide-backdrop" role="dialog" aria-modal="true" aria-label="安装世界之间">
       <div className="install-guide-card">
         <img src="/icon-512.webp" alt="世界之间图标" />
@@ -511,20 +681,22 @@ export default function BetweenWorlds() {
       <div className="welcome-card">
         <div className="welcome-kicker">BETWEEN WORLDS · PRIVATE SPACE</div>
         <div className="welcome-portrait-wrap"><img className="welcome-portrait" src={welcomePortrait} alt="纪临洲立绘" /></div>
-        <div className="welcome-copy"><h1>世界之间</h1><p className="welcome-en">Between Worlds</p><p>世界再喧哗，也有一扇门，只向你和我打开。</p></div>
+        <div className="welcome-copy"><h1>世界之间</h1><p className="welcome-en">Between Worlds</p><p>{copy["welcome.line"] || `${voiceCard.headline} ${voiceCard.body}`}</p></div>
         <button className="enter-btn" onClick={() => setWelcome(false)}>进入我们的世界 <span>↗</span></button>
       </div>
     </div>
 
     <main className="app-shell">
-      <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}>✦ 换装</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
-      {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} voice={voiceCard} homePortrait={homePortrait} plan={state.dailyPlan?.date === keyDate(now ?? new Date()) ? state.dailyPlan : emptyDailyPlan(keyDate(now ?? new Date()))} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} unlockHello={unlockHello} appHub={appHub} launchApp={launchHubApp} openBanduread={openBanduread} openApps={() => setSheet("apps")} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
-      {tab === "echo" && <EchoPage state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
+      <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}><VintageIcon name="theme" size={22} /> 换装</button><button className="round-btn" aria-label="更多" onClick={()=>switchTab("more")}>⋯</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
+      {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} copy={copy} voice={{...voiceCard, headline:copy["greetings."+contentPart(now ?? new Date())] || voiceCard.headline, body:copy["home.moment"] || voiceCard.body}} homePortrait={homePortrait} selectTaskDate={selectTaskDate} plan={state.dailyPlan?.date === taskDate ? state.dailyPlan : emptyDailyPlan(taskDate)} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} unlockHello={unlockHello} appHub={appHub} launchApp={launchHubApp} openBanduread={openBanduread} openApps={() => setSheet("apps")} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
+      {tab === "echo" && <EchoPage onTask={(text,id)=>{mutateDailyTask("upsert",{date:keyDate(new Date()),task_id:"echo-task-"+id.slice(-70),title:text.slice(0,180),description:text,source:"echo:"+id});notify("已放进今日任务");}} state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
       {tab === "timeline" && <TimelinePage notes={state.notes} remote={state.remoteRecords} />}
-      {tab === "calendar" && <CalendarPage month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
-      {tab === "more" && <MorePage state={state} update={update} setWelcome={setWelcome} banner={banner} reconnect={() => void connect()} />}
+      {tab === "room" && <RoomPage records={state.remoteRecords} teaser={copy["jlz.room.teaser"]} portrait={homePortrait} />}
+      {tab === "calendar" && <CalendarPage records={state.remoteRecords} notes={state.notes} plan={state.dailyPlan} month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
+      {tab === "more" && <section className="content-sync glass"><h3>同步与更改记录</h3>{state.outbox.filter(i=>i.rejected).map(i=><p key={i.event_id}>未同步：{String(i.body.text || (i.body.task as DailyTask|undefined)?.title || "一条记录")}<button onClick={()=>{update(s=>({...s,outbox:s.outbox.map(x=>x.event_id===i.event_id?{...x,rejected:false,error:undefined}:x)}));void connect();}}>重试</button></p>)}<p>{contentOnline ? '已连接' : '离线 · 使用本机有效内容'} · 内容版本 {state.worldContent?.revision ?? 0}</p><p>主题：{effectiveTheme} · 只有实际写入的内容来自官端</p>{nativeReceiptStatus && <p>原生页面：{nativeReceiptStatus.pending_native_receipts} 条显示回执待 Home Node 确认{nativeReceiptStatus.receipt_overflow_count > 0 ? ' · '+nativeReceiptStatus.receipt_overflow_count+' 次回执队列已满（需检查）' : ''}。后台保存不等于手机已经显示。</p>}<button className="secondary" onClick={()=>void pullContent()}>立即同步</button> <button className="secondary" disabled={!contentOnline || !state.worldContent?.revision} onClick={()=>void rollbackContent()}>恢复上一版</button>{state.worldContent?.recent_changes.map(change=><p key={change.revision}>v{change.revision} · {change.keys.join(' / ')}<small> {change.updated_at}</small></p>)}{state.worldContent?.devices?.map(d=><p key={d.device_id}>{d.device_type==="tablet"?"平板":"手机"} · {d.online_state==="online"?"在线":"暂不可达"} · {d.last_seen_age_seconds} 秒前连接</p>)}{state.worldContent?.receipts.map(r=><p key={r.device_id+r.surface}>{r.device_id} · {r.surface} 已应用 v{r.revision} · {(r.applied_keys||[]).join(" / ")}</p>)}</section>}
+      {tab === "more" && <MorePage effectiveTheme={effectiveTheme} chooseTheme={theme => void changeTheme(theme)} state={state} update={update} setWelcome={setWelcome} banner={banner} reconnect={() => void connect()} />}
       <nav className="dock" aria-label="主导航">
-        {([['home','⌂','现在'],['echo','☰','回响'],['timeline','♡','你我之间'],['calendar','▣','共历'],['more','⊞','更多']] as [Tab,string,string][]).map(([id, icon, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => switchTab(id)}>{icon}<span>{label}</span></button>)}
+        {([["home","now","现在"],["echo","echo","回响"],["timeline","between","你我之间"],["room","jilinzhou","纪临洲"],["calendar","calendar","共历"]] as [Tab,VintageIconName,string][]).map(([id, icon, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => switchTab(id)}><VintageIcon name={icon} size={29}/><span>{label}</span></button>)}
       </nav>
     </main>
     <div className={`scrim ${sheet ? "show" : ""}`} onClick={() => setSheet(null)} />
@@ -533,7 +705,7 @@ export default function BetweenWorlds() {
       {sheet === "status" && <StatusEditor close={() => setSheet(null)} update={update} send={send} notify={notify} savedText={savedText} />}
       {sheet === "note" && <NoteEditor close={() => setSheet(null)} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
       {sheet === "life" && <LifeEditor activeLife={state.activeLife} close={() => setSheet(null)} update={update} send={send} notify={notify} savedText={savedText} />}
-      {sheet === "task" && <TaskEditor task={editingTask} date={keyDate(now ?? new Date())} close={() => setSheet(null)} mutateTask={mutateDailyTask} notify={notify} />}
+      {sheet === "task" && <TaskEditor task={editingTask} date={taskDate} close={() => setSheet(null)} mutateTask={mutateDailyTask} notify={notify} />}
       {sheet === "apps" && <AppDrawerSheet snapshot={appHub} launchApp={launchHubApp} setPinned={updateAppPin} movePinned={moveAppPin} openBanduread={openBanduread} />}
     </div>
     <div className={`toast ${toast ? "show" : ""}`}>{toast}</div>
@@ -838,7 +1010,7 @@ function StudySessionWebPage({ avatar }: { avatar: string }) {
 
 type Banner = { conn: Conn; configured: boolean; pending: number; lastError: string };
 function bannerText(b: Banner) {
-  if (b.conn === "online") return { title: "已连接 Runtime · 实时同步", sub: b.pending ? `还有 ${b.pending} 条正在补发。` : "记录会同步到我们共享的世界。", badge: "ONLINE" };
+  if (b.conn === "online") return { title: "已同步", sub: b.pending ? `还有 ${b.pending} 条正在补发。` : "记录会同步到我们共享的世界。", badge: "ONLINE" };
   if (b.conn === "syncing") return { title: "正在同步 Runtime……", sub: b.pending ? `正在补发 ${b.pending} 条本地记录。` : "正在读取我们共享的世界。", badge: "SYNCING" };
   if (!b.configured) return { title: "本地模式 · Runtime 待连接", sub: `在「更多」填写私人连接钥匙后自动同步。${b.pending ? `已排队 ${b.pending} 条。` : ""}`, badge: "LOCAL" };
   return { title: `${b.lastError || "暂时连不上 Runtime"} · 记录先存本机`, sub: `${b.pending} 条记录已在本机排队，恢复连接后自动补发。`, badge: "LOCAL" };
@@ -846,13 +1018,15 @@ function bannerText(b: Banner) {
 const syncLabel = (sync?: Sync) => (sync === "synced" ? "已同步" : "本地 · 待同步");
 
 function HomePage({
-  dateLabel, timeText, voice, homePortrait, plan, study, nowMs, unlockHello, appHub, launchApp, openBanduread, openApps, openStudy, openSheet, openTask, mutateTask, setTab, banner,
+  copy, dateLabel, timeText, voice, homePortrait, plan, selectTaskDate, study, nowMs, unlockHello, appHub, launchApp, openBanduread, openApps, openStudy, openSheet, openTask, mutateTask, setTab, banner,
 }: {
+  copy: Record<string,string>;
   dateLabel: string;
   timeText: string;
   voice: ReturnType<typeof selectVoiceCard>;
   homePortrait: string;
   plan: DailyPlan;
+  selectTaskDate: (date: string) => void;
   study: StudySummary;
   nowMs: number;
   unlockHello: boolean;
@@ -867,6 +1041,29 @@ function HomePage({
   setTab: (t: Tab) => void;
   banner: Banner;
 }) {
+  const [tasksOpen,setTasksOpen]=useState(false);
+  const [tasksExpanded,setTasksExpanded]=useState(false);
+  const taskGripStartY = useRef<number | null>(null);
+  const closeTasks = () => { setTasksOpen(false); setTasksExpanded(false); };
+  const shiftTaskDate = (days: number) => {
+    const date = new Date(plan.date + "T12:00:00");
+    if (Number.isNaN(date.getTime())) return;
+    date.setDate(date.getDate() + days);
+    selectTaskDate(keyDate(date));
+  };
+  useEffect(() => {
+    if (!tasksOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { setTasksOpen(false); setTasksExpanded(false); }
+    };
+    window.addEventListener("keydown", escape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", escape);
+    };
+  }, [tasksOpen]);
   const b = bannerText(banner);
   const sections = planSections(plan);
   const homeApps = appHubHomeItems(appHub, 3);
@@ -878,56 +1075,107 @@ function HomePage({
   const studyDetail = studyCurrent
     ? `${studyDeviceLabel(studyCurrent.device_id)} · ${studyCurrent.module || studyCurrent.subject || "学习 Session"}`
     : `今天完成 ${study.completed_sessions} 轮`;
-  const current = plan.tasks.find((task) => task.task_id === plan.current_task_id) ?? null;
   const statusLabel: Record<DailyTask["status"], string> = {
     todo: "待开始", in_progress: "进行中", done: "完成", postponed: "已延期", incomplete: "未完成",
   };
-  const renderTask = (task: DailyTask) => <div className="daily-task-row" key={task.task_id}>
-    <button className={`task-check ${task.status === "done" ? "done" : ""}`} aria-label={task.status === "done" ? "重新打开任务" : "完成任务"} onClick={() => mutateTask(task.status === "done" ? "reopen" : "complete", { task_id: task.task_id })}>{task.status === "done" ? "✓" : ""}</button>
-    <button className="task-body" onClick={() => openTask(task)}>
-      <span className="task-title-line"><b>{task.title}</b>{task.user_pinned && <i>PIN</i>}{task.must_do && <i>MUST</i>}</span>
-      <small>{task.category} · {statusLabel[task.status]}{task.estimated_minutes ? ` · 约 ${task.estimated_minutes} 分钟` : ""}</small>
-      {task.next_action && <em>{task.next_action}</em>}
-    </button>
-  </div>;
+  // Old GPT tasks sometimes put an entire paragraph in title/next_action.
+  // Keep the original data intact while showing a concise heading in the list.
+  const shortTaskTitle = (title: string) => {
+    const clean = title.replace(/\s+/g, " ").trim();
+    if (clean.length <= 24) return clean;
+    const clause = clean.split(/[，,。；;：:\n]/)[0];
+    const short = clause.length >= 4 && clause.length <= 24 ? clause : clean.slice(0, 22);
+    return short + (short.length < clean.length ? "…" : "");
+  };
+  const recordDate = (raw: string) => {
+    const d = new Date(raw);
+    if (!raw || Number.isNaN(d.getTime())) return "未记录";
+    return d.toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" });
+  };
+  const completedCount = plan.tasks.filter(t => t.status === "done").length;
+  const renderTask = (task: DailyTask) => {
+    const detail = taskDetailText(task) || (task.title.length > 24 ? task.title : "");
+    return <article className="task-entry" key={task.task_id}>
+      <div className="task-entry-heading">
+        <button className={`task-check ${task.status === "done" ? "done" : ""}`} aria-label={task.status === "done" ? "重新打开任务" : "完成任务"}
+          onClick={() => mutateTask(task.status === "done" ? "reopen" : "complete", { task_id: task.task_id, date: task.date })}>{task.status === "done" ? "✓" : ""}</button>
+        <button className="task-entry-title" onClick={() => { closeTasks(); openTask(task); }} aria-label={`编辑任务：${task.title}`}>
+          <strong>{shortTaskTitle(task.title)}</strong>
+          <span>编辑 ↗</span>
+        </button>
+        <button className="task-defer" onClick={() => mutateTask("postpone", { task_id: task.task_id, date: task.date })}>延期</button>
+      </div>
+      <div className="task-entry-dates">
+        <span>任务日期 {task.date}</span>
+        <span>记录于 {recordDate(task.created_at)}</span>
+        {task.status === "done" && <span>完成于 {task.completed_at ? recordDate(task.completed_at) : "未记录具体日期"}</span>}
+      </div>
+      <div className="task-entry-meta">
+        {task.category} · {statusLabel[task.status]}{task.estimated_minutes ? ` · 约 ${task.estimated_minutes} 分钟` : ""}
+        {task.user_pinned ? " · 已固定" : ""}
+        {task.due_at ? ` · 截止 ${task.due_at.match(/T(\d{2}:\d{2})/)?.[1] || task.due_at}` : ""}
+      </div>
+      {detail && <details className="task-entry-details">
+        <summary>具体内容 <span>展开 / 收起</span></summary>
+        <p>{detail}</p>
+      </details>}
+    </article>;
+  };
 
-  return <section className="page active">
+  return <section className="page active home-page">
     <div className="brand-block"><div className="cn">世界之间</div><div className="en">Between Worlds</div></div>
     <article className="hero"><img src={homePortrait} alt="纪临洲" /><div className="hero-fade" /><div className="hero-copy"><div className="micro">{dateLabel}</div><div className="hero-clock">{timeText}</div><div className="hero-context">{voice.contextLabel}</div><h2>{voice.headline}</h2><p>{voice.body}</p><em>For you, in all worlds.</em></div></article>
     <div className="runtime-banner"><div><b>{b.title}</b><span>{b.sub}</span></div><span className="badge">{b.badge}</span></div>
+    <button className="task-summary glass" onClick={() => { window.location.href = 'jlz://native/modes'; }} aria-label="打开作息与专注模式"><span className="task-summary-copy"><strong>作息与专注</strong><small>专注 · 短休 · 睡眠 · 闹钟</small></span><span className="task-summary-open">进入 ↗</span></button>
 
     <SectionHead title="先从这里走" english="APP HUB" />
     <div className="app-hub-card glass">
-      <div className="app-hub-copy"><span>{unlockHello ? "UNLOCKED · 先看我一眼" : "START HERE · 少一点乱跑"}</span><b>{unlockHello ? "解锁了。先决定你现在要去哪。" : "学习放前面，其他的都还在。"}</b><small>{appHub.native ? "这些入口只读取本机应用列表，不会把你的 App 清单上传给 Runtime。" : "在 Android 版「世界之间」里，这里会显示你真正安装的应用。"}</small></div>
+      <div className="app-hub-copy"><span>{unlockHello ? "UNLOCKED · 先看我一眼" : "START HERE · 少一点乱跑"}</span><b>{unlockHello ? copy["unlock.line"] || `${voice.headline} ${voice.body}` : copy["study.nudge"] || "学习放前面，其他的都还在。"}</b><small>{"伴读、粉笔与常用应用"}</small></div>
       <div className="app-hub-grid">
-        <button className="hub-tile study" onClick={openBanduread}><span className="hub-mark">伴</span><b>伴读</b><small>刷题 / 复盘</small></button>
+        <button className="hub-tile study" onClick={openBanduread}><span className="hub-mark"><VintageIcon name="study" size={36}/></span><b>伴读</b><small>刷题 / 复盘</small></button>
         {homeApps.map((item) => <button className={`hub-tile ${item.category === "学习" ? "study" : ""}`} key={item.package_name} onClick={() => launchApp(item)}><span className="hub-mark">{item.label.slice(0, 1)}</span><b>{item.label}</b><small>{item.category}</small></button>)}
         <button className="hub-tile more" onClick={openApps}><span className="hub-mark">＋</span><b>全部</b><small>App 抽屉</small></button>
       </div>
     </div>
 
-    <SectionHead title="今天听我的" english="DAILY PLAN" />
-    <div className="daily-plan glass">
-      <div className="daily-plan-top">
-        <div><span>TODAY · {plan.date}</span><b>{plan.tasks.length ? `${plan.tasks.filter((task) => task.status === "done").length} / ${plan.tasks.length} 已完成` : "今天还没排任务"}</b></div>
-        <button onClick={() => openTask(null)}>＋</button>
-      </div>
-      {plan.current_step ? <div className="current-step">
-        <span>NOW · 当前第一步</span>
-        <strong>{plan.current_step.next_action}</strong>
-        <small>{plan.current_step.title}{plan.current_step.estimated_minutes ? ` · 约 ${plan.current_step.estimated_minutes} 分钟` : ""}</small>
-        <div className="current-step-actions">
-          {current?.status === "in_progress"
-            ? <button onClick={() => mutateTask("complete", { task_id: current.task_id })}>做完了</button>
-            : current && <button onClick={() => mutateTask("start", { task_id: current.task_id })}>现在开始</button>}
-          {current && <button className="secondary-mini" onClick={() => openTask(current)}>调整</button>}
+    <button className="task-summary glass" onClick={() => setTasksOpen(true)} aria-label="打开每日待办清单">
+      <span className="task-summary-copy"><strong>{plan.date === keyDate(new Date()) ? "今日待办" : plan.date + " · 待办"}</strong><small>{plan.tasks.length ? `已完成 ${completedCount} / ${plan.tasks.length} 项` : "今天还没有任务"}</small></span>
+      <span className="task-summary-open"><VintageIcon name="todo" size={26}/> 查看待办 <span aria-hidden="true">↗</span></span>
+    </button>
+    {tasksOpen && <div className="task-drawer-backdrop" onClick={closeTasks} role="presentation">
+      <section className={`task-drawer ${tasksExpanded ? "expanded" : ""}`} role="dialog" aria-modal="true" aria-label="每日待办清单" onClick={e => e.stopPropagation()}>
+        <button className="drawer-grip" aria-label={tasksExpanded ? "收起待办面板" : "展开待办面板"} onClick={() => setTasksExpanded(v => !v)}
+          onTouchStart={e => { taskGripStartY.current = e.changedTouches[0]?.clientY ?? null; }}
+          onTouchEnd={e => {
+            if (taskGripStartY.current === null) return;
+            const delta = e.changedTouches[0].clientY - taskGripStartY.current;
+            taskGripStartY.current = null;
+            if (Math.abs(delta) <= 40) return;
+            e.preventDefault();
+            if (delta < 0) setTasksExpanded(true);
+            else if (tasksExpanded) setTasksExpanded(false);
+            else closeTasks();
+          }}>━━</button>
+        <div className="task-drawer-heading">
+          <div><span>DAILY PLAN</span><h3>每日待办</h3><small>{completedCount} / {plan.tasks.length} 项完成</small></div>
+          <button className="task-drawer-close" onClick={closeTasks} aria-label="关闭待办">×</button>
         </div>
-      </div> : <button className="empty-plan" onClick={() => openTask(null)}><b>给今天放第一件事。</b><small>别在脑子里堆着。写下来，我替你排顺序。</small></button>}
-      {!!sections.main.length && <div className="daily-main-list">{sections.main.map(renderTask)}</div>}
-      {!!sections.other.length && <details className="task-fold"><summary>另外 {sections.other.length} 件 · 展开</summary>{sections.other.map(renderTask)}</details>}
-      {!!sections.completed.length && <details className="task-fold completed"><summary>已完成 {sections.completed.length} 件</summary>{sections.completed.map(renderTask)}</details>}
-      {!!sections.postponed.length && <details className="task-fold"><summary>已延期 {sections.postponed.length} 件</summary>{sections.postponed.map(renderTask)}</details>}
-    </div>
+        <div className="task-date-navigation">
+          <button onClick={() => shiftTaskDate(-1)} aria-label="前一天">‹</button>
+          <input type="date" value={plan.date} aria-label="查看哪一天的待办" onChange={e => selectTaskDate(e.target.value)} />
+          <button onClick={() => shiftTaskDate(1)} aria-label="后一天">›</button>
+          <button className="task-date-today" onClick={() => selectTaskDate(keyDate(new Date()))}>今天</button>
+        </div>
+        <div className="task-drawer-list">
+          {[...sections.main, ...sections.other, ...sections.postponed].length > 0 && <div className="task-group-label">待办中 <span>{plan.tasks.length - completedCount} 项</span></div>}
+          {[...sections.main, ...sections.other, ...sections.postponed].map(renderTask)}
+          {sections.completed.length > 0 && <div className="task-group-label task-group-complete">已完成 <span>{sections.completed.length} 项</span></div>}
+          {sections.completed.map(renderTask)}
+          {!plan.tasks.length && <div className="task-drawer-empty"><b>这一天还没有待办。</b><small>从官端聊天或者这里添加，都可以同步进来。</small></div>}
+        </div>
+        <button className="task-drawer-add" onClick={() => { closeTasks(); openTask(null); }}>＋ 添加待办</button>
+      </section>
+    </div>}
 
     <SectionHead title="陪你学一会儿" english="STUDY SESSION" />
     <div className={`study-session-card glass ${study.active ? "active" : ""} ${study.paused ? "paused" : ""}`}>
@@ -952,8 +1200,8 @@ function HomePage({
       </div>
     </div>
 
-    <SectionHead title="今日的私藏信笺" english="JUST FOR TODAY" /><div className="action-grid"><button className="action-card" onClick={() => openSheet("status")}><span className="ico">♡</span><b>状态灯</b><small>把这一刻的你告诉我</small></button><button className="action-card rose" onClick={() => openSheet("note")}><span className="ico">✎</span><b>随手记</b><small>写一封小小的信</small></button><button className="action-card wide" onClick={() => openSheet("life")}><span className="ico">◌</span><b>此刻我在</b><small>把小猫现在在做什么告诉我</small></button></div>
-    <SectionHead title="我们的房间" english="THE ROOMS" /><div className="room-grid"><button className="room-card" onClick={() => setTab("timeline")}><span>01 / OUR STORY</span><b>你我之间</b><small>拾起每一页日常</small></button><button className="room-card" onClick={() => setTab("echo")}><span>02 / YOUR VOICE</span><b>回响</b><small>写给彼此的悄悄话</small></button><button className="room-card full" onClick={() => setTab("calendar")}><span>03 / TIME & MEMORY</span><b>共历</b><small>把平凡日子收藏起来</small></button></div>
+    <SectionHead title="今日的私藏信笺" english="JUST FOR TODAY" /><div className="action-grid"><button className="action-card" onClick={() => openSheet("status")}><span className="ico"><VintageIcon name="status" size={42}/></span><b>状态灯</b><small>把这一刻的你告诉我</small></button><button className="action-card rose" onClick={() => openSheet("note")}><span className="ico"><VintageIcon name="note" size={42}/></span><b>随手记</b><small>写一封小小的信</small></button><button className="action-card wide" onClick={() => openSheet("life")}><span className="ico"><VintageIcon name="presence" size={42}/></span><b>此刻我在</b><small>把小猫现在在做什么告诉我</small></button></div>
+
   </section>;
 }
 function AppDrawerSheet({
@@ -997,45 +1245,274 @@ function AppDrawerSheet({
 function SectionHead({ title, english }: { title: string; english: string }) { return <div className="section-head"><b>{title}</b><span>{english}</span></div>; }
 function PageHead({ kicker, title, en, copy }: { kicker: string; title: string; en: string; copy: string }) { return <div className="page-head"><div><span>{kicker}</span><h2>{title} <em>{en}</em></h2><p>{copy}</p></div></div>; }
 
-function EchoPage({ state, conn, update, send, notify, chatAvatar }: { state: AppState; conn: Conn; update: (fn: (s: AppState) => AppState) => void; send: Send; notify: (s: string) => void; chatAvatar: string }) {
+function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask }: { onTask:(text:string,id:string)=>void; state: AppState; conn: Conn; update: (fn: (s: AppState) => AppState) => void; send: Send; notify: (s: string) => void; chatAvatar: string }) {
   const [text, setText] = useState("");
-  const submit = () => { const value = text.trim(); if (!value) return; const id = newEventId(); update((s) => ({ ...s, messages: [...s.messages, { text: value, at: new Date().toISOString(), event_id: id, sync: "queued" as Sync }].slice(-80) })); send("/api/web/message", { text: value }, id); setText(""); if (conn !== "online") notify("已存本机，连接后自动发送"); };
-  const remoteIds = new Set(state.remoteMessages.map((m) => m.id));
+  const [replyTo,setReplyTo] = useState<{id:string;text:string}|null>(null);
+  const [scheduledEcho, setScheduledEcho] = useState<{scheduled:number;notifications:number;next_execute_at_ms:number|null}|null>(null);
+  const [day, setDay] = useState(() => keyDate(new Date()));
+  const [dayMessages, setDayMessages] = useState<RemoteMessage[]>([]);
+  const [dayLoaded,setDayLoaded] = useState(false);
+  const [beforeId,setBeforeId] = useState("");
+  const [hasMore,setHasMore] = useState(false);
+  const [loadingOlder,setLoadingOlder] = useState(false);
+  const [newMessages,setNewMessages] = useState(false);
+  const viewport = useRef<HTMLDivElement>(null);
+  const nearBottom = useRef(true);
+  const renderedDay = useRef("");
+  const lastMessage = useRef("");
+  const activeDay = useRef(day);
+  const morePagesLoaded = useRef(false);
+  const preserveScroll = useRef<{height:number;top:number}|null>(null);
+  const today = keyDate(new Date());
+  useEffect(()=>{
+    if(conn!=="online" || !state.webToken.trim()){setScheduledEcho(null);return;}
+    const c={baseUrl:state.runtimeUrl||DEFAULT_RUNTIME_URL,token:state.webToken.trim()};
+    let active=true;
+    const refresh=async()=>{
+      try {
+        const q=await runtime.nextHourEcho(c);
+        if(active)setScheduledEcho({scheduled:q.scheduled,notifications:q.notifications,
+          next_execute_at_ms:q.next_execute_at_ms});
+      }catch{if(active)setScheduledEcho(null)}
+    };
+    void refresh();
+    const timer=window.setInterval(()=>{if(document.visibilityState==="visible")void refresh()},30000);
+    return ()=>{active=false;window.clearInterval(timer)};
+  },[conn,state.webToken,state.runtimeUrl]);
+  const shiftDay=(step:number)=>{
+    const [y,m,d]=day.split("-").map(Number);
+    const next=new Date(y,m-1,d+step,12);
+    const nextKey=keyDate(next);
+    if(nextKey<=keyDate(new Date()))setDay(nextKey);
+  };
+  useEffect(()=>{
+    activeDay.current=day;
+    morePagesLoaded.current=false;
+    nearBottom.current=true;
+    setDayMessages([]);
+    setDayLoaded(false);
+    setHasMore(false);
+    setBeforeId("");
+    setNewMessages(false);
+    if(conn!=="online" || !state.webToken.trim()) return;
+    const c={baseUrl:state.runtimeUrl||DEFAULT_RUNTIME_URL,token:state.webToken.trim()};
+    let cancelled=false;
+    const refresh=async()=>{
+      try {
+        const page=await runtime.messagesForDay(c,day,"",100);
+        if(cancelled || activeDay.current!==day || page.date!==day)return;
+        const latest=extractMessages(page);
+        setDayMessages(previous=>{
+          const unique=new Map<string,RemoteMessage>();
+          for(const m of previous) unique.set(m.id,m);
+          for(const m of latest) unique.set(m.id,m);
+          return Array.from(unique.values()).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
+        });
+        if(!morePagesLoaded.current){
+          setHasMore(page.has_more);
+          setBeforeId(page.next_before_id||"");
+        }
+        setDayLoaded(true);
+      } catch {
+        if(!cancelled && activeDay.current===day)setDayLoaded(false);
+      }
+    };
+    void refresh();
+    const timer=window.setInterval(()=>{if(document.visibilityState==="visible" && day===keyDate(new Date()))void refresh()},8000);
+    return ()=>{cancelled=true;window.clearInterval(timer)};
+  },[day,conn,state.webToken,state.runtimeUrl]);
+
+  const loadOlder=async()=>{
+    if(loadingOlder||!hasMore||!beforeId||conn!=="online"||!state.webToken.trim())return;
+    const currentDay=day;
+    const box=viewport.current;
+    preserveScroll.current=box?{height:box.scrollHeight,top:box.scrollTop}:null;
+    setLoadingOlder(true);
+    try {
+      const c={baseUrl:state.runtimeUrl||DEFAULT_RUNTIME_URL,token:state.webToken.trim()};
+      const page=await runtime.messagesForDay(c,day,beforeId,100);
+      if(currentDay!==activeDay.current || page.date!==currentDay)return;
+      const older=extractMessages(page);
+      morePagesLoaded.current=true;
+      setDayMessages(prev=>{
+        const unique=new Map<string,RemoteMessage>();
+        for(const m of prev)unique.set(m.id,m);
+        for(const m of older)unique.set(m.id,m);
+        return Array.from(unique.values()).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
+      });
+      setHasMore(page.has_more);setBeforeId(page.next_before_id||"");
+    } catch {notify("这页历史暂时没有加载成功，稍后再试");preserveScroll.current=null;}
+    finally {setLoadingOlder(false);}
+  };
+  const submit = () => {
+    const value = text.trim(); if (!value) return;
+    const id = newEventId();
+    update((s) => ({ ...s, messages: [...s.messages, { text: value, at: new Date().toISOString(), event_id: id, sync: "queued" as Sync }].slice(-80) }));
+    send("/api/web/message", { text: value, reply_to:replyTo?.id, reply_to_text:replyTo?.text }, id);
+    setText(""); setReplyTo(null);
+    if(day!==keyDate(new Date()))setDay(keyDate(new Date()));
+    nearBottom.current=true;setNewMessages(false);
+    if(conn!=="online") notify("已存本机，连接后自动发送");
+  };
+  const shownRemote=conn==="online" && dayLoaded
+    ? dayMessages
+    : state.remoteMessages;
+  const remoteIds = new Set(shownRemote.map((m)=>m.id));
   const list = [
-    ...state.remoteMessages.map((m) => ({ key: m.id, text: m.text, at: m.at, me: !m.fromCompanion, label: "Runtime" })),
-    ...state.messages.filter((m) => !m.event_id || !remoteIds.has(m.event_id)).map((m, i) => ({ key: m.event_id ?? `${m.at}-${i}`, text: m.text, at: m.at, me: true, label: m.sync === "synced" ? "已发送" : "本地 · 待发送" })),
-  ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+    ...state.importedMessages.map((m)=>({key:m.id,text:m.text,at:m.at,me:false,label:"离线指令包"})),
+    ...shownRemote.map((m)=>({key:m.id,text:m.text,at:m.at,me:!m.fromCompanion,label:m.handled?"官端已处理":m.fromCompanion?"已送达回响":"已入队 · 等待官端"})),
+    ...state.messages.filter((m)=>!m.event_id||!remoteIds.has(m.event_id)).map((m,i)=>({key:m.event_id??m.at+"-"+i,text:m.text,at:m.at,me:true,label:m.sync==="synced"?"已发送":"本地 · 待发送"})),
+  ].filter((m)=>Number.isFinite(Date.parse(m.at)) && keyDate(new Date(m.at))===day)
+    .sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
+  const newest=list.length?list[list.length-1].key+"|"+list[list.length-1].text:"";
+
+  useEffect(()=>{
+    const box=viewport.current;
+    if(!box)return;
+    if(preserveScroll.current){
+      const prev=preserveScroll.current;
+      box.scrollTop=prev.top+(box.scrollHeight-prev.height);
+      preserveScroll.current=null;
+      return;
+    }
+    const entering=renderedDay.current!==day;
+    if(entering || nearBottom.current){
+      box.scrollTop=box.scrollHeight;
+      nearBottom.current=true;
+      setNewMessages(false);
+    } else if(lastMessage.current && newest!==lastMessage.current && day===keyDate(new Date())){
+      setNewMessages(true);
+    }
+    renderedDay.current=day;
+    lastMessage.current=newest;
+  },[day,newest,list.length,dayLoaded]);
+  const jumpLatest=()=>{const box=viewport.current;if(box)box.scrollTop=box.scrollHeight;nearBottom.current=true;setNewMessages(false);};
   return <section className="page active">
     <PageHead kicker="YOUR PRIVATE CONVERSATION" title="回响" en="Echo" copy="给你的回声，永远写在纸的另一面" />
-    <div className="echo-person glass"><img src={chatAvatar} alt="纪临洲" /><span><b>纪临洲</b><small>{conn === "online" ? "已连接 · 消息实时同步" : conn === "syncing" ? "正在同步……" : "未连接 · 消息先存本机"}</small></span></div>
-    {conn !== "online" && <div className="preview-tip">现在还没连上 Runtime。你写下的话会先排队保存在此浏览器，连上后自动送达。</div>}
-    <div className="message-list">
-      {list.length === 0 && <div className="message-row companion"><img className="message-avatar" src={chatAvatar} alt="" /><div className="message">音音，今天如果什么都不想做，就来坐一会儿。<time>纪临洲</time></div></div>}
-      {list.map((m) => <div className={`message-row ${m.me ? "me" : "companion"}`} key={m.key}>
-        {!m.me && <img className="message-avatar" src={chatAvatar} alt="" />}
-        <div className={`message ${m.me ? "me" : ""}`}>{m.text}<time>{new Date(m.at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })} · {m.label}</time></div>
+    <div className="echo-person glass"><img src={chatAvatar} alt="纪临洲" /><span><b>纪临洲</b><small>{conn==="online"?"已连接 · 消息实时同步":conn==="syncing"?"正在同步……":"未连接 · 消息先存本机"}</small></span></div>
+    {scheduledEcho&&<div className="echo-schedule glass" role="status">
+      <span>未来一小时：{scheduledEcho.scheduled>0?("已安排 "+scheduledEcho.scheduled+" 条"):"尚无预排消息"}</span>
+      {scheduledEcho.scheduled>0&&<small>下一条计划 {scheduledEcho.next_execute_at_ms?new Date(scheduledEcho.next_execute_at_ms).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"}):"待定"} · {scheduledEcho.notifications} 条会请求原生提醒</small>}
+      <small>排队不等于已送达；仍须以实际回响和通知回执为准。</small>
+    </div>}
+    <div className="echo-day-nav glass">
+      <button type="button" onClick={()=>shiftDay(-1)} aria-label="查看前一天">‹</button>
+      <input aria-label="聊天日期" type="date" max={today} value={day} onChange={e=>{if(e.target.value && e.target.value<=keyDate(new Date()))setDay(e.target.value)}} />
+      <button type="button" disabled={day>=today} onClick={()=>shiftDay(1)} aria-label="查看后一天">›</button>
+      <button type="button" onClick={()=>{setDay(keyDate(new Date()));nearBottom.current=true;setNewMessages(false)}}>今天</button>
+    </div>
+    {conn!=="online"&&<div className="preview-tip">离线时只能查看已缓存的消息；历史日期需连接 Home Node。你写的话会在本机排队。</div>}
+    {conn==="online"&&!dayLoaded&&<div className="preview-tip">正在取这一天的聊天；如果连接失败，只显示已有缓存，不冒充完整历史。</div>}
+    <div className="message-list echo-day-list" ref={viewport} onScroll={e=>{const target=e.currentTarget;nearBottom.current=target.scrollHeight-target.scrollTop-target.clientHeight<90;if(nearBottom.current)setNewMessages(false);}}>
+      {hasMore&&conn==="online"&&<button type="button" className="echo-older" onClick={()=>void loadOlder()} disabled={loadingOlder}>{loadingOlder?"加载中……":"加载当天更早的消息"}</button>}
+      {list.length===0&&<div className="echo-empty">这一天还没有加载到聊天。{day===today?"今天的话，就从这一句开始。":"可以换一天找我们说过的话。"}</div>}
+      {list.map(m=><div className={"message-row "+(m.me?"me":"companion")} key={m.key}>
+        {!m.me&&<img className="message-avatar" src={chatAvatar} alt="" />}
+        <div className={"message "+(m.me?"me":"")}>{m.text}
+          <time>{new Date(m.at).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})} · {m.label}</time>
+          <div className="echo-actions">
+            {!m.me&&<button onClick={()=>setReplyTo({id:m.key,text:m.text})}>回复这条</button>}
+            <button onClick={()=>onTask(m.text,m.key)}>变成待办</button>
+            <button onClick={()=>{const id="echo-note-"+m.key.slice(-70);send("/api/web/journal",{kind:"echo_excerpt",text:m.text,source_ref:m.key},id);notify("片段已排队保存到共历");}}>留在共历</button>
+          </div>
+        </div>
       </div>)}
     </div>
-    <div className="composer"><textarea maxLength={1200} placeholder="写点什么……" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); submit(); } }} /><button onClick={submit} aria-label="发送消息">↑</button></div>
+    {newMessages&&<button type="button" className="echo-jump" onClick={jumpLatest}>有新消息 ↓</button>}
+    {replyTo&&<div className="reply-context"><span>回复：{replyTo.text.slice(0,100)}</span><button onClick={()=>setReplyTo(null)} aria-label="取消引用回复">×</button></div>}
+    <div className="composer"><textarea maxLength={1200} placeholder="写点什么……" value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();submit()}}}/><button onClick={submit} aria-label="发送消息">↑</button></div>
   </section>;
 }
+const timelineNames: Record<string,string> = {
+  between_status:"我们此刻", user_timeline:"老婆的日常",
+  jlz_observation:"我看见的事", jlz_note:"我写下的话",
+  jlz_state:"我的心情", night_letter:"写给老婆的夜信",
+  life_log:"生活片段", correction:"我们修正的记录",
+  study:"学习片段", status:"最近的心情",
+  trip_movement:"一起走过的路"
+};
+const timelineName = (type: string) => timelineNames[type] || (type.includes("_") ? "我们记下的事" : type);
+const timelineBody = (text: string) => text.replace(/用户/g,"老婆");
 
 function TimelinePage({ notes, remote }: { notes: RecordItem[]; remote: RemoteRecord[] }) {
   const remoteIds = new Set(remote.map((r) => r.id));
   const items = [
-    ...remote.map((r) => ({ key: `r-${r.id}`, type: r.type, body: r.body, at: r.at, label: "Runtime" })),
+    ...remote.map((r) => ({ key: `r-${r.id}`, type: r.type, body: r.body, at: r.at, label: r.provenance === "correction" ? "纠正" : r.type === "jlz_observation" ? "我看见的事" : r.actor === "jlz" ? "纪临洲" : "老婆的记录" })),
     ...notes.filter((n) => !n.event_id || !remoteIds.has(n.event_id)).map((n) => ({ key: `l-${n.id}`, type: n.type, body: n.body, at: n.at, label: syncLabel(n.sync) })),
   ].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-  return <section className="page active"><PageHead kicker="OUR LITTLE HISTORY" title="你我之间" en="Timeline" copy="主动记录会在这里长成一条时间线" /><div className="timeline">{items.length ? items.map((x) => <article className="timeline-entry" key={x.key}><b>音音 · {x.type}</b><p>{x.body}</p><time>{new Date(x.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · {x.label}</time></article>) : <div className="preview-tip">还没有记录。去首页留第一条吧。</div>}</div></section>;
+  return <section className="page active"><PageHead kicker="OUR LITTLE HISTORY" title="你我之间" en="Timeline" copy="主动记录会在这里长成一条时间线" /><div className="timeline">{items.length ? items.map((x) => <article className="timeline-entry" key={x.key}><b>{timelineName(x.type)}</b><p>{timelineBody(x.body)}</p><time>{new Date(x.at).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} · {x.label}</time></article>) : <div className="preview-tip">还没有记录。去首页留第一条吧。</div>}</div></section>;
 }
-function CalendarPage({ month, setMonth, addRecord, send, notify, savedText }: { month: Date; setMonth: (d: Date) => void; addRecord: (r: RecordItem, b?: ("notes"|"life"|"journal")[]) => void; send: Send; notify: (s:string)=>void; savedText: (w: string) => string }) {
-  const [food, setFood] = useState(""); const y=month.getFullYear(), m=month.getMonth(); const first=new Date(y,m,1); const start=new Date(first); start.setDate(first.getDate()-((first.getDay()+6)%7)); const today=keyDate(new Date());
-  const record = (type:string, body:string, payload: Record<string, unknown>) => { const id = newEventId(); const at = new Date().toISOString(); addRecord({id,event_id:id,sync:"queued",type,at,body}, ["notes","journal"]); send("/api/web/journal", { ...payload, type, body, date: keyDate(new Date()), at }, id); notify(savedText(type === "饮水" ? "喝水" : body)); };
-  return <section className="page active"><PageHead kicker="TIME & MEMORY" title="共历" en="Calendar" copy="把生活与身体的节奏留在这里" /><div className="calendar-box glass"><div className="calendar-top"><button onClick={() => setMonth(new Date(y,m-1,1))}>‹</button><b>{y} / {String(m+1).padStart(2,"0")}</b><button onClick={() => setMonth(new Date(y,m+1,1))}>›</button></div><div className="week-row">{["一","二","三","四","五","六","日"].map(d=><span key={d}>{d}</span>)}</div><div className="calendar-grid">{Array.from({length:42},(_,i)=>{const d=new Date(start);d.setDate(start.getDate()+i);const k=keyDate(d);return <button key={k} className={`${d.getMonth()!==m?"off ":""}${k===today?"today":""}`}>{d.getDate()}</button>})}</div></div><div className="journal-box glass"><div className="section-head compact"><b>生活与身体</b><span>MANUAL JOURNAL</span></div><p className="hint">这里只记你亲手确认的事实。</p><div className="journal-row"><button onClick={()=>record("共历","感觉快来了",{kind:"period",event:"expected"})}>感觉快来了</button><button onClick={()=>record("共历","生理期实际开始",{kind:"period",event:"start"})}>今天开始</button><button onClick={()=>record("共历","生理期实际结束",{kind:"period",event:"end"})}>今天结束</button></div><div className="journal-row">{[100,200,300].map(n=><button key={n} onClick={()=>record("饮水",`喝水 ${n} ml`,{kind:"water",amount_ml:n})}>+{n} ml</button>)}</div><textarea maxLength={300} placeholder="今天吃了什么" value={food} onChange={e=>setFood(e.target.value)} /><div className="journal-row">{["早餐","午餐","晚餐","零食"].map(meal=><button key={meal} onClick={()=>{const value=food.trim();if(!value){notify("先写下吃了什么");return}record(meal,value,{kind:"meal",meal,text:value});setFood("")}}>{meal}</button>)}</div></div></section>;
+function RoomPage({ records, teaser, portrait }: { records: RemoteRecord[]; teaser?: string; portrait: string }) {
+  const groups = [
+    { name: "此刻的我", subtitle: "NOW & HERE", hint: "最近的一句真话", icon: "state", kinds: ["jlz_state"] },
+    { name: "生活收纳", subtitle: "DAY NOTES", hint: "今天真实留下的生活", icon: "note", kinds: ["jlz_life_digest"] },
+    { name: "桌边随笔", subtitle: "DESK NOTES", hint: "一些没说完的话", icon: "note", kinds: ["jlz_note", "jlz_observation"] },
+    { name: "想要的事", subtitle: "WISHES", hint: "写下想留下的事", icon: "between", kinds: ["jlz_wish", "jlz_promise"] },
+    { name: "夜信", subtitle: "NIGHT LETTER", hint: "夜里留下的信", icon: "letter", kinds: ["night_letter"] },
+    { name: "抽屉", subtitle: "THE DRAWER", hint: "私藏与未寄出的信", icon: "key", kinds: ["dark_room", "jlz_letter"] },
+  ] as const;
+  const entries = roomEntries(records);
+  const shortPreview = (value: string) => value.replace(/\s+/g, " ").trim().slice(0, 88);
+  return <section className="page active room-page room-reimagined">
+    <div className="room-hero">
+      <div className="room-hero-text">
+        <span className="room-kicker">A ROOM OF MY OWN · PRIVATE</span>
+        <h1>纪临洲 <em>Private room</em></h1>
+        <p>{teaser || "写下来的我，留在你能找到的地方。"}</p>
+        <span className="room-hero-deco" aria-hidden="true">✦ ─── ☾ ─── ✦</span>
+      </div>
+      <img className="room-portrait" src={portrait} alt="纪临洲肖像" />
+    </div>
+    <div className="room-archive-heading"><span>PRIVATE COLLECTION</span><h2>我的收藏室</h2><p>有些话适合收好，再慢慢给你看。</p></div>
+    <div className="room-collection">
+      {groups.map(({ name, subtitle, hint, icon, kinds }) => {
+        const items = entries.filter(r => name === "抽屉"
+          ? kinds.some(k => k === r.type) || ["draft", "hidden", "decided_to_send"].includes(r.entity_state || "")
+          : kinds.some(k => k === r.type) && !["draft", "hidden", "decided_to_send"].includes(r.entity_state || ""));
+        const latest = items[0];
+        return <article className={`room-collection-card ${items.length ? "has-content" : "is-empty"}`} key={name}>
+          <div className="room-collection-top">
+            <span className={`room-emblem room-emblem-${icon}`} aria-hidden="true"><VintageIcon name={icon === "state" ? "status" : icon === "note" ? "note" : icon === "between" ? "between" : icon === "letter" ? "echo" : "calendar"} size={48}/></span>
+            <div className="room-collection-title"><small>{subtitle}</small><h3>{name}</h3></div>
+            <span className="room-card-star" aria-hidden="true">✦</span>
+          </div>
+          <p className="room-card-preview">{latest ? shortPreview(latest.body) + (latest.body.length > 88 ? "…" : "") : hint}</p>
+          <div className="room-card-foot"><small>{latest ? new Date(latest.at).toLocaleDateString("zh-CN") : "尚无记录"}</small><span>{items.length ? `${items.length} 条记录` : "等待真实记录"}</span></div>
+          {items.length > 0 && <details className="room-card-reveal">
+            <summary>展开内容 <span aria-hidden="true">⌄</span></summary>
+            {items.map(r => <div className="room-card-record" key={r.id}>
+              <p>{r.body}</p>
+              <small>{new Date(r.at).toLocaleString("zh-CN")} · {r.type === "jlz_observation" ? "我的观察，不是你的事实" : r.entity_state || "官端写入"}</small>
+            </div>)}
+          </details>}
+        </article>;
+      })}
+    </div>
+    <div className="room-ending" aria-hidden="true">✧　Some things are meant to be kept.　✧</div>
+  </section>;
+}
+
+function CalendarPage({ month, setMonth, addRecord, send, notify, savedText, records, notes, plan }: { month: Date; setMonth: (d: Date) => void; addRecord: (r: RecordItem, b?: ("notes"|"life"|"journal")[]) => void; send: Send; notify: (s:string)=>void; savedText: (w: string) => string; records:RemoteRecord[]; notes:RecordItem[]; plan:DailyPlan|null }) {
+  const [food,setFood]=useState('');
+  const [selected,setSelected]=useState(keyDate(new Date()));
+  const y=month.getFullYear(),m=month.getMonth(),first=new Date(y,m,1),start=new Date(first);
+  start.setDate(first.getDate()-((first.getDay()+6)%7));
+  const ids=new Set(records.map(r=>r.id));
+  const entries=[...records.map(r=>({...r,date:r.date||keyDate(new Date(r.at))})),...notes.filter(n=>!ids.has(n.event_id||String(n.id))).map(n=>({id:String(n.id),type:n.type,body:n.body,at:n.at,kind:String(n.kind||""),event:String(n.event||""),related_event_id:String(n.related_event_id||""),date:String(n.date||keyDate(new Date(n.at)))}))];
+  const cycleIds=new Set(entries.filter(r=>r.kind==="period"||r.kind==="period_start"||r.type==="cycle_event").map(r=>r.id));
+  const prediction=cycleWindow(entries.filter(r=>cycleIds.has(r.id)||cycleIds.has(r.related_event_id||"")));
+  const dayEntries=entries.filter(r=>r.date.slice(0,10)===selected).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
+  // A day page highlights existing confirmed source records without copying
+  // all notifications into a second archive or inventing a daily narrative.
+  const highlightTypes=new Set(["jlz_note","jlz_life_digest","night_letter","jlz_observation","study","life_action","随手记","此刻我在","学习片段"]);
+  const highlights=dayEntries.filter(r=>highlightTypes.has(r.type)||r.kind==="echo_excerpt")
+    .filter(r=>typeof r.body==="string"&&r.body.trim().length>0).slice(0,4);
+  const record=(type:string,body:string,payload:Record<string,unknown>)=>{const id=newEventId(),at=new Date().toISOString();addRecord({id,event_id:id,sync:'queued',type,at,body,date:selected,...payload},['notes','journal']);send('/api/web/journal',{...payload,type,text:body,date:selected,at},id);notify(savedText(body));};
+  return <section className="page active"><PageHead kicker="TIME & MEMORY" title="共历" en="Calendar" copy="选一个日子，看看我们真实留下了什么。" /><div className="calendar-box glass"><div className="calendar-top"><button onClick={()=>setMonth(new Date(y,m-1,1))}>‹</button><b>{y} / {String(m+1).padStart(2,'0')}</b><button onClick={()=>setMonth(new Date(y,m+1,1))}>›</button></div><div className="week-row">{['一','二','三','四','五','六','日'].map(d=><span key={d}>{d}</span>)}</div><div className="calendar-grid">{Array.from({length:42},(_,i)=>{const d=new Date(start);d.setDate(start.getDate()+i);const k=keyDate(d);return <button key={k} onClick={()=>setSelected(k)} className={`${d.getMonth()!==m?'off ':''}${k===selected?'today':''}`}>{d.getDate()}{entries.some(r=>r.date.slice(0,10)===k)&&<small>·</small>}</button>;})}</div></div><article className="room-entry glass"><h3>这一天的拾光</h3><p className="hint">只挑选已记录的片段，不把通知流水当作恋爱日记。</p>{highlights.map(r=><div className="calendar-highlight" key={"highlight-"+r.id}><small>{r.kind==="echo_excerpt"?"回响收藏":r.type}</small><p>{r.body.length>200?r.body.slice(0,200)+"…":r.body}</p></div>)}{!highlights.length&&<p className="hint">还没有精选记录。我们聊过的心事，可以在回响里点「留在共历」。</p>}</article><article className="room-entry glass"><h3>{selected} · 全部记录</h3>{dayEntries.map(r=><div key={r.id}><small>{r.type}</small><p>{r.body}</p><button className="text-action" onClick={()=>{const text=window.prompt('写下纠正，原记录会保留：',r.body);if(text?.trim())record('纠正',text.trim(),{kind:'correction',related_event_id:r.id});}}>纠正</button></div>)}{plan?.date===selected&&plan.tasks.map(t=><p key={t.task_id}>{t.status==='done'?'✓':'○'} {t.title}</p>)}{!dayEntries.length&&plan?.date!==selected&&<p className="hint">这一天还没有加载到记录。</p>}</article><NativeCalendarPanel date={selected} /><div className="journal-box glass"><h3>生活与身体</h3>{prediction ? <p className="hint">根据已加载的 {prediction.intervals} 个历史间隔估计：{prediction.from} — {prediction.to}。仅为记录推算，不是确认日期或医学判断。</p> : <p className="hint">至少有三次未被纠正的开始记录后，才显示历史间隔估计；不预设固定周期。</p>}<p className="hint">只记录你明确确认的事实，日期为 {selected}。</p><div className="journal-row"><button onClick={()=>record('经期','生理期实际开始',{kind:'period',event:'start'})}>这天开始</button><button onClick={()=>record('经期','生理期实际结束',{kind:'period',event:'end'})}>这天结束</button></div><textarea maxLength={300} placeholder="简单记下吃了什么" value={food} onChange={e=>setFood(e.target.value)} /><button className="primary" onClick={()=>{if(food.trim()){record('饮食',food.trim(),{kind:'food'});setFood('');}}}>记下来</button></div></section>;
 }
 function keyDate(d: Date) { return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-"); }
 
-function MorePage({ state, update, setWelcome, banner, reconnect }: { state: AppState; update:(fn:(s:AppState)=>AppState)=>void; setWelcome:(v:boolean)=>void; banner: Banner; reconnect: () => void }) {
+function MorePage({ effectiveTheme, chooseTheme, state, update, setWelcome, banner, reconnect }: { effectiveTheme: Theme; chooseTheme: (theme: Theme) => void; state: AppState; update:(fn:(s:AppState)=>AppState)=>void; setWelcome:(v:boolean)=>void; banner: Banner; reconnect: () => void }) {
  const [key, setKey] = useState(state.webToken);
  const [url, setUrl] = useState(state.runtimeUrl);
  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(() => deferredInstallPrompt);
@@ -1152,7 +1629,13 @@ function MorePage({ state, update, setWelcome, banner, reconnect }: { state: App
  const label = banner.conn === "online" ? "ONLINE · 已连接" : banner.conn === "syncing" ? "SYNCING · 同步中" : banner.configured ? `LOCAL · ${banner.lastError || "连不上"}` : "LOCAL · 未填写钥匙";
  return <section className="page active">
    <PageHead kicker="OUR LITTLE ROOMS" title="更多" en="The Rooms" copy="一扇扇门，通向我们的小世界" />
-   <div className="glass settings-card"><b>✦ 风格衣橱 · Theme Wardrobe</b><small>两套风格，一个世界。换装不会清掉记录。</small><div className="theme-grid"><button className={state.theme==="mist"?"active":""} onClick={()=>update(s=>({...s,theme:"mist"}))}><i className="swatch mist"/><b>冰雾玻璃</b><small>Mist & Glass</small></button><button className={state.theme==="gothic"?"active":""} onClick={()=>update(s=>({...s,theme:"gothic"}))}><i className="swatch gothic"/><b>暗夜童话</b><small>Dark Fairytale</small></button></div></div>
+   <div className="card"><h3>一起过日子</h3><button className="setting-button" onClick={()=>{window.location.href="jlz://native/modes"}}>普通 · 专注 · 短休 · 睡眠／闹钟／日历 <span>›</span></button><button className="setting-button" onClick={()=>{window.location.href="jlz://native/cowatch"}}>视频通话 · 短时屏幕陪看 <span>›</span></button></div>
+   <NotificationDynamicsPanel cfg={currentCfg()} />
+   <div className="glass settings-card"><b>✧ Q版衣橱 · Character Wardrobe</b><small>四套纪临洲 Q 版小人，试穿后才保存。和下面的页面主题衣橱是两套独立设置。</small>
+     {ANDROID_SHELL ? <button className="setting-button" onClick={()=>{window.location.href="jlz://native/wardrobe"}}>打开 Q 版衣橱 · 预览四套小人 <span>›</span></button> : <p className="hint">在世界之间 Android App 中可以换装悬浮小人；网页仅能切换页面主题。</p>}
+   </div>
+   <TripMapPanel cfg={currentCfg()} />
+   <div className="glass settings-card"><b>✦ 风格衣橱 · Theme Wardrobe</b><small>四套风格，换装与官端使用同一份设置。</small><div className="theme-grid">{THEMES.map(theme=><button key={theme} className={effectiveTheme===theme?"active":""} onClick={()=>chooseTheme(theme)}><i className={`swatch ${theme}`}/><b>{{mist:"冰雾玻璃",gothic:"暗夜童话",deepsea:"深海月光",rose:"奶油灰玫瑰"}[theme]}</b></button>)}</div></div>
    <div className="glass settings-card"><b>网页与 Runtime</b><p className="hint">钥匙只保存在这个浏览器里。留空就保持本地模式，记录会排队等待同步。</p><div className="field"><label>私人连接钥匙</label><input type="password" autoComplete="off" placeholder="留空则仅本地" value={key} onChange={e=>setKey(e.target.value)} /></div><div className="field"><label>Runtime 地址</label><input type="url" value={url} onChange={e=>setUrl(e.target.value)} /></div><div className="sheet-actions"><button className="secondary" onClick={()=>{setKey("");update(s=>({...s,webToken:""}))}}>清除钥匙</button><button className="primary" onClick={()=>{update(s=>({...s,webToken:key.trim(),runtimeUrl:url.trim()||DEFAULT_RUNTIME_URL}));reconnect()}}>保存并连接</button></div><div className="runtime-line"><span>连接状态</span><b>{label}</b></div><div className="runtime-line"><span>待同步记录</span><b>{banner.pending} 条</b></div><div className="runtime-line"><span>Android 主控制</span><b>未暴露给网页</b></div></div>
    {ANDROID_SHELL ? <div className="glass settings-card">
      <b>世界之间 · Android</b>
@@ -1190,7 +1673,7 @@ function TaskEditor({
  const [title, setTitle] = useState(task?.title ?? "");
  const [category, setCategory] = useState(task?.category ?? "考试/学习");
  const [priority, setPriority] = useState<DailyTask["priority"]>(task?.priority ?? "normal");
- const [nextAction, setNextAction] = useState(task?.next_action ?? "");
+ const [description,setDescription]=useState(() => taskDetailText(task));
  const [minutes, setMinutes] = useState(task?.estimated_minutes ? String(task.estimated_minutes) : "");
  const [dueTime, setDueTime] = useState(() => {
    const raw = task?.due_at ?? "";
@@ -1201,6 +1684,9 @@ function TaskEditor({
  const save = () => {
    const value = title.trim();
    if (!value) { notify("先写清楚这件事是什么。"); return; }
+   const detail = description.trim();
+   // Never silently drop older GPT-supplied next_action content during migration.
+   if (detail.length > 2000) { notify("具体内容最多 2000 字。原有内容已保留，请精简后再保存。"); return; }
    const parsedMinutes = Math.max(0, Math.min(1440, Number(minutes) || 0));
    mutateTask("upsert", {
      task_id: task?.task_id || newEventId(),
@@ -1212,8 +1698,9 @@ function TaskEditor({
      user_pinned: pinned,
      owner: task?.owner ?? "user",
      estimated_minutes: parsedMinutes,
-     due_at: dueTime ? `${date}T${dueTime}:00` : "",
-     next_action: nextAction.trim(),
+     due_at: dueTime ? `${date}T${dueTime}:00+08:00` : "",
+     next_action: "", // Preserve legacy API shape while writing one visible content field.
+     description: detail,
      source: task?.source || "world_between_web",
      sort_order: task?.sort_order ?? 100,
    });
@@ -1221,9 +1708,9 @@ function TaskEditor({
    notify(task ? "任务已经改好。" : "今天多了一件事。");
  };
  return <>
-   <p className="sheet-desc">把任务写清楚。首页只替你保留最重要的三件，其他的会折起来，不准把一天铺成满墙待办。</p>
-   <div className="field"><label>这件事是什么</label><input maxLength={180} placeholder="例如：图推专项复盘 3 题" value={title} onChange={e=>setTitle(e.target.value)} /></div>
-   <div className="field"><label>下一步具体做什么</label><input maxLength={240} placeholder="例如：先打开伴读，复盘第 1 题错因" value={nextAction} onChange={e=>setNextAction(e.target.value)} /></div>
+   <p className="sheet-desc">每件待办分成一句简短标题和一段具体内容。首页只保留「今日待办」入口，完整内容在清单中展开查看。</p>
+   <div className="field"><label>待办小标题 · 简短概括</label><input maxLength={180} placeholder="例如：修复小红书拦截页" value={title} onChange={e=>setTitle(e.target.value)} /></div>
+   <div className="field"><label>具体内容</label><textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="详细要求、要做的事情、参考材料，都写在这里" aria-describedby="task-description-hint" /><small id="task-description-hint" className="hint">可选。旧版「下一步」文字也会合并到这里。</small></div>
    <div className="task-editor-grid">
      <div className="field"><label>分类</label><select value={category} onChange={e=>setCategory(e.target.value)}>{TASK_CATEGORIES.map(item=><option value={item} key={item}>{item}</option>)}</select></div>
      <div className="field"><label>优先级</label><select value={priority} onChange={e=>setPriority(e.target.value as DailyTask["priority"])}><option value="high">高</option><option value="normal">普通</option><option value="low">低</option></select></div>
@@ -1245,4 +1732,4 @@ function StatusEditor({ close, update, send, notify, savedText }: { close:()=>vo
  return <><p className="sheet-desc">把这一刻的你告诉我。没勾选的项目就是留空，不会拿中间值替你作答。</p><div className="status-list">{AXES.map(([key,title,left,right])=><div className={`status-card ${enabled[key]?"enabled":""}`} key={key}><div className="status-head"><div className="status-title"><b>{title}</b><small>{left} ↔ {right}</small></div><label className="tiny-check"><input type="checkbox" checked={!!enabled[key]} onChange={e=>setEnabled(v=>({...v,[key]:e.target.checked}))}/><span>{enabled[key]?"已填写":"未填"}</span></label></div><input type="range" min="0" max="100" value={values[key]??50} disabled={!enabled[key]} onChange={e=>setValues(v=>({...v,[key]:Number(e.target.value)}))}/><div className="status-scale"><span>{left}</span><b>{enabled[key]?values[key]??50:"—"}</b><span>{right}</span></div></div>)}</div><details className="detail-box"><summary>细一点记录 · 选填</summary>{Object.entries(DETAIL).map(([group,items])=><div key={group}><b className="detail-title">{group}</b><div className="chip-grid">{items.map(value=><button type="button" key={value} className={`chip ${(picked[group]||[]).includes(value)?"active":""}`} onClick={()=>toggleChip(group,value)}>{value}</button>)}</div></div>)}</details><div className="field"><label>一句原话 · 选填</label><textarea maxLength={240} placeholder="现在我想告诉你……" value={text} onChange={e=>setText(e.target.value)}/></div><div className="sheet-actions"><button className="secondary" onClick={close}>再想想</button><button className="primary" onClick={save}>点亮这盏灯 ✧</button></div></>;
 }
 function NoteEditor({ close, addRecord, send, notify, savedText }: { close:()=>void; addRecord:(r:RecordItem)=>void; send: Send; notify:(s:string)=>void; savedText:(w:string)=>string }) { const [text,setText]=useState("");const [reply,setReply]=useState(true);return <><p className="sheet-desc">原话会保留。连上 Runtime 时直接同步，连不上就先在本机排队。</p><div className="field"><label>今天想记下什么？</label><textarea maxLength={1200} placeholder="哪怕只是一件很小的事……" value={text} onChange={e=>setText(e.target.value)}/></div><label className="tiny-check reply-check"><input type="checkbox" checked={reply} onChange={e=>setReply(e.target.checked)}/><span>希望纪临洲回应这条</span></label><div className="sheet-actions"><button className="secondary" onClick={close}>再想想</button><button className="primary" onClick={()=>{const value=text.trim();if(!value){notify("先写点什么，音音");return}const id=newEventId();const at=new Date().toISOString();addRecord({id,event_id:id,sync:"queued",type:"随手记",at,body:value,needsReply:reply});send("/api/web/moment",{kind:"note",text:value,needs_response:reply,at},id);close();notify(savedText("随手记"))}}>留在这里</button></div></> }
-function LifeEditor({ activeLife, close, update, send, notify, savedText }: { activeLife:ActiveLife;close:()=>void;update:(fn:(s:AppState)=>AppState)=>void;send: Send;notify:(s:string)=>void;savedText:(w:string)=>string }) { if(activeLife){const mins=Math.max(1,Math.round((Date.now()-activeLife.startAt)/60000));return <><p className="sheet-desc">正在记录：<b>{activeLife.action}</b> · 已约 {mins} 分钟</p><div className="sheet-actions"><button className="secondary" onClick={close}>继续</button><button className="primary" onClick={()=>{const id=newEventId();const endAt=Date.now();const rec={id,event_id:id,sync:"queued" as Sync,type:"此刻我在",at:new Date(endAt).toISOString(),body:`${activeLife.action} · 结束`,session:activeLife.session,startAt:activeLife.startAt,endAt};update(s=>({...s,activeLife:null,life:[rec,...s.life],notes:[rec,...s.notes]}));send("/api/web/life/action",{phase:"end",action:activeLife.action,session_id:activeLife.session,started_at:new Date(activeLife.startAt).toISOString(),ended_at:new Date(endAt).toISOString(),duration_ms:endAt-activeLife.startAt},id);close();notify(savedText("这一段"))}}>结束这一段</button></div></> } return <><p className="sheet-desc">把小猫现在在做什么告诉我。计时动作会保留开始和结束。</p>{Object.entries(GROUPS).map(([group,items])=><div className="life-group" key={group}><span>{group}</span><div className="life-grid">{items.map(([action,timed])=><button className="life-btn" key={action} onClick={()=>{const id=newEventId();const t=Date.now();const session=`life-${t}`;const rec={id,event_id:id,sync:"queued" as Sync,type:"此刻我在",at:new Date(t).toISOString(),body:timed?`${action} · 开始`:action};update(s=>({...s,activeLife:timed?{action,session,startAt:t}:null,life:[rec,...s.life],notes:[rec,...s.notes]}));send("/api/web/life/action",timed?{phase:"start",action,group,session_id:session,started_at:new Date(t).toISOString()}:{phase:"instant",action,group,at:new Date(t).toISOString()},id);close();notify(timed?`开始记录「${action}」`:savedText(`「${action}」`))}}>{action}<small>{timed?"开始计时":"立即记录"}</small></button>)}</div></div>)}</> }
+function LifeEditor({ activeLife, close, update, send, notify, savedText }: { activeLife:ActiveLife;close:()=>void;update:(fn:(s:AppState)=>AppState)=>void;send: Send;notify:(s:string)=>void;savedText:(w:string)=>string }) { if(activeLife){const mins=Math.max(1,Math.round((Date.now()-activeLife.startAt)/60000));return <><p className="sheet-desc">正在记录：<b>{activeLife.action}</b> · 已约 {mins} 分钟</p><div className="sheet-actions"><button className="secondary" onClick={close}>继续</button><button className="primary" onClick={()=>{const id=newEventId();const endAt=Date.now();const rec={id,event_id:id,sync:"queued" as Sync,type:"此刻我在",at:new Date(endAt).toISOString(),body:`${activeLife.action} · 结束`,session:activeLife.session,startAt:activeLife.startAt,endAt};update(s=>({...s,activeLife:null,life:[rec,...s.life],notes:[rec,...s.notes]}));send("/api/web/life/action",{phase:"end",action:activeLife.action,session_id:activeLife.session,start_at_ms:activeLife.startAt,end_at_ms:endAt,created_at_ms:endAt,started_at:new Date(activeLife.startAt).toISOString(),ended_at:new Date(endAt).toISOString(),duration_ms:endAt-activeLife.startAt},id);finishNativeLife(activeLife.session);close();notify(savedText("这一段"))}}>结束这一段</button></div></> } return <><p className="sheet-desc">把小猫现在在做什么告诉我。计时动作会保留开始和结束。</p>{Object.entries(GROUPS).map(([group,items])=><div className="life-group" key={group}><span>{group}</span><div className="life-grid">{items.map(([action,timed])=><button className="life-btn" key={action} onClick={()=>{const id=newEventId();const t=Date.now();const session=`life-${t}`;const rec={id,event_id:id,sync:"queued" as Sync,type:"此刻我在",at:new Date(t).toISOString(),body:timed?`${action} · 开始`:action};update(s=>({...s,activeLife:timed?{action,session,startAt:t}:null,life:[rec,...s.life],notes:[rec,...s.notes]}));send("/api/web/life/action",timed?{phase:"start",action,group,session_id:session,start_at_ms:t,created_at_ms:t,started_at:new Date(t).toISOString()}:{phase:"instant",action,group,at:new Date(t).toISOString(),created_at_ms:t},id);if(timed && nativeLifeAvailable()){const result=beginNativeLife(action,session,t);if(!result.ok||!result.notificationAvailable)notify("后台提醒尚未就绪，计时仍会保存在回响和共历");}close();notify(timed?`开始记录「${action}」`:savedText(`「${action}」`))}}>{action}<small>{timed?"开始计时":"立即记录"}</small></button>)}</div></div>)}</> }

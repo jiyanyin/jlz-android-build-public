@@ -750,6 +750,7 @@ fun StudyScreen() {
                                     val sessionId = session.sessionId
                                     scope.launch {
                                         repo.resume()
+                                        dev.jlz.presence.focus.FocusRepository(context).resumeDaily()
                                         StudyTimerService.sync(context)
                                         StudyRuntimeReporter.post(context, "resume", sessionId)
                                         actionNote = "接上了。继续。"
@@ -763,6 +764,7 @@ fun StudyScreen() {
                                 onClick = {
                                     scope.launch {
                                         val metrics = repo.finish()
+                                        dev.jlz.presence.focus.FocusRepository(context).stop()
                                         StudyTimerService.stop(context)
                                         StudyRuntimeReporter.post(
                                             context, "finish", metrics.sessionId,
@@ -788,6 +790,7 @@ fun StudyScreen() {
                                     val sessionId = session.sessionId
                                     scope.launch {
                                         repo.pause()
+                                        dev.jlz.presence.focus.FocusRepository(context).pauseDaily()
                                         StudyRuntimeReporter.post(context, "pause", sessionId)
                                         actionNote = "暂停。现在不算时间。"
                                     }
@@ -799,6 +802,7 @@ fun StudyScreen() {
                                 onClick = {
                                     scope.launch {
                                         val metrics = repo.finish()
+                                        dev.jlz.presence.focus.FocusRepository(context).stop()
                                         StudyTimerService.stop(context)
                                         StudyRuntimeReporter.post(
                                             context, "finish", metrics.sessionId,
@@ -859,14 +863,26 @@ fun TripScreen() {
         IceGlassCard {
             Text("同行 GPS 行程", color = TextPrimary, style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
-            Text("开始后本地记录位置，自动过滤漂移，Timeline 只写摘要，不自动上传。", color = TextSecondary)
+            Text("只有你手动开始，才会上报本次 GPS 行程。通知栏会显示共享状态，结束后停止并清除本地精确轨迹。", color = TextSecondary)
             Spacer(Modifier.height(16.dp))
+            if (!active && context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                Text("需要先在系统设置授权精确位置。", color = TextSecondary)
+                Spacer(Modifier.height(10.dp))
+            }
             if (active) {
                 Text("行程进行中…", color = BlueGlow)
                 Spacer(Modifier.height(12.dp))
-                IceButton("结束行程", onClick = { TripController.stop(context) }, primary = true)
+                IceButton("停止同行与位置共享", onClick = { TripController.stop(context) }, primary = true)
             } else {
-                IceButton("开始行程", onClick = { TripController.start(context) }, primary = true)
+                IceButton("开始同行 · 共享本次行程", onClick = {
+                    if (context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) ==
+                        android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        TripController.start(context)
+                    } else {
+                        PresenceRouteBus.open(PresenceRoute.PermissionDoctor)
+                    }
+                }, primary = true)
             }
         }
     }
@@ -894,6 +910,7 @@ fun SettingsScreen() {
         }
         item { OverlaySettingsPanel() }
         item { RuntimeIdentityPanel() }
+        item { BridgePanel() }
         item { PlaceSettingsPanel() }
         item { NotificationSourcesPanel() }
         item { UsageSettingsPanel() }

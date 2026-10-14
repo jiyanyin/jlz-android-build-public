@@ -7,6 +7,7 @@ import android.os.Build
 import android.provider.AlarmClock
 import android.view.WindowManager
 import dev.jlz.presence.notification.PresenceNotificationListenerService
+import dev.jlz.presence.place.CurrentLocationReader
 import dev.jlz.presence.runtime.RuntimeCommand
 import dev.jlz.presence.usage.DeviceActivityJournal
 import dev.jlz.presence.screen.AccessibilityActionGateway
@@ -49,6 +50,13 @@ class DeviceActionExecutor(private val context: Context) {
         "get_system_state" -> true to system.systemState()
             .put("device_activity", activityJournal.highFrequencySummary(context, deviceId = command.deviceId))
             .put("ok", true).toString()
+        "get_current_location" -> {
+            val result = CurrentLocationReader(context).snapshot(
+                maxAgeMs = command.payload.optLong("max_age_ms", 120_000L),
+                timeoutMs = command.payload.optLong("timeout_ms", 7_000L)
+            )
+            result.optBoolean("ok", false) to result.toString()
+        }
         "read_device_timeline", "read_screen_timeline" -> {
             val endMs = command.payload.optLong("end_time_ms",
                 command.payload.optLong("end_time", System.currentTimeMillis()))
@@ -262,9 +270,20 @@ class DeviceActionExecutor(private val context: Context) {
         val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
             putExtra(AlarmClock.EXTRA_HOUR, hour); putExtra(AlarmClock.EXTRA_MINUTES, minute)
             putExtra(AlarmClock.EXTRA_MESSAGE, payload.optString("message").ifBlank { "纪临洲叫你起床" })
-            putExtra(AlarmClock.EXTRA_SKIP_UI, true); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra(AlarmClock.EXTRA_SKIP_UI, false); addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            payload.optJSONArray("days")?.let { days ->
+                val values = (0 until days.length()).map { days.optInt(it) }.filter { it in 1..7 }.distinct()
+                if (values.isNotEmpty()) putIntegerArrayListExtra(AlarmClock.EXTRA_DAYS, ArrayList(values))
+            }
         }
-        return runCatching { context.startActivity(intent); true to status(true, "alarm_ok") }
+        return runCatching {
+            context.startActivity(intent)
+            dev.jlz.presence.data.LocalLifeStore(context).recordTimeline("alarm_requested", "打开原生闹钟设置", "%02d:%02d · 未确认创建".format(hour, minute))
+            true to JSONObject().put("ok", true).put("verification_status", "unconfirmed")
+                .put("opened_settings", true).put("alarm_created", JSONObject.NULL)
+                .put("hour", hour).put("minute", minute)
+                .put("requires_user_save_and_ring_test", true).toString()
+        }
             .getOrElse { false to status(false, "alarm_fail:${it.javaClass.simpleName}") }
     }
 

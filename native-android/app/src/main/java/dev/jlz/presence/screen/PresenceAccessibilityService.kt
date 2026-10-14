@@ -30,6 +30,13 @@ class PresenceAccessibilityService : AccessibilityService() {
     private lateinit var automaticCapture: AutomaticCaptureCoordinator
     private lateinit var entertainmentGateV2: EntertainmentGateV2Coordinator
     private lateinit var unlockSoftGate: UnlockSoftGateCoordinator
+    private val classifier by lazy { dev.jlz.presence.focus.LocalAppClassifier(applicationContext) }
+    private val packagesChanged = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            intent?.data?.schemeSpecificPart?.let { classifier.invalidate(it) }
+        }
+    }
+    private val unknownNotified = mutableSetOf<String>()
     private val lastGateAtMs = mutableMapOf<String, Long>()
     private val observationCache = AccessibilityObservationCache()
     @Volatile private var contentChangePending = false
@@ -50,6 +57,9 @@ class PresenceAccessibilityService : AccessibilityService() {
                 AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
                 AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
         }
+        androidx.core.content.ContextCompat.registerReceiver(this, packagesChanged,
+            android.content.IntentFilter().apply { addAction(android.content.Intent.ACTION_PACKAGE_ADDED); addAction(android.content.Intent.ACTION_PACKAGE_REPLACED); addAction(android.content.Intent.ACTION_PACKAGE_REMOVED); addDataScheme("package") },
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
         ScreenObservationBus.setConnected(true)
         AccessibilityScreenshotGateway.bind(this)
         AccessibilityActionGateway.bind(this)
@@ -64,6 +74,8 @@ class PresenceAccessibilityService : AccessibilityService() {
             focusRepository.state.collectLatest { state -> focusState = state }
         }
     }
+
+    private var lastDailyRestShownMs = 0L
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val packageName = event?.packageName?.toString()
@@ -81,22 +93,56 @@ class PresenceAccessibilityService : AccessibilityService() {
         }
         ForegroundUsageTracker.observe(packageName, now)
         AttentionRhythmTracker.observe(packageName, eventType, now)
+        if (eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED && ::automaticCapture.isInitialized) {
+            // Observe real scrolling, never indiscriminately screenshot on
+            // every text/content change, and only for explicit opt-in apps.
+            automaticCapture.onScroll(packageName, now)
+        }
         val currentFocus = focusState
         if (currentFocus.active && !currentFocus.isActiveNow()) {
-            scope.launch { focusRepository.stop() }
+            scope.launch { if (currentFocus.dailyMode == dev.jlz.presence.focus.DailyMode.NORMAL) focusRepository.stop() else focusRepository.setDailyMode(dev.jlz.presence.focus.DailyMode.NORMAL) }
         }
-        if (packageName != applicationContext.packageName && currentFocus.blocks(packageName)) {
-            performGlobalAction(GLOBAL_ACTION_HOME)
+        val dailyMode = currentFocus.modeNow(now)
+        val category = packageName?.let { classifier.classify(it) }
+        // Daily entertainment total triggers a five-minute APP rest, not
+        // an Android security lock. Phone, alarms, study and settings are safe.
+        val profile = dev.jlz.presence.focus.EntertainmentPolicy.profile(packageName)
+        val leisure = category == dev.jlz.presence.focus.LocalAppCategory.GAME ||
+            (category == dev.jlz.presence.focus.LocalAppCategory.FEED &&
+             profile?.tier != dev.jlz.presence.focus.EntertainmentTier.SHOPPING)
+        if (leisure && dailyMode == dev.jlz.presence.focus.DailyMode.NORMAL &&
+            eventType in setOf(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, AccessibilityEvent.TYPE_VIEW_SCROLLED)) {
+            val guard = dev.jlz.presence.life.DailyEntertainmentRestGuard(applicationContext)
+            val remaining = guard.beginIfDue(now)
+            if (remaining > 0L && now - lastDailyRestShownMs > 5_000L) {
+                lastDailyRestShownMs = now
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                scope.launch {
+                    delay(350L)
+                    dev.jlz.presence.life.DailyEntertainmentRestActivity.show(applicationContext)
+                }
+                return
+            }
+        }
+        if (dailyMode == dev.jlz.presence.focus.DailyMode.BREAK && category == dev.jlz.presence.focus.LocalAppCategory.UNKNOWN && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && !packageName.isNullOrBlank() && unknownNotified.add(packageName)) {
+            if (unknownNotified.size > 200) unknownNotified.clear()
+            android.widget.Toast.makeText(this, "这个应用分类未确认，请在作息设置纠正；未知不等于已确认不是游戏。", android.widget.Toast.LENGTH_LONG).show()
+        }
+        val dailyBlocked = packageName != null && category != null && dev.jlz.presence.focus.DailyModePolicy.blocks(dailyMode, category, packageName)
+        val safe = category == dev.jlz.presence.focus.LocalAppCategory.SYSTEM_SAFE
+        if (!safe && (dailyBlocked || (dailyMode == dev.jlz.presence.focus.DailyMode.NORMAL && currentFocus.blocks(packageName)))) {
             FloatingPresenceService.start(applicationContext, "回来，先做完这段。", FloatingPresenceMode.FOCUS)
+            FloatingPresenceService.gateReaction()
             val last = lastGateAtMs[packageName] ?: 0L
             if (packageName != null && now - last >= 2_500L) {
                 lastGateAtMs[packageName] = now
-                FocusGateActivity.show(applicationContext, packageName, currentFocus.reason)
+                performGlobalAction(GLOBAL_ACTION_HOME)
+                scope.launch { delay(350L); FocusGateActivity.show(applicationContext, packageName, currentFocus.reason) }
             }
             return
         }
 
-        if (::entertainmentGateV2.isInitialized) {
+        if (::entertainmentGateV2.isInitialized && !safe && !dev.jlz.presence.focus.DailyModePolicy.bypassEntertainment(dailyMode, packageName.orEmpty())) {
             entertainmentGateV2.observe(packageName, eventType, now)
         }
         when (eventType) {
@@ -123,11 +169,18 @@ class PresenceAccessibilityService : AccessibilityService() {
         val text = collectVisibleText(root)
         observationCache.onSnapshotTaken(now)
         ScreenObservationBus.publish(ScreenObservation(packageName = packageName, visibleText = text, observedAtMs = now))
+        if (packageName == dev.jlz.presence.notification.HuaweiHealthNotificationReading.PACKAGE_NAME) {
+            // Only parse the actually visible Huawei page; no background UI
+            // traversal, automatic phone unlock or fabricated medical data.
+            dev.jlz.presence.life.HuaweiHealthObservationStore(applicationContext)
+                .recordVisibleHuaweiPage(text, now)
+        }
     }
 
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(packagesChanged) }
         ForegroundUsageTracker.unbind()
         if (::automaticCapture.isInitialized) automaticCapture.close()
         if (::unlockSoftGate.isInitialized) unlockSoftGate.close()

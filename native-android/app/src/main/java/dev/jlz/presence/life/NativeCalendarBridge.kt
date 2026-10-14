@@ -12,6 +12,17 @@ import java.util.TimeZone
 
 /** Android system calendar adapter; never modifies events without calendar permission. */
 class NativeCalendarBridge(private val context: Context) {
+    private val prefs = context.getSharedPreferences("jlz_calendar_links_v1", Context.MODE_PRIVATE)
+    fun selectCalendar(id: Long) { prefs.edit().putLong("selected_calendar", id).apply() }
+    fun calendars(): List<Pair<Long, String>> {
+        if (!canRead()) return emptyList()
+        return context.contentResolver.query(CalendarContract.Calendars.CONTENT_URI,
+            arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.CALENDAR_DISPLAY_NAME, CalendarContract.Calendars.ACCOUNT_NAME),
+            CalendarContract.Calendars.VISIBLE + "=1", null, null).use { rows ->
+            buildList { while (rows != null && rows.moveToNext()) add(rows.getLong(0) to (rows.getString(1).orEmpty() + " / " + rows.getString(2).orEmpty())) }
+        }
+    }
+
     fun canRead(): Boolean = ContextCompat.checkSelfPermission(
         context, Manifest.permission.READ_CALENDAR
     ) == PackageManager.PERMISSION_GRANTED
@@ -21,7 +32,7 @@ class NativeCalendarBridge(private val context: Context) {
     ) == PackageManager.PERMISSION_GRANTED
 
     /** Calendar summaries, capped to 60 entries over next 14 days. */
-    fun snapshot(): JSONObject {
+    fun snapshot(fromMs: Long = System.currentTimeMillis(), toMs: Long = fromMs + 14L * 86_400_000L): JSONObject {
         val now = System.currentTimeMillis()
         val result = JSONObject()
             .put("source", "android_calendar_provider")
@@ -29,23 +40,31 @@ class NativeCalendarBridge(private val context: Context) {
             .put("read_permission", canRead())
             .put("write_permission", canWrite())
             .put("events", JSONArray())
+            .put("range_start_ms", fromMs).put("range_end_ms", toMs)
+        if (toMs <= fromMs || toMs - fromMs > 42L * 86_400_000L) return result.put("ok", false).put("reason", "calendar_invalid_range")
         if (!canRead()) return result.put("reason", "calendar_read_permission_required")
+        val selected = prefs.getLong("selected_calendar", 0L)
+        if (selected <= 0L) return result.put("reason", "select_calendar_first")
         val events = JSONArray()
-        val end = now + 14L * 86_400_000L
         val uri = CalendarContract.Instances.CONTENT_URI.buildUpon().also {
-            ContentUris.appendId(it, now)
-            ContentUris.appendId(it, end)
+            ContentUris.appendId(it, fromMs)
+            ContentUris.appendId(it, toMs)
         }.build()
         val fields = arrayOf(CalendarContract.Instances.EVENT_ID,
             CalendarContract.Instances.TITLE, CalendarContract.Instances.BEGIN,
             CalendarContract.Instances.END, CalendarContract.Instances.EVENT_LOCATION,
-            CalendarContract.Instances.ALL_DAY)
+            CalendarContract.Instances.ALL_DAY, CalendarContract.Instances.CALENDAR_ID)
         try {
-            context.contentResolver.query(uri, fields, null, null,
+            context.contentResolver.query(uri, fields, CalendarContract.Instances.CALENDAR_ID + "=?", arrayOf(selected.toString()),
                 CalendarContract.Instances.BEGIN + " ASC").use { rows ->
                 while (rows != null && rows.moveToNext() && events.length() < 60) {
                     events.put(JSONObject()
                         .put("event_id", rows.getLong(0))
+                        .put("calendar_id", rows.getLong(6))
+                        .put("provider_sync_id", providerSyncId(rows.getLong(0)))
+                        .put("cloud_link", cloudLink(rows.getLong(6), rows.getLong(0)))
+                        .put("stable_instance_key", instanceKey(rows.getLong(6), rows.getLong(0), rows.getLong(2)))
+                        .put("source", "android_calendar_provider")
                         .put("title", rows.getString(1).orEmpty())
                         .put("start_ms", rows.getLong(2))
                         .put("end_ms", rows.getLong(3))
@@ -53,14 +72,22 @@ class NativeCalendarBridge(private val context: Context) {
                         .put("all_day", rows.getInt(5) != 0))
                 }
             }
-            return result.put("events", events).put("ok", true)
+            return result.put("events", events).put("ok", true).put("possibly_truncated", events.length() == 60)
         } catch (error: Exception) {
             return result.put("ok", false)
                 .put("reason", "calendar_provider_error:" + error.javaClass.simpleName)
         }
     }
 
+    private fun providerSyncId(id: Long): String = runCatching {
+        context.contentResolver.query(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, id),
+            arrayOf(CalendarContract.Events._SYNC_ID), null, null, null).use { rows ->
+                if (rows != null && rows.moveToFirst()) rows.getString(0).orEmpty() else ""
+            }
+    }.getOrDefault("")
+
     fun add(payload: JSONObject): Pair<Boolean, String> {
+        if (payload.optString("operation") == "link_verified_cloud_event") return linkCloudEvent(payload)
         if (!canWrite()) return false to "calendar_write_permission_required"
         val title = payload.optString("title").trim()
         val start = payload.optLong("start_ms", 0L)
@@ -71,8 +98,13 @@ class NativeCalendarBridge(private val context: Context) {
             return false to "calendar_title_or_time_invalid"
         }
         val calendarId = payload.optLong("calendar_id", 0L)
-            .takeIf { it > 0L } ?: writableCalendarId()
+            .takeIf { it > 0L } ?: prefs.getLong("selected_calendar", 0L).takeIf { it > 0L }
             ?: return false to "no_writable_android_calendar"
+        if (payload.optBoolean("write_confirmed", false) != true) return false to "calendar_single_write_confirmation_required"
+        val requestId = payload.optString("request_id").take(100)
+        if (requestId.isBlank()) return false to "calendar_request_id_required"
+        val mapped = prefs.getLong("event:$calendarId:$requestId", 0L)
+        if (mapped > 0L) return true to JSONObject().put("ok", true).put("event_id", mapped).put("calendar_id", calendarId).put("deduplicated", true).toString()
         val data = android.content.ContentValues().apply {
             put(CalendarContract.Events.CALENDAR_ID, calendarId)
             put(CalendarContract.Events.TITLE, title)
@@ -84,8 +116,18 @@ class NativeCalendarBridge(private val context: Context) {
             put(CalendarContract.Events.ALL_DAY, if (payload.optBoolean("all_day")) 1 else 0)
         }
         return try {
-            val uri = context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, data)
+            val existingId = payload.optLong("event_id", 0L)
+            val uri = if (existingId > 0) {
+                val existingUri = ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, existingId)
+                val matches = context.contentResolver.query(existingUri, arrayOf(CalendarContract.Events.CALENDAR_ID), null, null, null).use {
+                    it != null && it.moveToFirst() && it.getLong(0) == calendarId
+                }
+                if (!matches) return false to "calendar_update_target_mismatch"
+                if (context.contentResolver.update(existingUri, data, null, null) != 1) return false to "calendar_update_failed"
+                existingUri
+            } else context.contentResolver.insert(CalendarContract.Events.CONTENT_URI, data)
                 ?: return false to "calendar_insert_failed"
+            prefs.edit().putLong("event:$calendarId:$requestId", ContentUris.parseId(uri)).commit()
             true to JSONObject().put("ok", true)
                 .put("event_id", ContentUris.parseId(uri))
                 .put("calendar_id", calendarId)
@@ -93,6 +135,43 @@ class NativeCalendarBridge(private val context: Context) {
         } catch (error: Exception) {
             false to "calendar_insert_exception:" + error.javaClass.simpleName
         }
+    }
+
+    private fun cloudLink(calendar: Long, event: Long): JSONObject = runCatching {
+        JSONObject(prefs.getString("cloud:$calendar:$event", "{}") ?: "{}")
+    }.getOrDefault(JSONObject())
+
+    private fun instanceKey(calendar: Long, event: Long, start: Long): String {
+        val link = cloudLink(calendar, event)
+        return if (link.optString("event_id").isNotBlank())
+            "google:${link.optString("calendar_id")}:${link.optString("event_id")}:$start"
+        else "android:$calendar:$event:$start"
+    }
+
+    /** IDs must come from a real cloud read and an explicitly confirmed provider match. */
+    private fun linkCloudEvent(payload: JSONObject): Pair<Boolean, String> {
+        if (!canRead()) return false to "calendar_read_permission_required"
+        if (!payload.optBoolean("link_confirmed")) return false to "calendar_link_confirmation_required"
+        val calendar = payload.optLong("calendar_id")
+        val event = payload.optLong("event_id")
+        val cloudCalendar = payload.optString("cloud_calendar_id").trim()
+        val cloudEvent = payload.optString("cloud_event_id").trim()
+        if (calendar <= 0 || event <= 0 || cloudCalendar.isBlank() || cloudEvent.isBlank() || cloudCalendar.length > 256 || cloudEvent.length > 256)
+            return false to "calendar_link_ids_required"
+        val matches = context.contentResolver.query(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI, event),
+            arrayOf(CalendarContract.Events.CALENDAR_ID, CalendarContract.Events.TITLE, CalendarContract.Events.DTSTART), null, null, null).use { rows ->
+            rows != null && rows.moveToFirst() && rows.getLong(0) == calendar &&
+                rows.getString(1).orEmpty() == payload.optString("expected_title") && rows.getLong(2) == payload.optLong("expected_start_ms")
+        }
+        if (!matches) return false to "calendar_link_provider_changed_or_mismatch"
+        val old = cloudLink(calendar, event)
+        if (old.length() > 0 && (old.optString("calendar_id") != cloudCalendar || old.optString("event_id") != cloudEvent))
+            return false to "calendar_link_conflict"
+        val link = JSONObject().put("calendar_id", cloudCalendar).put("event_id", cloudEvent)
+            .put("source", "explicit_verified_cloud_read").put("linked_at_ms", System.currentTimeMillis())
+        check(prefs.edit().putString("cloud:$calendar:$event", link.toString()).commit())
+        return true to JSONObject().put("ok", true).put("event_id", event).put("calendar_id", calendar)
+            .put("cloud_link", link).put("provider_event_modified", false).toString()
     }
 
     private fun writableCalendarId(): Long? {

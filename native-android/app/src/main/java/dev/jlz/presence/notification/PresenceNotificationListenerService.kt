@@ -85,6 +85,13 @@ class PresenceNotificationListenerService :
                 NotificationSourceRepository(appContext)
 
             sources.noteSeen(sbn.packageName)
+            // Huawei steps are a local health observation, not a request to
+            // forward all Huawei notifications or other app data to Runtime.
+            if (HuaweiHealthNotificationReading.isHuaweiHealth(sbn.packageName)) {
+                HuaweiHealthNotificationReading.stepsIfShown(sbn.packageName, rawTitle, rawBody)
+                    ?.let { dev.jlz.presence.life.HuaweiHealthObservationStore(appContext)
+                        .recordNotificationSteps(it, System.currentTimeMillis()) }
+            }
             if (!sources.isAllowed(sbn.packageName)) {
                 return@launch
             }
@@ -102,9 +109,13 @@ class PresenceNotificationListenerService :
                 allowOngoingHealth = isHealth
             )
 
+            val lifecycle = NotificationLifecycleIndex(appContext).posted(sbn.key,
+                policy.disposition.name + "|" + policy.title + "|" + policy.body,
+                System.currentTimeMillis())
+            if (lifecycle == "duplicate") return@launch
             val eventIdentity = (
                 sbn.packageName + "|" + sbn.key + "|" + sbn.postTime + "|" +
-                    policy.disposition.name + "|" + policy.title + "|" + policy.body
+                    policy.disposition.name + "|" + policy.title + "|" + policy.body + "|" + lifecycle + "|" + System.currentTimeMillis()
             )
             val eventId = UUID.nameUUIDFromBytes(
                 eventIdentity.toByteArray(Charsets.UTF_8)
@@ -117,6 +128,8 @@ class PresenceNotificationListenerService :
                 .put("policy", policy.disposition.name.lowercase())
                 .put("policy_reason", policy.reason)
                 .put("observed_at_ms", System.currentTimeMillis())
+                .put("notification_lifecycle", lifecycle)
+                .put("source_device_id", RuntimeSettingsRepository(appContext).load().deviceId)
                 .put("capture_kind", if (isHealth) "health_notification" else "notification")
                 .put("source_kind", "android_notification_text")
 
@@ -145,6 +158,10 @@ class PresenceNotificationListenerService :
                 HuaweiHealthNotificationReading.stepsIfShown(sbn.packageName, rawTitle, rawBody)
             } else null
             if (isHealth) {
+                if (stepCount != null) {
+                    dev.jlz.presence.life.HuaweiHealthObservationStore(appContext)
+                        .recordNotificationSteps(stepCount, System.currentTimeMillis())
+                }
                 val kcal = HuaweiHealthNotificationReading.caloriesIfShown(
                     sbn.packageName, rawTitle, rawBody
                 )
@@ -185,6 +202,30 @@ class PresenceNotificationListenerService :
         }
     }
 
+    override fun onNotificationRemoved(sbn: StatusBarNotification) {
+        if (sbn.packageName == packageName || sbn.packageName == "org.ikuuu.vpn") return
+        scope.launch {
+            val ctx = applicationContext
+            if (!NotificationSourceRepository(ctx).isAllowed(sbn.packageName)) return@launch
+            val now = System.currentTimeMillis()
+            if (!NotificationLifecycleIndex(ctx).removed(sbn.key, now)) return@launch
+            val eventId = UUID.nameUUIDFromBytes((sbn.key + "|removed|" + now).toByteArray()).toString()
+            val meta = JSONObject().put("notification_key", sbn.key).put("notification_lifecycle", "removed")
+                .put("observed_at_ms", now).put("removed_at_ms", now).put("posted_at_ms", sbn.postTime)
+                .put("package_name", sbn.packageName).put("policy", "metadata_only")
+                .put("source_device_id", RuntimeSettingsRepository(ctx).load().deviceId)
+            LocalLifeStore(ctx).recordTimeline(type="notification_observation", title="通知已撤回",
+                detail="", id=eventId, eventId=eventId, createdAtMs=now, metadataJson=meta.toString())
+            val outbox = PendingActivityEventStore(ctx)
+            outbox.enqueue(id=eventId,source="android_notification",kind="notification_observation",
+                title="通知已撤回",body="",packageName=sbn.packageName,metadata=meta)
+            runCatching {
+                val settings = RuntimeSettingsRepository(ctx).load()
+                if (settings.baseUrl.isNotBlank() && settings.token.isNotBlank()) outbox.sync(RuntimeApiClient(settings),limit=25)
+            }
+        }
+    }
+
     override fun onDestroy() {
         if (connected === this) connected = null
         scope.cancel()
@@ -205,16 +246,16 @@ class PresenceNotificationListenerService :
         val visibleTitle = if (policy.disposition == NotificationDisposition.DROP_LOW_VALUE) "" else policy.title
         val visibleBody = if (policy.disposition == NotificationDisposition.DROP_LOW_VALUE) "" else policy.body
         val actions = JSONArray()
-        sbn.notification.actions?.forEachIndexed { index, action ->
+        sbn.notification.actions?.takeIf { policy.disposition == NotificationDisposition.FORWARD }?.forEachIndexed { index, action ->
             actions.put(JSONObject().put("index", index).put("title", action.title?.toString().orEmpty().take(120))
-                .put("semantic_action", action.semanticAction).put("has_remote_input", !action.remoteInputs.isNullOrEmpty()))
+                .put("semantic_action", if(android.os.Build.VERSION.SDK_INT >= 28) action.semanticAction else JSONObject.NULL).put("has_remote_input", !action.remoteInputs.isNullOrEmpty()))
         }
         val appName = runCatching {
             packageManager.getApplicationLabel(packageManager.getApplicationInfo(sbn.packageName, 0)).toString()
         }.getOrDefault(sbn.packageName)
         return JSONObject().put("package", sbn.packageName).put("package_name", sbn.packageName)
             .put("app_name", appName).put("title", visibleTitle).put("body", visibleBody)
-            .put("subtitle", extras?.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString().orEmpty().take(200))
+            .put("subtitle", "") // Subtext may contain private conversations; never bypass policy.
             .put("posted_at", sbn.postTime).put("observed_at", System.currentTimeMillis())
             .put("notification_id", sbn.id).put("key", sbn.key)
             .put("ongoing", sbn.isOngoing).put("category", sbn.notification.category ?: JSONObject.NULL)
@@ -244,7 +285,8 @@ class PresenceNotificationListenerService :
                 .put("reason", "notification_listener_not_connected")
             val safeLimit = limit.coerceIn(1, 120)
             val active = runCatching { listener.activeNotifications.orEmpty().asSequence()
-                .filter { it.packageName != "org.ikuuu.vpn" }
+                .filter { it.packageName != "org.ikuuu.vpn" && it.packageName != listener.packageName }
+                .filter { kotlinx.coroutines.runBlocking { NotificationSourceRepository(listener.applicationContext).isAllowed(it.packageName) } }
                 .filter { packageName.isNullOrBlank() || it.packageName == packageName }
                 .filter { sinceMs <= 0L || it.postTime >= sinceMs }
                 .sortedByDescending { it.postTime }.take(safeLimit)
@@ -259,12 +301,13 @@ class PresenceNotificationListenerService :
                     val meta = runCatching { JSONObject(event.metadataJson) }.getOrDefault(JSONObject())
                     val pkg = meta.optString("package_name")
                     if ((packageName.isNullOrBlank() || pkg == packageName) && items.length() < safeLimit &&
-                        active.none { it.optString("key") == meta.optString("notification_key") }) {
+                        meta.optString("notification_lifecycle") in setOf("posted","updated","removed")) {
                         items.put(JSONObject().put("package", pkg).put("package_name", pkg)
                             .put("app_name", pkg).put("title", event.title).put("body", event.detail)
                             .put("subtitle", "").put("posted_at", meta.optLong("posted_at_ms", event.createdAtMs))
                             .put("observed_at", meta.optLong("observed_at_ms", event.createdAtMs))
                             .put("notification_id", JSONObject.NULL).put("key", meta.optString("notification_key"))
+                            .put("event_id",event.id).put("notification_lifecycle",meta.optString("notification_lifecycle"))
                             .put("ongoing", false).put("category", JSONObject.NULL)
                             .put("available_actions", JSONArray()).put("active", false).put("source", "local_recent_notification_store"))
                     }

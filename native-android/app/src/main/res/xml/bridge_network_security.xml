@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Dynamic private IPv4 addresses are validated in RuntimeApiClient.
+         WebShell keeps MIXED_CONTENT_NEVER_ALLOW and an HTTPS host allowlist. -->
+    <base-config cleartextTrafficPermitted="true" />
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">pages.dev</domain>
+        <domain includeSubdomains="true">onrender.com</domain>
+        <domain includeSubdomains="true">railway.app</domain>
+    </domain-config>
+</network-security-config>

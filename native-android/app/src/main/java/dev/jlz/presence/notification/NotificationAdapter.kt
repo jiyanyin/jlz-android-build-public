@@ -38,6 +38,7 @@ class NotificationAdapter(private val context: Context) {
         eventId: String = UUID.randomUUID().toString(),
         intentId: String = UUID.randomUUID().toString()
     ): NotificationResult {
+        val sleepQuiet = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { dev.jlz.presence.focus.FocusRepository(context).current().modeNow() == dev.jlz.presence.focus.DailyMode.SLEEP }
         ensureChannel()
 
         if (
@@ -53,7 +54,18 @@ class NotificationAdapter(private val context: Context) {
             )
         }
 
+        // Disabled channels may silently discard notify() without throwing.
+        // Treat them as refused delivery: local reminders must remain retryable.
+        if (!manager.areNotificationsEnabled()) {
+            return NotificationResult(ok = false, code = "notifications_disabled")
+        }
+        if (Build.VERSION.SDK_INT >= 26 &&
+            manager.getNotificationChannel(CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE) {
+            return NotificationResult(ok = false, code = "notification_channel_disabled")
+        }
+
         val notificationId = nextNotificationId()
+        if (!sleepQuiet) dev.jlz.presence.overlay.FloatingPresenceService.privateMessageReaction()
         val avatar = createAvatarBitmap()
 
         val contentPendingIntent = PendingIntent.getActivity(
@@ -61,7 +73,7 @@ class NotificationAdapter(private val context: Context) {
             notificationId,
             Intent(
                 Intent.ACTION_VIEW,
-                android.net.Uri.parse("https://between-worlds-prod.onrender.com/?shell=android#echo"),
+                android.net.Uri.parse("https://between-worlds-prod.pages.dev/?shell=android#echo"),
                 context,
                 WebShellActivity::class.java
             )
@@ -129,15 +141,12 @@ class NotificationAdapter(private val context: Context) {
             .setImportant(true)
             .build()
 
-        val style = NotificationCompat.MessagingStyle(user)
-            .addMessage(
-                message,
-                System.currentTimeMillis(),
-                companion
-            )
-        if (title.isNotBlank()) {
-            style.setConversationTitle(title)
-        }
+        // This is a private 1:1 chat, not a group with a "我在找你" room title.
+        // Some OEM notification layouts pick the local user's "你" monogram
+        // as the group avatar when a conversation title is supplied.
+        val style = JlzMessagingStyle.incoming(
+            user, companion, message, System.currentTimeMillis()
+        )
 
         val notification = NotificationCompat.Builder(
             context,
@@ -154,7 +163,8 @@ class NotificationAdapter(private val context: Context) {
             .setContentIntent(contentPendingIntent)
             .addAction(replyAction)
             .setAutoCancel(true)
-            .setOnlyAlertOnce(false)
+            .setSilent(sleepQuiet)
+            .setOnlyAlertOnce(sleepQuiet)
             .build()
 
         manager.notify(notificationId, notification)
@@ -190,16 +200,16 @@ class NotificationAdapter(private val context: Context) {
             .build()
 
         val now = System.currentTimeMillis()
-        val style = NotificationCompat.MessagingStyle(user)
-            .addMessage(originalMessage, now - 1000L, companion)
-            .addMessage(reply, now, user)
+        val style = JlzMessagingStyle.afterReply(
+            user, companion, originalMessage, reply, now
+        )
 
         val openChat = PendingIntent.getActivity(
             context,
             notificationId,
             Intent(
                 Intent.ACTION_VIEW,
-                android.net.Uri.parse("https://between-worlds-prod.onrender.com/?shell=android#echo"),
+                android.net.Uri.parse("https://between-worlds-prod.pages.dev/?shell=android#echo"),
                 context,
                 WebShellActivity::class.java
             )
@@ -304,4 +314,38 @@ class NotificationAdapter(private val context: Context) {
         private const val AVATAR_SIZE = 128
         private val idLock = Any()
     }
+}
+
+/**
+ * A direct conversation between the user and 纪临洲.
+ *
+ * Do not set conversationTitle on MessagingStyle for a one-to-one chat:
+ * Android/OEM launchers may interpret it as a group conversation and show
+ * the local user's fallback monogram instead of the incoming sender's icon.
+ *
+ * The sender Person already has our user-chosen planet avatar; this code
+ * intentionally does NOT change drawable resources, Gate, or reply routing.
+ */
+internal object JlzMessagingStyle {
+    fun incoming(
+        user: Person,
+        companion: Person,
+        text: String,
+        atMs: Long
+    ): NotificationCompat.MessagingStyle =
+        NotificationCompat.MessagingStyle(user)
+            .setGroupConversation(false)
+            .addMessage(text, atMs, companion)
+
+    fun afterReply(
+        user: Person,
+        companion: Person,
+        original: String,
+        reply: String,
+        atMs: Long
+    ): NotificationCompat.MessagingStyle =
+        NotificationCompat.MessagingStyle(user)
+            .setGroupConversation(false)
+            .addMessage(original, atMs - 1000L, companion)
+            .addMessage(reply, atMs, user)
 }

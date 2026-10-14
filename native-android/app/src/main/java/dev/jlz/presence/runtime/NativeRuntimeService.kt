@@ -32,6 +32,7 @@ import dev.jlz.presence.life.CycleReminderEngine
 import dev.jlz.presence.life.NativeCalendarBridge
 import dev.jlz.presence.notification.NotificationAdapter
 import dev.jlz.presence.notification.NotificationIdentityMigration
+import dev.jlz.presence.notification.NativeConnectionNotification
 import dev.jlz.presence.notification.PendingReplyStore
 import dev.jlz.presence.usage.PendingActivityEventStore
 import dev.jlz.presence.overlay.FloatingPresenceMode
@@ -80,10 +81,17 @@ class NativeRuntimeService : Service() {
     private lateinit var deviceActivityJournal: DeviceActivityJournal
     private lateinit var activityOutbox: PendingActivityEventStore
     private lateinit var deviceSystem: DeviceSystemController
+    private lateinit var localLifeReminders: dev.jlz.presence.life.LocalLifeReminderEngine
+    private lateinit var sensorMonitor: dev.jlz.presence.life.LocalLifeSensorMonitor
+    private var lifeTickJob: Job? = null
 
     private val deviceEventReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent?) {
             if (!::deviceActivityJournal.isInitialized) return
+            if (intent?.action == Intent.ACTION_BATTERY_CHANGED) {
+                if (::localLifeReminders.isInitialized) localLifeReminders.battery(intent)
+                return
+            }
             val type = when (intent?.action) {
                 Intent.ACTION_SCREEN_ON -> "SCREEN_ON"
                 Intent.ACTION_SCREEN_OFF -> "SCREEN_OFF"
@@ -96,6 +104,12 @@ class NativeRuntimeService : Service() {
                     eventType = type,
                     deviceId = activeDeviceId
                 )
+                if (::localLifeReminders.isInitialized && type in setOf("SCREEN_ON", "SCREEN_OFF")) {
+                    localLifeReminders.screen(type == "SCREEN_ON")
+                    if (::sensorMonitor.isInitialized) {
+                        if (type == "SCREEN_ON") sensorMonitor.start() else sensorMonitor.stop()
+                    }
+                }
             }
         }
     }
@@ -121,10 +135,15 @@ class NativeRuntimeService : Service() {
         deviceActivityJournal = DeviceActivityJournal(applicationContext)
         activityOutbox = PendingActivityEventStore(applicationContext)
         deviceSystem = DeviceSystemController(applicationContext)
+        localLifeReminders = dev.jlz.presence.life.LocalLifeReminderEngine(applicationContext)
+        sensorMonitor = dev.jlz.presence.life.LocalLifeSensorMonitor(applicationContext)
+        sensorMonitor.start()
+        dev.jlz.presence.life.DailyHealthSchedule.scheduleAll(applicationContext)
         val eventFilter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_BATTERY_CHANGED)
         }
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(deviceEventReceiver, eventFilter, Context.RECEIVER_NOT_EXPORTED)
@@ -144,26 +163,32 @@ class NativeRuntimeService : Service() {
             acquire()
         }
 
+        // Full-colour app artwork belongs to the notification content,
+        // while the status-bar small icon remains Android monochrome.
         startForeground(
             FOREGROUND_ID,
-            NotificationCompat.Builder(this, SERVICE_CHANNEL)
-                .setSmallIcon(R.drawable.ic_notification_world_between_v3)
-                .setContentTitle("我在")
-                .setContentText("正在保持和 JLZ Runtime 的连接")
-                .setOngoing(true)
-                .build()
+            NativeConnectionNotification.build(this, SERVICE_CHANNEL)
         )
 
         NativeClientDiagnostics.update { it.copy(serviceRunning = true) }
         heartbeatJob = scope.launch { runHeartbeatLoop() }
         commandJob = scope.launch { runCommandLoop() }
         planJob = scope.launch { runPresencePlanLoop() }
+        lifeTickJob = scope.launch {
+            while (isActive) {
+                runCatching { localLifeReminders.tick(focusRepository.current().modeNow()) }
+                runCatching { if (localLifeReminders.enabled()) sensorMonitor.start() else sensorMonitor.stop() }
+                delay(60_000L)
+            }
+        }
     }
 
     override fun onDestroy() {
         heartbeatJob?.cancel()
         commandJob?.cancel()
         planJob?.cancel()
+        lifeTickJob?.cancel()
+        sensorMonitor.stop()
         scope.cancel()
         runCatching { unregisterReceiver(deviceEventReceiver) }
         runCatching {
@@ -179,6 +204,7 @@ class NativeRuntimeService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private suspend fun runHeartbeatLoop() {
+        var contentCheckedAt = 0L
         val placeWeather = PlaceWeatherCoordinator(applicationContext)
         val cycleReminder = CycleReminderEngine(applicationContext)
 
@@ -197,12 +223,31 @@ class NativeRuntimeService : Service() {
 
             try {
                 val api = RuntimeApiClient(settings)
+                // Only a stopped session ID is retried; no GPS coordinates in routine state.
+                if (settings.bridgeName.startsWith("Home")) runCatching {
+                    dev.jlz.presence.trip.PendingTripStop.flush(applicationContext, api)
+                }
+                if(settings.bridgeName.startsWith("Home")) runCatching { WorldContentCache(applicationContext).flushReceipt(api,settings.deviceId) }
+                // Text/theme hot sync: 60 s while Home Node is reachable.
+                // A failed fetch retries at the next eligible loop; never label
+                // an unreceived version as applied to the UI.
+                if(settings.bridgeName.startsWith("Home") &&
+                    System.currentTimeMillis()-contentCheckedAt >= 60_000L) {
+                    val synced = runCatching {
+                        WorldContentCache(applicationContext).save(api.worldContent())
+                    }.getOrDefault(false)
+                    if (synced) contentCheckedAt=System.currentTimeMillis()
+                    runCatching { dev.jlz.presence.overlay.TaskReactionTracker(applicationContext).accept(api.dailyPlanForReaction()) }
+                }
                 runCatching { cycleReminder.evaluateToday() }
 
                 val placeWeatherSnapshot =
                     runCatching { placeWeather.snapshot() }.getOrNull()
                 currentSemanticPlace =
                     placeWeatherSnapshot?.place?.place?.name
+                placeWeatherSnapshot?.weather?.let { weather ->
+                    localLifeReminders.weatherRain(weather.weatherCode, weather.precipitationMm)
+                }
 
                 if (placeWeatherSnapshot?.transitioned == true) {
                     val previous =
@@ -261,10 +306,9 @@ class NativeRuntimeService : Service() {
                 // Actual screen pixels and accessibility node text are fetched
                 // on demand through the screenshot / get_screen_nodes tools.
                 ForegroundUsageTracker.flush()
-                val dayStart = LocalDate.now().atStartOfDay(ZoneId.systemDefault())
+                val dayStart = LocalDate.now(ZoneId.of("Asia/Shanghai")).atStartOfDay(ZoneId.of("Asia/Shanghai"))
                     .toInstant().toEpochMilli()
-                val usageTotals = ForegroundUsageStore(applicationContext)
-                    .totalsSince(dayStart, 50)
+                val usageTotals = ForegroundUsageStore(applicationContext).use { it.totalsSince(dayStart, 50) }
                 val observedScreen = ScreenObservationBus.observations.value
                 val observedAt = observedScreen?.observedAtMs ?: 0L
                 val screenFresh = observedAt > 0L &&
@@ -295,13 +339,101 @@ class NativeRuntimeService : Service() {
                             }
                         })
                 }
+                val windowEnd = System.currentTimeMillis()
+                val windowStart = windowEnd - 3_600_000L
+                val recent = deviceActivityJournal.readAppSessions(applicationContext,
+                    windowStart, windowEnd, limit = 500, deviceId = settings.deviceId)
+                if (recent.optBoolean("ok")) {
+                    val sessions = recent.optJSONArray("sessions") ?: JSONArray()
+                    val totals = linkedMapOf<String, Long>()
+                    val classifier = dev.jlz.presence.focus.LocalAppClassifier(applicationContext)
+                    for (i in 0 until sessions.length()) {
+                        val item = sessions.optJSONObject(i) ?: continue
+                        val pkg = item.optString("package_name")
+                        val duration = item.optLong("duration_ms")
+                        val category = when {
+                            pkg in setOf("com.taobao.taobao","com.xunmeng.pinduoduo","com.jingdong.app.mall") -> "shopping"
+                            pkg in setOf("com.tencent.mm","com.tencent.mobileqq") -> "chat"
+                            pkg in setOf("com.ss.android.ugc.aweme","com.smile.gifmaker") -> "short_video"
+                            classifier.eligibleLearning(pkg) -> "learning"
+                            else -> classifier.classify(pkg).name.lowercase()
+                        }
+                        item.put("category",category)
+                        totals[pkg] = (totals[pkg] ?: 0L) + duration
+                    }
+                    usageJson.put("recent_window_minutes", 60)
+                        .put("recent_window_start_ms", windowStart)
+                        .put("recent_window_end_ms", windowEnd)
+                        .put("recent_window_source", "android_usage_events")
+                        .put("recent_sessions", JSONArray().apply {
+                            for (i in (sessions.length()-120).coerceAtLeast(0) until sessions.length()) {
+                                val source = sessions.optJSONObject(i) ?: continue
+                                put(JSONObject().apply {
+                                    listOf("package_name","session_start","session_end","origin","source","confidence","category").forEach { k -> put(k,source.opt(k)) }
+                                })
+                            }
+                        })
+                        .put("recent_sessions_truncated", recent.optString("next_cursor").isNotBlank() || sessions.length()>120)
+                        .put("recent_window_totals", JSONArray().apply {
+                            totals.entries.sortedByDescending { it.value }.take(50).forEach {
+                                put(JSONObject().put("package_name", it.key).put("duration_ms", it.value))
+                            }
+                        })
+                } else if (ScreenObservationBus.isAvailable()) {
+                    val rolling = ForegroundUsageStore(applicationContext).use { it.totalsInWindow(windowStart,windowEnd,12) }
+                    usageJson.put("recent_window_minutes",60)
+                        .put("recent_window_source","android_accessibility_foreground_segments")
+                        .put("recent_window_start_ms",windowStart).put("recent_window_end_ms",windowEnd)
+                        .put("recent_window_totals",JSONArray().apply { rolling.forEach { total ->
+                            put(JSONObject().put("package_name",total.packageName).put("duration_ms",total.durationMs))
+                        } })
+                }
+                val screenHistory = deviceActivityJournal.readScreenTimeline(applicationContext,
+                    windowStart, windowEnd, limit = 80, deviceId = settings.deviceId)
+                usageJson.put("recent_screen_events", screenHistory.optJSONArray("items") ?: JSONArray())
+                    .put("recent_screen_events_truncated", screenHistory.optString("next_cursor").isNotBlank())
+                usageJson.put("daily_mode", focusRepository.current().modeNow().name)
+                    .put("notification_listener_connected", dev.jlz.presence.notification.PresenceNotificationListenerService.isConnected())
+                val voiceEngine = dev.jlz.presence.persona.JlzVoiceStateEngine(applicationContext)
+                val actualStudyMinutes = runCatching {
+                    dev.jlz.presence.study.StudyMetricsStore(applicationContext).use {
+                        it.dayMetrics(dayStart, System.currentTimeMillis() + 1).effectiveStudyMs / 60_000L
+                    }
+                }.getOrNull()
+                val actualEntertainmentMinutes = if (
+                    usageJson.optBoolean("usage_permission_ready") ||
+                    ScreenObservationBus.isAvailable()) {
+                    val classifier = dev.jlz.presence.focus.LocalAppClassifier(applicationContext)
+                    val rows = usageJson.optJSONArray("totals") ?: JSONArray()
+                    var ms = 0L
+                    for (index in 0 until rows.length()) {
+                        val item = rows.optJSONObject(index) ?: continue
+                        val pkg = item.optString("package_name")
+                        val category = classifier.classify(pkg)
+                        val profile = dev.jlz.presence.focus.EntertainmentPolicy.profile(pkg)
+                        if (category == dev.jlz.presence.focus.LocalAppCategory.GAME ||
+                            (category == dev.jlz.presence.focus.LocalAppCategory.FEED &&
+                             profile?.tier != dev.jlz.presence.focus.EntertainmentTier.SHOPPING)) {
+                            ms += item.optLong("duration_ms", 0L).coerceAtLeast(0L)
+                        }
+                    }
+                    ms / 60_000L
+                } else null
+                val observedVoice = voiceEngine.observe(focusRepository.current().modeNow(),
+                    entertainmentMinutes = actualEntertainmentMinutes, focusMinutes = actualStudyMinutes)
+                usageJson.put("jlz_voice_state", JSONObject()
+                    .put("mood", observedVoice.mood.name)
+                    .put("reason", observedVoice.reason)
+                    .put("source", observedVoice.source)
+                    .put("updated_at_ms", observedVoice.updatedAtMs)
+                    .put("expires_at_ms", observedVoice.expiresAtMs))
                 // V2: Health Connect telemetry removed by product decision.
                 api.postDeviceState(
                     DeviceStateSnapshot(
                         deviceId = settings.deviceId,
                         deviceType = NativePhoneSnapshot.deviceType(applicationContext),
                         appVersion = RuntimeApiClient.appVersion(applicationContext),
-                        health = null,
+                        health = dev.jlz.presence.life.HuaweiHealthObservationStore(applicationContext).snapshot(),
                         place = placeWeatherSnapshot?.placeJson(),
                         weather = placeWeatherSnapshot?.weather?.toJson(),
                         presencePlan = presencePlanRepository.summaryJson(),
@@ -397,6 +529,7 @@ class NativeRuntimeService : Service() {
 
     private suspend fun runCommandLoop() {
         while (scope.isActive) {
+            BridgeStore(applicationContext).probePreferred()
             val settings = settingsRepository.load()
             if (settings.baseUrl.isBlank() || settings.token.isBlank()) {
                 delay(5_000L)
@@ -408,6 +541,13 @@ class NativeRuntimeService : Service() {
                 val command = api.pollCommand(COMMAND_LONG_POLL_MS)
                 if (command == null) {
                     delay(250L)
+                    continue
+                }
+
+                val previous = CommandExecutionLedger(applicationContext).use { it.reserve(command) }
+                settings.bridge?.recordCommand(command.id)
+                if(previous != null) {
+                    api.report(command,previous.first,previous.second)
                     continue
                 }
 
@@ -434,6 +574,7 @@ class NativeRuntimeService : Service() {
                     deviceId = command.deviceId
                 )
                 val execution = execute(command, api)
+                CommandExecutionLedger(applicationContext).use { it.finish(command,execution) }
                 val executedAtMs = System.currentTimeMillis()
                 val afterState = deviceSystem.systemState()
                 val parsedResult = runCatching { JSONObject(execution.second) }.getOrNull()
@@ -532,8 +673,22 @@ class NativeRuntimeService : Service() {
                 val title = command.payload.optString("title").ifBlank { "我在找你" }
                 val eventId = command.payload.optString("event_id").ifBlank { command.id }
                 val intentId = command.payload.optString("intent_id").ifBlank { command.id }
-                val result = NotificationAdapter(this).showMessage(title, message, eventId, intentId)
-                result.ok to result.code
+                val expires = command.payload.optLong("expires_at_ms", 0L)
+                if (expires > 0L && System.currentTimeMillis() >= expires) {
+                    true to "expired_without_notification"
+                } else if (!command.payload.optBoolean("notify", true) ||
+                    focusRepository.current().modeNow() == dev.jlz.presence.focus.DailyMode.SLEEP) {
+                    true to "echo_only_without_system_notification"
+                } else if (command.payload.optString("queue_message_id").isNotBlank() &&
+                    !runCatching { api.reminderCheck(command.payload) }.getOrDefault(false)) {
+                    true to "cancelled_or_check_unavailable_without_notification"
+                } else {
+                    val result = NotificationAdapter(this).showMessage(title, message, eventId, intentId)
+                    result.ok to JSONObject().put("code", result.code)
+                        .put("notification_id", result.notificationId ?: JSONObject.NULL)
+                        .put("posted_at_ms", if(result.ok) System.currentTimeMillis() else JSONObject.NULL)
+                        .put("system_active_at_ms", JSONObject.NULL).toString()
+                }
             }
 
             "presence_callback", "trigger_guidian" -> {
@@ -635,7 +790,7 @@ class NativeRuntimeService : Service() {
 
             "open_app", "home", "back", "recents", "screen_off", "phone_screen_off", "lock_screen",
             "open_notifications", "open_quick_settings", "wake_screen", "unlock_if_non_secure", "get_lock_state",
-            "get_native_capabilities", "get_system_state",
+            "get_native_capabilities", "get_system_state", "get_current_location",
             "tap", "double_tap", "long_press", "swipe", "drag", "two_finger_swipe", "pinch",
             "tap_text", "input_text", "get_screen_nodes", "find_nodes",
             "click_node", "long_click_node", "set_text", "clear_text", "focus_node",
@@ -652,14 +807,28 @@ class NativeRuntimeService : Service() {
 
             "run_sequence", "native_phone_sequence" -> executePhoneSequence(command, api)
 
+            "get_huawei_health_snapshot" -> {
+                true to dev.jlz.presence.life.HuaweiHealthObservationStore(applicationContext)
+                    .snapshot().toString()
+            }
+
+            "get_local_reminders_status" -> {
+                true to org.json.JSONObject()
+                    .put("enabled", localLifeReminders.enabled())
+                    .put("source", "android_local_reminder_engine")
+                    .put("health", dev.jlz.presence.life.HuaweiHealthObservationStore(applicationContext).snapshot())
+                    .toString()
+            }
+
             "get_calendar_state" -> {
-                val calendar = NativeCalendarBridge(applicationContext).snapshot()
+                val from = command.payload.optLong("from_ms", System.currentTimeMillis())
+                val calendar = NativeCalendarBridge(applicationContext).snapshot(from, command.payload.optLong("to_ms", from + 14L * 86_400_000L))
                 calendar.optBoolean("ok", false) to calendar.toString()
             }
 
             "add_calendar_event", "upsert_calendar_event" -> {
                 val result = NativeCalendarBridge(applicationContext).add(command.payload)
-                if (result.first) {
+                if (result.first && command.payload.optString("operation") != "link_verified_cloud_event") {
                     lifeStore.recordTimeline(
                         type = "calendar_event",
                         title = "我给你记到日历里了",
@@ -668,6 +837,60 @@ class NativeRuntimeService : Service() {
                     )
                 }
                 result
+            }
+
+            "get_daily_mode" -> {
+                val state = focusRepository.current()
+                val mode = state.modeNow()
+                true to JSONObject()
+                    .put("mode", mode.name)
+                    .put("remaining_ms", state.remainingMs())
+                    .put("started_at_ms", state.startedAtMs)
+                    .put("ends_at_ms", state.endsAtMs)
+                    .put("paused", state.pausedAtMs > 0L)
+                    .put("source", "android_focus_datastore")
+                    .put("verified_at_ms", System.currentTimeMillis()).toString()
+            }
+
+            "set_daily_mode" -> {
+                val requested = command.payload.optString("mode").trim().uppercase()
+                val selectedMode = runCatching { dev.jlz.presence.focus.DailyMode.valueOf(requested) }.getOrNull()
+                val minutes = command.payload.optInt("duration_minutes",
+                    selectedMode?.let { dev.jlz.presence.focus.DailyModeCommandPolicy.defaultMinutes(it) } ?: 0)
+                val parsed = dev.jlz.presence.focus.DailyModeCommandPolicy.parse(requested, minutes)
+                if (parsed == null) {
+                    false to "invalid_daily_mode_or_duration"
+                } else {
+                    val (mode, duration) = parsed
+                    val previous = focusRepository.current()
+                    val same = dev.jlz.presence.focus.DailyModeCommandPolicy.shouldKeepExisting(
+                        mode, previous.remainingMs(), previous.modeNow(), command.payload.optBoolean("restart", false))
+                    val invitation = if (!same) {
+                        if (mode == dev.jlz.presence.focus.DailyMode.FOCUS ||
+                            mode == dev.jlz.presence.focus.DailyMode.BREAK) {
+                            // Resolve game/learning identity before changing the local gate.
+                            dev.jlz.presence.focus.LocalAppClassifier(applicationContext).refreshVisible()
+                        }
+                        val receipt = focusRepository.setDailyMode(mode, duration,
+                            callWindow = command.payload.optBoolean("call_window", true),
+                            callEventId = command.id)
+                        FloatingPresenceService.refreshArtworkAfterImport()
+                        receipt
+                    } else null
+                    val current = focusRepository.current()
+                    val confirmed = current.modeNow() == mode
+                    confirmed to JSONObject()
+                        .put("requested_mode", mode.name)
+                        .put("mode", current.modeNow().name)
+                        .put("remaining_ms", current.remainingMs())
+                        .put("started_at_ms", current.startedAtMs)
+                        .put("unchanged", same)
+                        .put("ui", "mode_saved_open_app_to_view")
+                        .put("call_window_status", invitation?.code ?: "not_requested")
+                        .put("call_window_posted", invitation?.ok ?: false)
+                        .put("source", "android_focus_datastore")
+                        .put("verified_at_ms", System.currentTimeMillis()).toString()
+                }
             }
 
             "start_focus_mode" -> {
@@ -680,20 +903,34 @@ class NativeRuntimeService : Service() {
                 }
                 command.packageName?.let(blocked::add)
                 command.payload.optString("package").takeIf { it.isNotBlank() }?.let(blocked::add)
-                val minutes = command.payload.optLong("duration_minutes", 45L).coerceAtLeast(1L)
+                val minutes = command.payload.optLong("duration_minutes", 45L).coerceIn(1L, 120L)
                 val reason = command.payload.optString("reason")
-                focusRepository.start(blocked, minutes * 60_000L, reason)
+                val dailyCompatible = blocked.isEmpty() && minutes.toInt() in setOf(25, 45, 60)
+                if (dailyCompatible) {
+                    dev.jlz.presence.focus.LocalAppClassifier(applicationContext).refreshVisible()
+                    focusRepository.setDailyMode(dev.jlz.presence.focus.DailyMode.FOCUS, minutes.toInt())
+                } else {
+                    // Preserve legacy explicit per-package Focus commands unchanged.
+                    focusRepository.start(blocked, minutes * 60_000L, reason)
+                }
                 FloatingPresenceService.start(
                     this,
                     "这段时间交给我。",
                     FloatingPresenceMode.FOCUS
                 )
-                true to ("focus_started:" + minutes + "m;blocked=" + blocked.size)
+                true to ("focus_started:" + minutes + "m;daily_mode=" + dailyCompatible +
+                    ";blocked=" + blocked.size)
             }
 
             "end_focus_mode" -> {
-                focusRepository.stop()
-                true to "focus_ended"
+                val mode = focusRepository.current().modeNow()
+                if (mode == dev.jlz.presence.focus.DailyMode.FOCUS ||
+                    mode == dev.jlz.presence.focus.DailyMode.BREAK) {
+                    focusRepository.setDailyMode(dev.jlz.presence.focus.DailyMode.NORMAL)
+                } else {
+                    focusRepository.stop()
+                }
+                true to ("focus_ended:prior_mode=" + mode.name)
             }
 
             "temporary_unlock_app" -> {
@@ -812,6 +1049,42 @@ class NativeRuntimeService : Service() {
 
             "get_persona_state" -> true to "persona_state_local"
 
+            "get_voice_state" -> {
+                val current = dev.jlz.presence.persona.JlzVoiceStateEngine(applicationContext).read()
+                true to JSONObject().put("mood", current.mood.name)
+                    .put("reason", current.reason).put("source", current.source)
+                    .put("updated_at_ms", current.updatedAtMs)
+                    .put("expires_at_ms", current.expiresAtMs)
+                    .put("source_semantics", "official_state_or_android_mode_observation")
+                    .toString()
+            }
+
+            "set_voice_state" -> {
+                val mood = runCatching {
+                    dev.jlz.presence.persona.JlzVoiceMood.valueOf(
+                        command.payload.optString("mood").uppercase())
+                }.getOrNull()
+                val reason = command.payload.optString("reason")
+                val duration = command.payload.optInt("duration_minutes", 180)
+                val intentId = command.payload.optString("intent_id").ifBlank { command.id }
+                if (mood == null || reason.isBlank() || duration !in 5..1440) {
+                    false to "invalid_voice_state_request"
+                } else {
+                    runCatching {
+                        val result = dev.jlz.presence.persona.JlzVoiceStateEngine(applicationContext)
+                            .setOfficial(mood, reason, duration, intentId)
+                        true to JSONObject().put("mood", result.mood.name)
+                            .put("source", result.source)
+                            .put("reason", result.reason)
+                            .put("expires_at_ms", result.expiresAtMs)
+                            .put("verified_at_ms", System.currentTimeMillis())
+                            .toString()
+                    }.getOrElse { false to (it.message ?: "voice_state_failed") }
+                }
+            }
+
+
+
             "set_study_config" -> {
                 val packages = mutableSetOf<String>()
                 val array = command.payload.optJSONArray("target_packages")
@@ -832,14 +1105,17 @@ class NativeRuntimeService : Service() {
                     }
                     "pause", "study_pause", "study_paused" -> {
                         studyRepository.pause()
+                        focusRepository.pauseDaily()
                         dev.jlz.presence.study.StudyTimerService.sync(applicationContext)
                     }
                     "resume", "continue", "study_resume", "study_resumed" -> {
                         studyRepository.resume()
+                        focusRepository.resumeDaily()
                         dev.jlz.presence.study.StudyTimerService.sync(applicationContext)
                     }
                     "finish", "end", "study_finish", "study_finished" -> {
                         studyRepository.finish()
+                        focusRepository.stop()
                         FloatingPresenceService.stopStudyIfActive(applicationContext)
                         dev.jlz.presence.study.StudyTimerService.stop(applicationContext)
                     }
@@ -963,6 +1239,15 @@ class NativeRuntimeService : Service() {
         if (plan == null || due.isEmpty()) return
 
         due.forEach { step ->
+              val reminderPayload=runCatching { JSONObject(step.payloadJson) }.getOrDefault(JSONObject())
+              if(reminderPayload.optString("task_id").isNotBlank() || reminderPayload.optString("reply_to").isNotBlank()) {
+                  // Check only a due reminder, never each idle timer tick. Offline is silent.
+                  val allowed=runCatching { api.reminderCheck(reminderPayload) }.getOrDefault(false)
+                  if(!allowed) {
+                      presencePlanRepository.markResult(stepId=step.stepId,ok=true,result="silent_task_completed_replied_or_check_unavailable")
+                      return@forEach
+                  }
+              }
             if (step.action == "set_presence_plan" || step.action == "clear_presence_plan") {
                 presencePlanRepository.markResult(
                     stepId = step.stepId,

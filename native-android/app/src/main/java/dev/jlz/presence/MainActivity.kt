@@ -37,6 +37,10 @@ class MainActivity : ComponentActivity() {
                 "/diagnostics" -> PresenceRouteBus.open(PresenceRoute.Diagnostics)
                 "/today" -> PresenceRouteBus.open(PresenceRoute.Today)
                 "/study" -> PresenceRouteBus.open(PresenceRoute.Study)
+                "/modes" -> { dev.jlz.presence.focus.DailyModeActivity.open(this); finish() }
+                "/wardrobe" -> { startActivity(Intent(this, dev.jlz.presence.overlay.QAvatarWardrobeActivity::class.java)); finish() }
+                "/cowatch" -> { startActivity(Intent(this, dev.jlz.presence.cowatch.CoWatchActivity::class.java)); finish() }
+                "/trip" -> PresenceRouteBus.open(PresenceRoute.Trip)
                 else -> PresenceRouteBus.open(PresenceRoute.Home)
             }
             return

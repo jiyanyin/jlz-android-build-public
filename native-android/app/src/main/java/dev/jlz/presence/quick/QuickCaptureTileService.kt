@@ -15,7 +15,10 @@ class QuickCaptureTileService : TileService() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             putExtra(MainActivity.EXTRA_DESTINATION, MainActivity.DESTINATION_QUICK_CAPTURE)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) startActivityAndCollapse(intent)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startActivityAndCollapse(android.app.PendingIntent.getActivity(this,0,intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE))
+        }
         else startActivity(intent)
     }
 }

@@ -14,7 +14,9 @@ data class RuntimeSettings(
     val token: String = "",
     val deviceId: String = "android-phone-native-n0",
     val traffic: dev.jlz.presence.capture.CaptureTrafficPolicy? = null,
-    val reports: PendingCommandReportStore? = null
+    val reports: PendingCommandReportStore? = null,
+    val bridge: BridgeStore? = null,
+    val bridgeName: String = ""
 )
 
 private fun defaultNativeDeviceId(context: Context): String =
@@ -34,7 +36,7 @@ class RuntimeSettingsRepository(private val context: Context) {
 
     suspend fun load(): RuntimeSettings =
         context.runtimeDataStore.data.map { prefs ->
-            RuntimeSettings(
+            BridgeStore(context).select(RuntimeSettings(
                 traffic = dev.jlz.presence.capture.CaptureTrafficPolicy(context),
                 reports = reportStore,
                 baseUrl = prefs[Keys.baseUrl].orEmpty(),
@@ -46,7 +48,7 @@ class RuntimeSettingsRepository(private val context: Context) {
                         fallback
                     } else configured
                 }
-            )
+            ))
         }.first()
 
     suspend fun save(settings: RuntimeSettings) {

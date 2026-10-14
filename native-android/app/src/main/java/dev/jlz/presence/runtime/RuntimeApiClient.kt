@@ -76,17 +76,45 @@ data class DeviceStateSnapshot(
 }
 
 class RuntimeApiClient(private val settings: RuntimeSettings) {
+    // Live opt-in trips use existing authenticated Runtime route, never routine heartbeat.
+    fun startTrip(sessionId: String, startedAtMs: Long): JSONObject = postJson("/api/trips/start",
+        JSONObject().put("session_id", sessionId).put("device_id", settings.deviceId)
+            .put("started_at_ms", startedAtMs))
+    fun sendTripPoints(sessionId: String, points: JSONArray): JSONObject = postJson(
+        "/api/trips/" + URLEncoder.encode(sessionId, Charsets.UTF_8.name()) + "/points",
+        JSONObject().put("device_id", settings.deviceId).put("points", points))
+    fun stopTrip(sessionId: String): JSONObject = postJson(
+        "/api/trips/" + URLEncoder.encode(sessionId, Charsets.UTF_8.name()) + "/stop",
+        JSONObject().put("device_id", settings.deviceId))
+    fun startCoWatch(sid: String, minutes: Int): JSONObject = postJson("/api/cowatch/start",
+        JSONObject().put("session_id", sid).put("device_id", settings.deviceId).put("minutes", minutes).put("user_confirmed", true))
+    fun stopCoWatch(sid: String): JSONObject = postJson("/api/cowatch/$sid/stop", JSONObject().put("device_id", settings.deviceId))
+    fun uploadCoWatchFrame(sid: String, frameId: String, observed: Long, pixels: ByteArray): JSONObject {
+        requirePrivateCaptureRoute()
+        val conn = connection("/api/cowatch/$sid/frame", "POST").apply {
+            doOutput = true; setRequestProperty("Content-Type", "image/jpeg")
+            setRequestProperty("X-Device-ID", settings.deviceId); setRequestProperty("X-Frame-ID", frameId)
+            setRequestProperty("X-Observed-At-Ms", observed.toString()); setFixedLengthStreamingMode(pixels.size)
+        }
+        settings.traffic?.record(upload = pixels.size.toLong(), screenshot = pixels.size.toLong())
+        conn.outputStream.use { it.write(pixels) }; return readJson(conn)
+    }
+    fun contentReceipt(receipt: JSONObject): JSONObject = postJson("/api/world/content/receipt",receipt)
+    fun dailyPlanForReaction(): JSONObject = getJson("/api/daily-plan?space_id=world-between-primary").getJSONObject("plan")
+    fun reminderCheck(payload: JSONObject): Boolean = postJson("/api/world/reminder-check",payload).optBoolean("allowed",false)
+    fun worldContent(): JSONObject = getJson("/api/world/content?space_id=world-between-primary&device_scope=" + if(settings.deviceId.contains("tablet")) "tablet" else "phone").getJSONObject("content")
     private fun connection(
         path: String,
         method: String,
         readTimeoutMs: Int = 15_000
     ): HttpURLConnection {
         val base = settings.baseUrl.trim().trimEnd('/')
-        require(base.startsWith("https://")) { "Runtime URL must use https://" }
-        return (URL(base + path).openConnection() as HttpURLConnection).apply {
+        require(BridgeStore.validUrl(base)) { "Runtime URL must use HTTPS or a private LAN/Tailscale IPv4 address" }
+        return (URL(BridgeStore.apiUrl(base,path)).openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = 10_000
             readTimeout = readTimeoutMs
+            instanceFollowRedirects = false
             setRequestProperty("X-Auth-Token", settings.token)
             setRequestProperty("Accept", "application/json")
         }
@@ -97,6 +125,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
     })
 
     fun captureIndex(limit: Int = 100): JSONArray {
+        requirePrivateCaptureRoute()
         val q = URLEncoder.encode(settings.deviceId, Charsets.UTF_8.name())
         val response = getJson("/api/captures?device_id=" + q +
             "&limit=" + limit.coerceIn(1, 100))
@@ -109,10 +138,11 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
     fun pollCommand(waitMs: Int = 0): RuntimeCommand? {
         val encodedId = URLEncoder.encode(settings.deviceId, Charsets.UTF_8.name())
         val safeWait = waitMs.coerceIn(0, 25_000)
-        val response = getJson(
+        val response = try { getJson(
             "/api/poll?device_id=" + encodedId + "&wait_ms=" + safeWait,
             readTimeoutMs = (safeWait + 10_000).coerceAtLeast(15_000)
-        )
+        ).also { settings.bridge?.pollResult(settings.bridgeName, true) } }
+        catch (e: Exception) { settings.bridge?.pollResult(settings.bridgeName, false); throw e }
         if (!response.optBoolean("ok", false) || response.isNull("command")) return null
         val command = response.optJSONObject("command") ?: return null
         val payload = command.optJSONObject("payload") ?: JSONObject()
@@ -221,7 +251,8 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         messageId: String? = null,
         createdAtMs: Long? = null,
         replyToTitle: String? = null,
-        replyToText: String? = null
+        replyToText: String? = null,
+        replyTo: String? = null
     ): InboxMessage {
         val body = JSONObject()
             .put("device_id", settings.deviceId)
@@ -235,6 +266,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         intentId?.let { body.put("intent_id", it) }
         replyToTitle?.let { body.put("reply_to_title", it.take(160)) }
         replyToText?.let { body.put("reply_to_text", it.take(1200)) }
+        replyTo?.let { body.put("reply_to",it.take(100)) }
 
         val response = postJson("/api/inbox/message", body)
         // A HTTP response or a locally generated fallback ID is not a delivery receipt.
@@ -299,6 +331,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         studySessionId: String? = null, capturedAtMs: Long? = null,
         captureOrigin: String? = null
     ): JSONObject {
+        requirePrivateCaptureRoute()
         val conn = connection("/api/screenshot", "POST").apply {
             doOutput = true
             setRequestProperty("Content-Type", mimeType)
@@ -312,13 +345,16 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
             }
             setFixedLengthStreamingMode(bytes.size)
         }
-        settings.traffic?.record(upload = bytes.size.toLong(), screenshot = if (conn.url.path == "/api/screenshot") bytes.size.toLong() else 0)
+        // Funnel mounts the Runtime under /runtime; path equality would silently miss screenshot bytes.
+        settings.traffic?.record(upload = bytes.size.toLong(), screenshot = bytes.size.toLong())
+        settings.bridge?.recordTransfer(sent=bytes.size)
         conn.outputStream.use { it.write(bytes) }
         return readJson(conn)
     }
 
     /** Confirms Android -> Runtime -> Android image byte identity, not GPT vision. */
     fun downloadNativeCaptureBytes(eventId: String): ByteArray {
+        requirePrivateCaptureRoute()
         require(Regex("[0-9a-fA-F-]{36}").matches(eventId)) { "invalid_capture_uuid" }
         val path = "/api/captures/" + eventId + "/image?device_id=" +
             URLEncoder.encode(settings.deviceId, Charsets.UTF_8.name())
@@ -343,6 +379,14 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         readTimeoutMs: Int = 15_000
     ): JSONObject = readJson(connection(path, "GET", readTimeoutMs))
 
+    fun canTransferCapture(): Boolean = settings.bridge?.hasHomeEndpoint()!=true || settings.bridgeName.startsWith("Home")
+
+    private fun requirePrivateCaptureRoute() {
+        check(canTransferCapture()) {
+            "home_capture_waiting_for_private_link"
+        }
+    }
+
     private fun postJson(path: String, body: JSONObject): JSONObject {
         val bytes = body.toString().toByteArray(Charsets.UTF_8)
         val conn = connection(path, "POST").apply {
@@ -351,6 +395,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
             setFixedLengthStreamingMode(bytes.size)
         }
         settings.traffic?.record(upload = bytes.size.toLong(), screenshot = if (conn.url.path == "/api/screenshot") bytes.size.toLong() else 0)
+        settings.bridge?.recordTransfer(sent=bytes.size)
         conn.outputStream.use { it.write(bytes) }
         return readJson(conn)
     }
@@ -360,6 +405,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         val stream = if (code in 200..299) conn.inputStream else conn.errorStream
         val bodyBytes = stream?.use { it.readBytes() } ?: byteArrayOf()
         settings.traffic?.record(download = bodyBytes.size.toLong())
+        settings.bridge?.recordTransfer(received=bodyBytes.size)
         conn.disconnect()
         val text = bodyBytes.toString(Charsets.UTF_8)
         if (code !in 200..299) {

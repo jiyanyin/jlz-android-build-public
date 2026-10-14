@@ -51,9 +51,13 @@ class PermissionDoctor(private val context: Context) {
             Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 
         val usageAllowed = try {
-            context.getSystemService(android.app.AppOpsManager::class.java)
-                ?.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), context.packageName) ==
-                android.app.AppOpsManager.MODE_ALLOWED
+            val ops = context.getSystemService(android.app.AppOpsManager::class.java)
+            val mode = if (Build.VERSION.SDK_INT >= 29) {
+                ops?.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), context.packageName)
+            } else {
+                ops?.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), context.packageName)
+            }
+            mode == android.app.AppOpsManager.MODE_ALLOWED
         } catch (_: Exception) { false }
         items += PermissionItem("usage", "\u4f7f\u7528\u60c5\u51b5\u8bbf\u95ee", "\u773c\u775b",
             if (usageAllowed) PermissionItem.Status.OK else PermissionItem.Status.MISSING,
