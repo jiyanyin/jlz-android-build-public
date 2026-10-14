@@ -118,7 +118,7 @@ internal class TimedLifeReminderStore(private val context: Context) {
         if(session.isBlank())return
         val action=prefs.getString("action","这一段").orEmpty()
         val whenStarted=prefs.getLong("start_at_ms",0L)
-        val text=if(urgent)"还在$action吗？结束、稍后提醒，都由你决定。"
+        val text=if(urgent)"还在${action}吗？结束、稍后提醒，都由你决定。"
             else "正在记录：$action · 从 ${java.text.SimpleDateFormat("HH:mm",java.util.Locale.CHINA).format(java.util.Date(whenStarted))} 开始"
         val notification=NotificationCompat.Builder(context,if(urgent)"life_remind_v1" else "life_active_v1")
             .setSmallIcon(R.drawable.ic_notification_world_between_v3)
