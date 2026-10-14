@@ -784,7 +784,7 @@ class NativeRuntimeService : Service() {
 
             "open_app", "home", "back", "recents", "screen_off", "phone_screen_off", "lock_screen",
             "open_notifications", "open_quick_settings", "wake_screen", "unlock_if_non_secure", "get_lock_state",
-            "get_native_capabilities", "get_system_state",
+            "get_native_capabilities", "get_system_state", "get_current_location",
             "tap", "double_tap", "long_press", "swipe", "drag", "two_finger_swipe", "pinch",
             "tap_text", "input_text", "get_screen_nodes", "find_nodes",
             "click_node", "long_click_node", "set_text", "clear_text", "focus_node",
