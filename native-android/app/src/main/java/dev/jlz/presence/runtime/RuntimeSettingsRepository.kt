@@ -19,12 +19,15 @@ data class RuntimeSettings(
     val bridgeName: String = ""
 )
 
-private fun defaultNativeDeviceId(context: Context): String =
-    if (context.resources.configuration.smallestScreenWidthDp >= 600) {
+internal fun canonicalNativeDeviceId(smallestScreenWidthDp: Int): String =
+    if (smallestScreenWidthDp >= 600) {
         "android-tablet-native-n0"
     } else {
         "android-phone-native-n0"
     }
+
+private fun defaultNativeDeviceId(context: Context): String =
+    canonicalNativeDeviceId(context.resources.configuration.smallestScreenWidthDp)
 
 class RuntimeSettingsRepository(private val context: Context) {
     private val reportStore by lazy { PendingCommandReportStore(context) }
@@ -41,13 +44,9 @@ class RuntimeSettingsRepository(private val context: Context) {
                 reports = reportStore,
                 baseUrl = prefs[Keys.baseUrl].orEmpty(),
                 token = prefs[Keys.token].orEmpty(),
-                deviceId = prefs[Keys.deviceId].orEmpty().let { configured ->
-                    val fallback = defaultNativeDeviceId(context)
-                    if (configured.isBlank() ||
-                        (fallback.startsWith("android-tablet") && configured == "android-phone-native-n0")) {
-                        fallback
-                    } else configured
-                }
+                // Production identity is derived from the physical form factor only.
+                // Historical/test IDs in DataStore must never choose a Runtime identity.
+                deviceId = defaultNativeDeviceId(context)
             ))
         }.first()
 
@@ -55,7 +54,9 @@ class RuntimeSettingsRepository(private val context: Context) {
         context.runtimeDataStore.edit { prefs ->
             prefs[Keys.baseUrl] = settings.baseUrl.trim().trimEnd('/')
             prefs[Keys.token] = settings.token.trim()
-            prefs[Keys.deviceId] = settings.deviceId.trim().ifBlank { defaultNativeDeviceId(context) }
+            // Persist the canonical identity so legacy arbitrary values self-heal
+            // the next time settings are saved.
+            prefs[Keys.deviceId] = defaultNativeDeviceId(context)
         }
     }
 }
