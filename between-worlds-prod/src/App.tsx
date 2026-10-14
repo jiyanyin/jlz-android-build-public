@@ -315,7 +315,7 @@ export default function BetweenWorlds() {
   useEffect(() => {
     const content=state.worldContent, c=cfg();
     if(!contentOnline || !content || !c || document.visibilityState !== 'visible') return;
-    const appliedKeys=['theme.id',...(welcome?['welcome.line']:tab==='home'?['home.moment','greetings.'+displayedPart,unlockHello?'unlock.line':'study.nudge']:tab==='room'?['jlz.room.teaser']:[])].filter(k=>!!copy[k]);
+    const appliedKeys=['theme.id',...(welcome?['welcome.line']:tab==='home'?['home.moment','greetings.'+displayedPart,unlockHello?'unlock.line':'study.nudge']:tab==='room'?['jlz.room.teaser']:tab==='echo'?['echo.empty']:[])].filter(k=>!!copy[k]);
     const key=content.revision+':'+content.view_id+':'+(welcome?'welcome':tab)+':'+appliedKeys.join(',');
     if(appliedContent.current === key) return;
     const frame=requestAnimationFrame(() => {
@@ -689,7 +689,7 @@ export default function BetweenWorlds() {
     <main className="app-shell">
       <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}><VintageIcon name="theme" size={22} /> 换装</button><button className="round-btn" aria-label="更多" onClick={()=>switchTab("more")}>⋯</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
       {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} copy={copy} voice={{...voiceCard, headline:copy["greetings."+contentPart(now ?? new Date())] || voiceCard.headline, body:copy["home.moment"] || voiceCard.body}} homePortrait={homePortrait} selectTaskDate={selectTaskDate} plan={state.dailyPlan?.date === taskDate ? state.dailyPlan : emptyDailyPlan(taskDate)} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} unlockHello={unlockHello} appHub={appHub} launchApp={launchHubApp} openBanduread={openBanduread} openApps={() => setSheet("apps")} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
-      {tab === "echo" && <EchoPage onTask={(text,id)=>{mutateDailyTask("upsert",{date:keyDate(new Date()),task_id:"echo-task-"+id.slice(-70),title:text.slice(0,180),description:text,source:"echo:"+id});notify("已放进今日任务");}} state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
+      {tab === "echo" && <EchoPage emptyCopy={copy["echo.empty"]} onTask={(text,id)=>{mutateDailyTask("upsert",{date:keyDate(new Date()),task_id:"echo-task-"+id.slice(-70),title:text.slice(0,180),description:text,source:"echo:"+id});notify("已放进今日任务");}} state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
       {tab === "timeline" && <TimelinePage notes={state.notes} remote={state.remoteRecords} />}
       {tab === "room" && <RoomPage records={state.remoteRecords} teaser={copy["jlz.room.teaser"]} portrait={homePortrait} />}
       {tab === "calendar" && <CalendarPage records={state.remoteRecords} notes={state.notes} plan={state.dailyPlan} month={month} setMonth={setMonth} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
@@ -1245,7 +1245,7 @@ function AppDrawerSheet({
 function SectionHead({ title, english }: { title: string; english: string }) { return <div className="section-head"><b>{title}</b><span>{english}</span></div>; }
 function PageHead({ kicker, title, en, copy }: { kicker: string; title: string; en: string; copy: string }) { return <div className="page-head"><div><span>{kicker}</span><h2>{title} <em>{en}</em></h2><p>{copy}</p></div></div>; }
 
-function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask }: { onTask:(text:string,id:string)=>void; state: AppState; conn: Conn; update: (fn: (s: AppState) => AppState) => void; send: Send; notify: (s: string) => void; chatAvatar: string }) {
+function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask, emptyCopy }: { onTask:(text:string,id:string)=>void; emptyCopy?:string; state: AppState; conn: Conn; update: (fn: (s: AppState) => AppState) => void; send: Send; notify: (s: string) => void; chatAvatar: string }) {
   const [text, setText] = useState("");
   const [replyTo,setReplyTo] = useState<{id:string;text:string}|null>(null);
   const [scheduledEcho, setScheduledEcho] = useState<{scheduled:number;notifications:number;next_execute_at_ms:number|null}|null>(null);
@@ -1405,7 +1405,7 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask }: { o
     {conn==="online"&&!dayLoaded&&<div className="preview-tip">正在取这一天的聊天；如果连接失败，只显示已有缓存，不冒充完整历史。</div>}
     <div className="message-list echo-day-list" ref={viewport} onScroll={e=>{const target=e.currentTarget;nearBottom.current=target.scrollHeight-target.scrollTop-target.clientHeight<90;if(nearBottom.current)setNewMessages(false);}}>
       {hasMore&&conn==="online"&&<button type="button" className="echo-older" onClick={()=>void loadOlder()} disabled={loadingOlder}>{loadingOlder?"加载中……":"加载当天更早的消息"}</button>}
-      {list.length===0&&<div className="echo-empty">这一天还没有加载到聊天。{day===today?"今天的话，就从这一句开始。":"可以换一天找我们说过的话。"}</div>}
+      {list.length===0&&<div className="echo-empty">{emptyCopy || <>这一天还没有加载到聊天。{day===today?"今天的话，就从这一句开始。":"可以换一天找我们说过的话。"}</>}</div>}
       {list.map(m=><div className={"message-row "+(m.me?"me":"companion")} key={m.key}>
         {!m.me&&<img className="message-avatar" src={chatAvatar} alt="" />}
         <div className={"message "+(m.me?"me":"")}>{m.text}

@@ -91,7 +91,7 @@ internal class TimedLifeReminderStore(private val context: Context) {
     private fun ensureChannels() {
         notify.createNotificationChannel(NotificationChannel("life_active_v1",
             "此刻我在 · 进行中", NotificationManager.IMPORTANCE_LOW).apply {
-            description="用户主动开始的活动计时与结束入口"
+            description="老婆主动开始的活动计时与结束入口"
             setShowBadge(false);enableVibration(false);setSound(null,null)
         })
         notify.createNotificationChannel(NotificationChannel("life_remind_v1",

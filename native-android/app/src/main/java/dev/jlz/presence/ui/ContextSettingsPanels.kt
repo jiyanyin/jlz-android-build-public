@@ -7,7 +7,7 @@ import android.app.NotificationManager
 import android.net.Uri
 import android.provider.Settings
 import dev.jlz.presence.usage.SystemUsageSnapshot
-import dev.jlz.presence.capture.AutomaticCaptureCoordinator
+import dev.jlz.presence.capture.CaptureTrafficPolicy
 import dev.jlz.presence.life.NativeCalendarBridge
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -503,17 +503,23 @@ fun IncomingCallSettingsPanel() {
 @Composable
 fun AutomaticCaptureSettingsPanel() {
     val context = LocalContext.current
-    val coordinator = remember { AutomaticCaptureCoordinator(context.applicationContext) }
-    var enabled by remember { mutableStateOf(coordinator.enabled()) }
+    val policy = remember { CaptureTrafficPolicy(context.applicationContext) }
+    val initial = remember { policy.automaticSelection() }
+    var enabled by remember { mutableStateOf(initial.first) }
+    val selectedCount = remember { initial.second.size }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("我自己看看你在干什么", style = MaterialTheme.typography.titleMedium)
-            Text("你授权后，我在亮屏且无障碍可读取时自动暂存截图：学习时段约每4分钟一张，其他时段约每12分钟一张，按实际学习会话分列。")
-            Text("原图先留在手机；上传成功不等于官端GPT已经看过。手机截屏被系统拒绝时不会绕过 Android 限制。")
+            Text("你选定应用并授权后，我会在切换进入约6秒、停留30秒／2分钟／5分钟、之后每5分钟，以及滑动停稳后采样。每个应用至少间隔18秒；不设每小时张数上限，但仍受本机字节空间、重复画面和敏感页保护。")
+            Text("原图先放在世界之间的手机私有目录；联网后上传到电脑 Home Node 的 captures 目录，官端读取并确认后再释放本机传输副本。上传成功不等于官端GPT已经看过；系统拒绝截屏时不会绕过 Android 限制。")
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(if (enabled) "自动截图已开启" else "自动截图已暂停")
+                Text(if (enabled) "自动截图已开启 · ${selectedCount}个App" else
+                    if (selectedCount == 0) "先到模式页选择App" else "自动截图已暂停 · ${selectedCount}个App")
                 Switch(checked = enabled, onCheckedChange = { value ->
-                    if (coordinator.setEnabled(value)) enabled = value
+                    val (_, selected) = policy.automaticSelection()
+                    if (policy.configureAutomatic(value, selected)) {
+                        enabled = value && selected.isNotEmpty()
+                    }
                 })
             }
         }

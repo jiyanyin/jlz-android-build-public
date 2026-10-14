@@ -20,9 +20,6 @@ import java.util.UUID
 /** Structured app observation first. Only explicit allowlisted long-stay rules may capture. */
 class AutomaticCaptureCoordinator(context: Context) {
     private val appContext = context.applicationContext
-    private val preferences = appContext.getSharedPreferences(
-        "jlz_presence_auto_capture_v2", Context.MODE_PRIVATE
-    )
     private val traffic = CaptureTrafficPolicy(appContext)
     private val outbox = PendingScreenshotQueue(appContext)
     private val settings = RuntimeSettingsRepository(appContext)
@@ -36,10 +33,12 @@ class AutomaticCaptureCoordinator(context: Context) {
     private var lastScrollAtMs: Long = 0L
     private val captureMutex = Mutex()
 
-    fun enabled(): Boolean = preferences.getBoolean("enabled", true)
+    fun enabled(): Boolean = traffic.automaticSelection().first
 
-    fun setEnabled(value: Boolean): Boolean =
-        preferences.edit().putBoolean("enabled", value).commit()
+    fun setEnabled(value: Boolean): Boolean {
+        val (_, packages) = traffic.automaticSelection()
+        return traffic.configureAutomatic(value, packages)
+    }
 
     /**
      * Call this only from real window/package observations.

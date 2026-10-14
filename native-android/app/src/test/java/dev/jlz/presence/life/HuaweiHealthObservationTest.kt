@@ -114,6 +114,18 @@ class HuaweiHealthObservationTest {
         assertTrue(LocalLifeReminderPolicy.lowSteps(1234,now,now))
     }
 
+    @Test fun localReminderCopyRotatesAndUsesWifeLanguage() {
+        val keys = listOf("battery40","battery20","battery10","charging","light","shake",
+            "screen","entertain30","entertain45","steps","weather","health")
+        keys.forEach { key ->
+            val variants = (0 until 8).map { LocalLifeCopy.choose(key, it) }
+            assertEquals(8, variants.toSet().size)
+            assertTrue(variants.none { it.contains("用户") })
+        }
+        assertEquals("reminder.low_steps", LocalLifeCopy.worldKey("steps"))
+        assertEquals("reminder.weather", LocalLifeCopy.worldKey("weather"))
+    }
+
     @Test fun oneFiveMinuteRestPerDayAndEmergencyRelease() {
         val guard = DailyEntertainmentRestGuard(context)
         val now = System.currentTimeMillis()

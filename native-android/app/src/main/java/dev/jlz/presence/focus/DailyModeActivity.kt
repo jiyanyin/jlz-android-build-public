@@ -17,6 +17,7 @@ import kotlinx.coroutines.*
 class DailyModeActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val repo by lazy { FocusRepository(applicationContext) }
+    private val content by lazy { dev.jlz.presence.runtime.WorldContentCache(applicationContext) }
     private lateinit var root: LinearLayout
     private var tick: Job? = null
     private val ice by lazy { dev.jlz.presence.ui.theme.NativeIceStyle(this) }
@@ -87,7 +88,8 @@ class DailyModeActivity : Activity() {
         val remaining = label("", 32f)
         root.addView(clock)
         root.addView(remaining)
-        root.addView(label("这一段交给我。先做完眼前的题。", 13f))
+        root.addView(label(content.text("mode.focus", "这一段交给我。先做完眼前的题。"), 13f))
+        content.displayed(listOf("mode.focus"))
         tick = scope.launch {
             while (isActive) {
                 val state = repo.current()
@@ -131,11 +133,12 @@ class DailyModeActivity : Activity() {
                 delay(1000)
             }
         }
-        section("留一段时间给学习", "专注仅 GPT／粉笔／独立伴读；先核对学习应用。")
+        section("留一段时间给学习", content.text("mode.focus", "专注仅 GPT／粉笔／独立伴读；先核对学习应用。"))
         presets(DailyMode.FOCUS, listOf(25, 45, 60))
-        section("休息，也有分寸", "短休不放行游戏；哔哩哔哩可用。")
+        section("休息，也有分寸", content.text("mode.break", "短休不放行游戏；哔哩哔哩可用。"))
         presets(DailyMode.BREAK, listOf(5, 10, 15))
-        section("收好今天", "睡眠保持安静，电话与原生闹钟照常。")
+        section("收好今天", content.text("mode.sleep", "睡眠保持安静，电话与原生闹钟照常。"))
+        content.displayed(listOf("mode.focus", "mode.break", "mode.sleep"))
         button("睡眠模式") { change(DailyMode.SLEEP) }
         button("结束当前模式") { change(DailyMode.NORMAL) }
         section("生活里的小安排", "应用身份、起床时间与已有日历。")
@@ -200,7 +203,8 @@ class DailyModeActivity : Activity() {
         root.addView(Space(this), LinearLayout.LayoutParams(1, 0, 1f))
         val sleeper = ChibiPresenceView(this).apply { setSizeDp(126); setMood("sleep") }
         root.addView(sleeper)
-        root.addView(label("安心睡。电话和闹钟照常。", 13f).apply { setTextColor(0xFFBAC4D5.toInt()) })
+        root.addView(label(content.text("mode.sleep", "安心睡。电话和闹钟照常。"), 13f).apply { setTextColor(0xFFBAC4D5.toInt()) })
+        content.displayed(listOf("mode.sleep"))
         button("我醒了") {
             val keyguard = getSystemService(KeyguardManager::class.java)
             if (keyguard.isDeviceLocked && android.os.Build.VERSION.SDK_INT >= 26) {
