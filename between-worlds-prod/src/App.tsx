@@ -630,7 +630,7 @@ export default function BetweenWorlds() {
   const banner = { conn, configured, pending: state.outbox.length, lastError };
   const isMiBrowser = /MiuiBrowser/i.test(navigator.userAgent);
   const canPromptInstall = !!deferredInstallPrompt;
-  const chromeIntent = "intent://between-worlds-prod.onrender.com/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https%3A%2F%2Fbetween-worlds-prod.onrender.com;end";
+  const chromeIntent = "intent://between-worlds-prod.pages.dev/#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=https%3A%2F%2Fbetween-worlds-prod.pages.dev;end";
   const dismissInstallGuide = () => {
     localStorage.setItem(INSTALL_GUIDE_DISMISSED, "1");
     setInstallGuide(false);

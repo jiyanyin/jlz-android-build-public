@@ -239,10 +239,7 @@ class WebShellActivity : ComponentActivity() {
 
     companion object {
         private const val WEB_HOST = "between-worlds-prod.pages.dev"
-        private val WEB_HOSTS = setOf(
-            WEB_HOST,
-            "between-worlds-prod.onrender.com"
-        )
+        private val WEB_HOSTS = setOf(WEB_HOST)
         private const val WEB_URL = "https://between-worlds-prod.pages.dev/?shell=android"
         const val EXTRA_WEB_FALLBACK_REASON = "web_fallback_reason"
 
