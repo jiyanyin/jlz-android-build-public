@@ -7,6 +7,7 @@ import android.os.Build
 import android.provider.AlarmClock
 import android.view.WindowManager
 import dev.jlz.presence.notification.PresenceNotificationListenerService
+import dev.jlz.presence.place.CurrentLocationReader
 import dev.jlz.presence.runtime.RuntimeCommand
 import dev.jlz.presence.usage.DeviceActivityJournal
 import dev.jlz.presence.screen.AccessibilityActionGateway
@@ -49,6 +50,13 @@ class DeviceActionExecutor(private val context: Context) {
         "get_system_state" -> true to system.systemState()
             .put("device_activity", activityJournal.highFrequencySummary(context, deviceId = command.deviceId))
             .put("ok", true).toString()
+        "get_current_location" -> {
+            val result = CurrentLocationReader(context).snapshot(
+                maxAgeMs = command.payload.optLong("max_age_ms", 120_000L),
+                timeoutMs = command.payload.optLong("timeout_ms", 7_000L)
+            )
+            result.optBoolean("ok", false) to result.toString()
+        }
         "read_device_timeline", "read_screen_timeline" -> {
             val endMs = command.payload.optLong("end_time_ms",
                 command.payload.optLong("end_time", System.currentTimeMillis()))
