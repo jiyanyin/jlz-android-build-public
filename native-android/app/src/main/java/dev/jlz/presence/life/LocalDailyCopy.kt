@@ -44,7 +44,8 @@ object LocalDailyCopy {
     fun candidateCount(): Int = bodies.values.sumOf { it.size * openings.size * endings.size }
 
     fun choose(key: String, ordinal: Int, atMs: Long,
-               mood: JlzVoiceMood = JlzVoiceMood.STEADY): String {
+               mood: JlzVoiceMood = JlzVoiceMood.STEADY,
+               status: LocalStatusAxes? = null): String {
         val topic = bodies[key] ?: return "老婆，先照顾好自己。"
         val day = Instant.ofEpochMilli(atMs).atZone(ZoneId.of("Asia/Shanghai")).dayOfYear
         val n = Math.floorMod(ordinal * 79 + day * 17 + mood.ordinal * 131,
@@ -52,7 +53,13 @@ object LocalDailyCopy {
         val body = topic[n % topic.size]
         val opening = openings[(n / topic.size) % openings.size]
         val ending = endings[(n / (topic.size * openings.size)) % endings.size]
-        val note = moodNotes.getValue(mood)[Math.floorMod(ordinal + day, 2)]
+        val note = when {
+            (status?.selfPresence ?: 101) <= 30 ->
+                "你刚才说自己有点像在自动运行；先摸摸桌沿，确认自己这会儿在哪。"
+            (status?.agitation ?: -1) >= 70 ->
+                "你刚才点亮的烦躁还很高，我先不催你证明什么。"
+            else -> moodNotes.getValue(mood)[Math.floorMod(ordinal + day, 2)]
+        }
         return "$opening$body $ending $note"
     }
 

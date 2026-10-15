@@ -84,6 +84,8 @@ class HomeWebBridge(private val context: Context, private val save: (String)->Un
             .put("source",s.source).put("updated_at_ms",s.updatedAtMs)
             .put("expires_at_ms",s.expiresAtMs).toString()
     }
+    @JavascriptInterface fun recordStatusAxes(raw: String): Boolean =
+        dev.jlz.presence.life.LocalStatusLamp(context).record(raw)
     @JavascriptInterface fun exerciseDay(date: String): String {
         require(Regex("\\d{4}-\\d{2}-\\d{2}").matches(date))
         val (minutes, steps) = dev.jlz.presence.life.NativeStepSnapshot.exercise(context, date)

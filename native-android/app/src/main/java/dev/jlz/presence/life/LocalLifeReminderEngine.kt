@@ -151,8 +151,8 @@ class LocalLifeReminderEngine(context: Context) {
     /**
      * The battery is a discharge cycle, not a calendar day.
      *
-     * A charging period only rearms the 40/20/17/.../2 thresholds after the battery
-     * actually climbs above 40%. When the level rebounds without charging,
+     * Charging rearms after a real gain of at least three points (or above 40%).
+     * When the level rebounds without charging,
      * do not repeat yesterday's low-battery warnings. Rejected notifications
      * remain retryable on the next battery update.
      */
@@ -169,7 +169,11 @@ class LocalLifeReminderEngine(context: Context) {
 
         if (charging) {
             val change = prefs.edit().putBoolean("charging", true)
-            if (percent > 40) change.putBoolean("battery_rearm_ready", true)
+            if (!priorCharging) change.putInt("battery_charge_start_percent", percent)
+            val chargeStart = if (priorCharging)
+                prefs.getInt("battery_charge_start_percent", percent) else percent
+            if (percent > 40 || percent >= chargeStart + 3)
+                change.putBoolean("battery_rearm_ready", true)
             if (!initial && !priorCharging) {
                 change.putInt("charging_session", prefs.getInt("charging_session", 0) + 1)
                     .putBoolean("charging_alert_pending", true)
@@ -295,7 +299,8 @@ class LocalLifeReminderEngine(context: Context) {
             Instant.ofEpochMilli(scheduledAtMs).atZone(zone).hour else date(scheduledAtMs)
         val ordinal = prefs.getInt("copy_count:daily_$key", 0)
         val text = LocalDailyCopy.choose(if (key.startsWith("nap_followup_")) "nap" else key,
-            ordinal, scheduledAtMs, dev.jlz.presence.persona.JlzVoiceStateEngine(app).read(nowMs).mood)
+            ordinal, scheduledAtMs, dev.jlz.presence.persona.JlzVoiceStateEngine(app).read(nowMs).mood,
+            LocalStatusLamp(app).fresh(nowMs))
         return emitOnce("daily_$key", "今天的约定", nowMs, scope, text)
     }
 
@@ -316,7 +321,8 @@ class LocalLifeReminderEngine(context: Context) {
         val scope = date(nowMs) + ":" + (nowMs / (4 * 60 * 60_000L))
         return emitOnce(key, "出门路上", nowMs, scope,
             LocalDailyCopy.choose(key, prefs.getInt("copy_count:$key", 0), nowMs,
-                dev.jlz.presence.persona.JlzVoiceStateEngine(app).read(nowMs).mood))
+                dev.jlz.presence.persona.JlzVoiceStateEngine(app).read(nowMs).mood,
+                LocalStatusLamp(app).fresh(nowMs)))
     }
 
     fun weatherRain(weatherCode: Int?, precipitationMm: Double?, nowMs: Long = System.currentTimeMillis()) {
