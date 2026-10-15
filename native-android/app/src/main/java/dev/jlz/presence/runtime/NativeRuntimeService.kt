@@ -83,6 +83,7 @@ class NativeRuntimeService : Service() {
     private lateinit var deviceSystem: DeviceSystemController
     private lateinit var localLifeReminders: dev.jlz.presence.life.LocalLifeReminderEngine
     private lateinit var sensorMonitor: dev.jlz.presence.life.LocalLifeSensorMonitor
+    private lateinit var stepCounter: dev.jlz.presence.life.NativeStepCounter
     private var lifeTickJob: Job? = null
 
     private val deviceEventReceiver = object : BroadcastReceiver() {
@@ -138,7 +139,10 @@ class NativeRuntimeService : Service() {
         localLifeReminders = dev.jlz.presence.life.LocalLifeReminderEngine(applicationContext)
         sensorMonitor = dev.jlz.presence.life.LocalLifeSensorMonitor(applicationContext)
         sensorMonitor.start()
+        stepCounter = dev.jlz.presence.life.NativeStepCounter(applicationContext)
+        stepCounter.start()
         dev.jlz.presence.life.DailyHealthSchedule.scheduleAll(applicationContext)
+        dev.jlz.presence.life.LocalDailyReminderSchedule.schedule(applicationContext)
         val eventFilter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
@@ -178,6 +182,7 @@ class NativeRuntimeService : Service() {
             while (isActive) {
                 runCatching { localLifeReminders.tick(focusRepository.current().modeNow()) }
                 runCatching { if (localLifeReminders.enabled()) sensorMonitor.start() else sensorMonitor.stop() }
+                runCatching { stepCounter.start(); stepCounter.tick() }
                 delay(60_000L)
             }
         }
@@ -189,6 +194,7 @@ class NativeRuntimeService : Service() {
         planJob?.cancel()
         lifeTickJob?.cancel()
         sensorMonitor.stop()
+        stepCounter.stop()
         scope.cancel()
         runCatching { unregisterReceiver(deviceEventReceiver) }
         runCatching {
@@ -250,6 +256,12 @@ class NativeRuntimeService : Service() {
                 }
 
                 if (placeWeatherSnapshot?.transitioned == true) {
+                    runCatching {
+                        localLifeReminders.departure(placeWeatherSnapshot.previousPlace,
+                            placeWeatherSnapshot.place.place,
+                            placeWeatherSnapshot.place.freshnessMs,
+                            placeWeatherSnapshot.place.confidence)
+                    }
                     val previous =
                         placeWeatherSnapshot.previousPlace?.name
                             ?: "UNKNOWN"

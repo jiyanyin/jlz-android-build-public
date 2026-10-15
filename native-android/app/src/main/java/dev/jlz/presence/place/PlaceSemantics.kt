@@ -103,7 +103,7 @@ class DeviceLocationAdapter(private val context: Context) {
 
     // hasPermission gates entry; runCatching handles a revoked permission during the request.
     @android.annotation.SuppressLint("MissingPermission")
-    suspend fun currentLocation(): Location? {
+    suspend fun currentLocation(timeoutMs: Long = 8_000L): Location? {
         if (!hasPermission()) return null
 
         val providers = listOf(
@@ -120,7 +120,7 @@ class DeviceLocationAdapter(private val context: Context) {
         }
 
         for (provider in providers) {
-            val live = withTimeoutOrNull(8_000L) { requestOnce(provider) }
+            val live = withTimeoutOrNull(timeoutMs) { requestOnce(provider) }
             if (live != null) return live
         }
         // Do not revive a cached fix older than the five-minute freshness window.

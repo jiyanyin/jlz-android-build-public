@@ -33,7 +33,7 @@ class WeatherAdapter {
     @Volatile private var cachedLon: Double? = null
     @Volatile private var cachedAtMs: Long = 0L
 
-    fun current(location: Location?): WeatherState? {
+    fun current(location: Location?, timeoutMs: Int = 8_000): WeatherState? {
         if (location == null) return null
         val now = System.currentTimeMillis()
         val prior = cached
@@ -58,8 +58,8 @@ class WeatherAdapter {
                 "&timezone=auto"
 
         val conn = URL(endpoint).openConnection() as HttpURLConnection
-        conn.connectTimeout = 8_000
-        conn.readTimeout = 8_000
+        conn.connectTimeout = timeoutMs
+        conn.readTimeout = timeoutMs
         conn.setRequestProperty("Accept", "application/json")
         return try {
             val code = conn.responseCode

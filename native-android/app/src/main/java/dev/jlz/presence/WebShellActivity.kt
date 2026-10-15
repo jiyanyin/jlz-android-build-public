@@ -5,6 +5,10 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
+import android.hardware.Sensor
+import android.hardware.SensorManager
+import android.content.pm.PackageManager
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -28,6 +32,7 @@ class WebShellActivity : ComponentActivity() {
     private lateinit var studyBridge: StudySessionBridge
     private var nativeFallbackOpened = false
     private var pendingPack = ""
+    private val askSteps = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private val savePack = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if(uri!=null && pendingPack.isNotBlank()) contentResolver.openOutputStream(uri)?.use { it.write(pendingPack.toByteArray()) }
         pendingPack=""
@@ -48,6 +53,16 @@ class WebShellActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (Build.VERSION.SDK_INT >= 29 &&
+            checkSelfPermission(android.Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED &&
+            getSystemService(SensorManager::class.java)?.getDefaultSensor(Sensor.TYPE_STEP_COUNTER) != null) {
+            val permissionPrefs = getSharedPreferences("jlz_step_permission_v1", MODE_PRIVATE)
+            if (!permissionPrefs.getBoolean("asked", false)) {
+                permissionPrefs.edit().putBoolean("asked", true).apply()
+                askSteps.launch(android.Manifest.permission.ACTIVITY_RECOGNITION)
+            }
+        }
 
         CookieManager.getInstance().setAcceptCookie(true)
 

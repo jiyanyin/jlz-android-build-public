@@ -9,6 +9,7 @@ import dev.jlz.presence.focus.FocusRepository
 import dev.jlz.presence.focus.FocusGateActivity
 import dev.jlz.presence.focus.FocusState
 import dev.jlz.presence.focus.EntertainmentGateV2Coordinator
+import dev.jlz.presence.focus.ArithmeticGateCoordinator
 import dev.jlz.presence.overlay.FloatingPresenceMode
 import dev.jlz.presence.overlay.FloatingPresenceService
 import dev.jlz.presence.usage.ForegroundUsageTracker
@@ -29,6 +30,7 @@ class PresenceAccessibilityService : AccessibilityService() {
     private lateinit var focusRepository: FocusRepository
     private lateinit var automaticCapture: AutomaticCaptureCoordinator
     private lateinit var entertainmentGateV2: EntertainmentGateV2Coordinator
+    private lateinit var arithmeticGate: ArithmeticGateCoordinator
     private lateinit var unlockSoftGate: UnlockSoftGateCoordinator
     private val classifier by lazy { dev.jlz.presence.focus.LocalAppClassifier(applicationContext) }
     private val packagesChanged = object : android.content.BroadcastReceiver() {
@@ -68,6 +70,7 @@ class PresenceAccessibilityService : AccessibilityService() {
         focusRepository = FocusRepository(applicationContext)
         automaticCapture = AutomaticCaptureCoordinator(applicationContext)
         entertainmentGateV2 = EntertainmentGateV2Coordinator(this)
+        arithmeticGate = ArithmeticGateCoordinator(this)
         unlockSoftGate = UnlockSoftGateCoordinator(this)
         unlockSoftGate.start()
         scope.launch {
@@ -142,6 +145,7 @@ class PresenceAccessibilityService : AccessibilityService() {
             return
         }
 
+        if (::arithmeticGate.isInitialized && arithmeticGate.intercept(packageName, eventType, now)) return
         if (::entertainmentGateV2.isInitialized && !safe && !dev.jlz.presence.focus.DailyModePolicy.bypassEntertainment(dailyMode, packageName.orEmpty())) {
             entertainmentGateV2.observe(packageName, eventType, now)
         }
@@ -185,6 +189,7 @@ class PresenceAccessibilityService : AccessibilityService() {
         if (::automaticCapture.isInitialized) automaticCapture.close()
         if (::unlockSoftGate.isInitialized) unlockSoftGate.close()
         if (::entertainmentGateV2.isInitialized) entertainmentGateV2.close()
+        if (::arithmeticGate.isInitialized) arithmeticGate.close()
         AccessibilityActionGateway.unbind(this)
         AccessibilityScreenshotGateway.unbind(this)
         ScreenObservationBus.setConnected(false)

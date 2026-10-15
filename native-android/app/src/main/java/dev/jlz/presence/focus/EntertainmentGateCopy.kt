@@ -6,7 +6,7 @@ import kotlin.math.absoluteValue
  * Local sentence matrix for the call-style gate.
  *
  * Copy is composed from short clauses instead of shipping one giant list. The
- * matrix intentionally produces well over 500 distinct lines while keeping each
+ * matrix provides at least 10,000 distinct incoming lines while keeping each
  * rendered line short enough for the call screen.
  */
 object EntertainmentGateCopy {
@@ -22,7 +22,11 @@ object EntertainmentGateCopy {
         "我不是不让你进。",
         "先接。然后你告诉我。",
         "你可以刷，但别靠惯性刷。",
-        "这次先由你自己说目的。"
+        "这次先由你自己说目的。",
+        "我听见你把{app}点开了。", "先别把{app}交给手指的惯性。",
+        "你一进{app}，我就想问清楚。", "我把这道门按住一小会儿。",
+        "这一次先由我问。", "你想进{app}，我知道。",
+        "别急，{app}不会跑。", "你越想直接滑进去，我越要问一句。"
     )
 
     private val incomingMiddles = listOf(
@@ -31,7 +35,16 @@ object EntertainmentGateCopy {
         "是有事，还是只是手痒？",
         "先把目的说清楚。",
         "别让手指替你做决定。",
-        "给我一个你自己认的理由。"
+        "给我一个你自己认的理由。", "你打算找哪一条具体内容？",
+        "是去联系谁，还是只想逃开眼前的事？", "这次想进去看多久？",
+        "你今天已经在那里待过一段了，还想继续吗？", "先说清这一趟的出口。",
+        "你进去后准备做的第一件事是什么？", "如果只是想放松，愿意给自己定个边吗？",
+        "现在是你在选，还是推荐流在选？", "你要办的事能不能一句话说完？",
+        "我想知道你此刻真正想躲开什么。", "这次是查资料，回消息，还是随手点开？",
+        "十分钟后你希望自己在哪？", "先看看现在几点，再决定进去。",
+        "这一轮结束时，什么算办完？", "你愿意给这次打开一个明确理由吗？",
+        "是不是又想把疲惫交给下一条视频？", "你今天已经休息过了吗？",
+        "现在进去，对你正在做的事有什么影响？"
     )
 
     private val incomingTails = listOf(
@@ -39,7 +52,13 @@ object EntertainmentGateCopy {
         "回答完就不磨你。",
         "十秒就够。",
         "别急着往下滑。",
-        "看我。"
+        "看我。", "我只要一个真实答案。", "别替自己编好听的理由。",
+        "有正事我放，你说清楚。", "想玩也可以直说。", "不用急着证明你很自律。",
+        "这一轮由你自己定边界。", "给我十秒，再由你选。",
+        "说完我会照着你的回答办。", "别让下一条替你回答。",
+        "我不是来羞辱你的。", "我不拿一次打开给你定性。",
+        "今天的你值得更清醒的选择。", "让我知道你还握着方向盘。",
+        "你若累了，直接说累。"
     )
 
     private val purposeBodies = listOf(
@@ -152,11 +171,15 @@ object EntertainmentGateCopy {
         "这次先看我。"
     )
 
-    fun incoming(appName: String, seed: Long): String =
-        pick(
-            combine3(incomingOpeners, incomingMiddles, incomingTails, appName),
-            seed
-        )
+    fun incoming(appName: String, seed: Long): String {
+        // O(1) pick: never allocate 10,000 strings on an older phone at each gate.
+        val total = incomingOpeners.size * incomingMiddles.size * incomingTails.size
+        val index = seed.hashCode().toLong().absoluteValue.rem(total.toLong()).toInt()
+        val opening = incomingOpeners[index % incomingOpeners.size]
+        val middle = incomingMiddles[(index / incomingOpeners.size) % incomingMiddles.size]
+        val tail = incomingTails[index / (incomingOpeners.size * incomingMiddles.size)]
+        return (opening + " " + middle + " " + tail).replace("{app}", appName)
+    }
 
     fun response(
         choice: EntertainmentIntentChoice,

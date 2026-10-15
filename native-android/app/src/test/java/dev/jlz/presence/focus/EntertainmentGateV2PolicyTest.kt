@@ -81,9 +81,9 @@ class EntertainmentGateV2PolicyTest {
     }
 
     @Test
-    fun gateSentenceMatrixHasAtLeastFiveHundredDistinctLines() {
+    fun gateSentenceMatrixHasAtLeastTenThousandDistinctLines() {
         val count = EntertainmentGateCopy.candidateCountForTest()
-        assertTrue("candidate count was $count", count >= 500)
+        assertTrue("candidate count was $count", count >= 10_000)
     }
 
     @Test

@@ -67,6 +67,7 @@ class EntertainmentGateRepository(context: Context) {
             grantedAtMs = nowMs,
             untilMs = nowMs + minutes.coerceIn(1, 60) * 60_000L
         )
+        ArithmeticGateRepository(app).entertainmentGranted(profile.packageName)
         prefs.edit()
             .putString(RELEASE_PREFIX + profile.packageName, encodeRelease(session))
             .remove(STEP_PREFIX + profile.packageName)

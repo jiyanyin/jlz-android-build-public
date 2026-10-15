@@ -10,6 +10,8 @@ import dev.jlz.presence.focus.LocalAppCategory
 import dev.jlz.presence.focus.LocalAppClassifier
 import dev.jlz.presence.notification.NotificationAdapter
 import dev.jlz.presence.runtime.WorldContentCache
+import dev.jlz.presence.place.WeatherState
+import dev.jlz.presence.place.SemanticPlace
 import dev.jlz.presence.usage.SystemUsageSnapshot
 import org.json.JSONObject
 import java.time.Instant
@@ -18,8 +20,13 @@ import java.time.ZoneId
 /** Local-first reminders; no GPT wake required, no persistent screen pixels. */
 object LocalLifeReminderPolicy {
     fun batteryBand(percent: Int) = when {
-        percent in 0..10 -> 10
-        percent in 11..20 -> 20
+        percent in 0..2 -> 2
+        percent in 3..5 -> 5
+        percent in 6..8 -> 8
+        percent in 9..11 -> 11
+        percent in 12..14 -> 14
+        percent in 15..17 -> 17
+        percent in 18..20 -> 20
         percent in 21..40 -> 40
         else -> 0
     }
@@ -128,12 +135,13 @@ class LocalLifeReminderEngine(context: Context) {
         key: String,
         name: String,
         nowMs: Long = System.currentTimeMillis(),
-        scope: String = date(nowMs)
+        scope: String = date(nowMs),
+        localText: String? = null
     ): Boolean {
         if (!enabled()) return false
         return delivery.send(key, scope) { ordinal ->
             val worldKey = LocalLifeCopy.worldKey(key)
-            val text = content.text(worldKey, LocalLifeCopy.choose(key, ordinal))
+            val text = content.text(worldKey, localText ?: LocalLifeCopy.choose(key, ordinal))
             val sent = notify.showMessage("纪临洲 · $name", text).ok
             if (sent) content.displayed(listOf(worldKey))
             sent
@@ -143,7 +151,7 @@ class LocalLifeReminderEngine(context: Context) {
     /**
      * The battery is a discharge cycle, not a calendar day.
      *
-     * A charging period only rearms the 40/20/10 thresholds after the battery
+     * A charging period only rearms the 40/20/17/.../2 thresholds after the battery
      * actually climbs above 40%. When the level rebounds without charging,
      * do not repeat yesterday's low-battery warnings. Rejected notifications
      * remain retryable on the next battery update.
@@ -190,8 +198,9 @@ class LocalLifeReminderEngine(context: Context) {
         val alreadyWarned = prefs.getInt("battery_lowest_band", 0)
         if (!LocalLifeReminderPolicy.shouldWarnBattery(band, alreadyWarned)) return
         val name = if (band == 40) "电量提醒" else "低电量"
+        val localText = if (band in 2..17) "老婆，手机只剩${percent}%了。把充电线接上；我会在继续掉电时提醒你，充上就停。" else null
         if (emitOnce("battery$band", name,
-                scope = "discharge:${prefs.getInt("battery_cycle", 0)}")) {
+                scope = "discharge:${prefs.getInt("battery_cycle", 0)}", localText = localText)) {
             prefs.edit().putInt("battery_lowest_band", band).commit()
         }
     }
@@ -199,10 +208,19 @@ class LocalLifeReminderEngine(context: Context) {
     @Synchronized
     fun screen(interactive: Boolean, atMs: Long = System.currentTimeMillis()) {
         if (interactive) {
+            val offAt = prefs.getLong("screen_off_since_ms", 0L)
+            val local = Instant.ofEpochMilli(atMs).atZone(zone)
+            if (offAt > 0 && atMs - offAt >= 5 * 60_000L &&
+                local.hour in 13..14 &&
+                Instant.ofEpochMilli(offAt).atZone(zone).hour in 13..14) {
+                prefs.edit().putString("nap_phone_lock_five_minutes_day", date(atMs)).apply()
+            }
+            prefs.edit().putLong("screen_off_since_ms", 0L).apply()
             if (prefs.getLong("screen_started_ms", 0L) <= 0L)
                 prefs.edit().putLong("screen_started_ms", atMs).apply()
         } else {
-            prefs.edit().putLong("screen_started_ms", 0L).apply()
+            prefs.edit().putLong("screen_started_ms", 0L)
+                .putLong("screen_off_since_ms", atMs).apply()
         }
     }
 
@@ -245,10 +263,60 @@ class LocalLifeReminderEngine(context: Context) {
 
     fun eveningSteps(nowMs: Long = System.currentTimeMillis()): Boolean {
         val observation = HuaweiHealthObservationStore(app).snapshot(nowMs)
-        val stepCount = if (observation.isNull("steps")) null else observation.optInt("steps")
-        val seenAt = observation.optLong("steps_observed_at_ms", 0L)
+        val native = NativeStepSnapshot.today(app, nowMs)
+        val huawei = if (observation.isNull("steps")) null else observation.optInt("steps")
+        val stepCount = when {
+            native?.completeDayEstimate == true -> maxOf(native.stepsSinceFirstObservation, huawei ?: 0)
+            huawei != null -> huawei
+            else -> null
+        }
+        val seenAt = maxOf(observation.optLong("steps_observed_at_ms", 0L), native?.observedAtMs ?: 0L)
         if (!LocalLifeReminderPolicy.lowSteps(stepCount, seenAt, nowMs)) return false
         return emitOnce("steps", "走走路")
+    }
+
+    suspend fun scheduled(key: String, scheduledAtMs: Long, nowMs: Long = System.currentTimeMillis()): Boolean {
+        // A resumed phone must not dump yesterday's missed reminders at once.
+        if (scheduledAtMs <= 0L || nowMs - scheduledAtMs !in 0..(2 * 60 * 60_000L)) return false
+        val focus = dev.jlz.presence.focus.FocusRepository(app).current().modeNow()
+        if (key == "hourly" && focus == DailyMode.SLEEP) return false
+        if (key == "nap" || key.startsWith("nap_followup_")) {
+            if (focus == DailyMode.SLEEP) return false
+            val interactive = app.getSystemService(PowerManager::class.java)?.isInteractive == true
+            if (!interactive) {
+                val offAt = prefs.getLong("screen_off_since_ms", 0L)
+                if (offAt > 0 && nowMs - offAt >= 5 * 60_000L)
+                    prefs.edit().putString("nap_phone_lock_five_minutes_day", date(nowMs)).apply()
+                return false
+            }
+            if (prefs.getString("nap_phone_lock_five_minutes_day", "") == date(nowMs)) return false
+        }
+        val scope = if (key == "hourly") date(scheduledAtMs) + ":" +
+            Instant.ofEpochMilli(scheduledAtMs).atZone(zone).hour else date(scheduledAtMs)
+        val ordinal = prefs.getInt("copy_count:daily_$key", 0)
+        val text = LocalDailyCopy.choose(if (key.startsWith("nap_followup_")) "nap" else key,
+            ordinal, scheduledAtMs, dev.jlz.presence.persona.JlzVoiceStateEngine(app).read(nowMs).mood)
+        return emitOnce("daily_$key", "今天的约定", nowMs, scope, text)
+    }
+
+    fun scheduledWeather(key: String, weather: WeatherState?, scheduledAtMs: Long,
+                         nowMs: Long = System.currentTimeMillis()): Boolean {
+        if (key !in setOf("weather_morning", "weather_afternoon")) return false
+        if (scheduledAtMs <= 0L || nowMs - scheduledAtMs !in 0..(2 * 60 * 60_000L)) return false
+        return emitOnce("daily_$key", "出门前的天气", nowMs, date(scheduledAtMs),
+            LocalDailyCopy.weather(weather, key == "weather_morning"))
+    }
+
+    fun departure(previous: SemanticPlace?, current: SemanticPlace, freshnessMs: Long,
+                  confidence: Float, nowMs: Long = System.currentTimeMillis()): Boolean {
+        if (previous !in setOf(SemanticPlace.HOME, SemanticPlace.OFFICE) ||
+            current !in setOf(SemanticPlace.OUTSIDE, SemanticPlace.COMMUTING) ||
+            freshnessMs !in 0..(5 * 60_000L) || confidence < 0.55f) return false
+        val key = if (previous == SemanticPlace.HOME) "depart_home" else "depart_office"
+        val scope = date(nowMs) + ":" + (nowMs / (4 * 60 * 60_000L))
+        return emitOnce(key, "出门路上", nowMs, scope,
+            LocalDailyCopy.choose(key, prefs.getInt("copy_count:$key", 0), nowMs,
+                dev.jlz.presence.persona.JlzVoiceStateEngine(app).read(nowMs).mood))
     }
 
     fun weatherRain(weatherCode: Int?, precipitationMm: Double?, nowMs: Long = System.currentTimeMillis()) {
