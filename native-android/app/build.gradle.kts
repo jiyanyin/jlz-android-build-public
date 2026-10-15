@@ -12,8 +12,8 @@ android {
         applicationId = "dev.jlz.presence"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2026101501
-        versionName = "0.6.5-world-between-local.1"
+        versionCode = 2026101502
+        versionName = "0.6.5-world-between-local.2"
         // 2026-10-07 recovery.4: restore HyperOS notification identity + branded small icon
     }
 

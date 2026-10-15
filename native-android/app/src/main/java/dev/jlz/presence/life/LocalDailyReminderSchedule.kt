@@ -30,7 +30,8 @@ object LocalDailyReminderSchedule {
         "weather_afternoon" to (14 to 30),
         "depart_afternoon" to (14 to 40),
         "afternoon" to (16 to 30),
-        "dinner" to (18 to 0)
+        "dinner" to (18 to 0),
+        "steps_evening" to (18 to 30)
     )
 
     data class Slot(val key: String, val atMs: Long)
@@ -49,6 +50,10 @@ object LocalDailyReminderSchedule {
     suspend fun deliver(context: Context, slot: Slot) {
         val app = context.applicationContext
         val engine = LocalLifeReminderEngine(app)
+        if (slot.key == "steps_evening") {
+            engine.eveningSteps()
+            return
+        }
         if (slot.key == "hourly") runCatching { WeeklyBehaviorStore(app).sample() }
         if (slot.key.startsWith("weather_")) {
             val weather = runCatching { PlaceWeatherCoordinator(app)

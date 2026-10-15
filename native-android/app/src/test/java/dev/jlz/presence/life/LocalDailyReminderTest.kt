@@ -17,6 +17,7 @@ class LocalDailyReminderTest {
         assertEquals("weather_morning", LocalDailyReminderSchedule.next(at(7, 59)).key)
         assertEquals("hourly", LocalDailyReminderSchedule.next(at(8, 1)).key)
         assertEquals("nap_followup_1340", LocalDailyReminderSchedule.next(at(13, 31)).key)
+        assertEquals("steps_evening", LocalDailyReminderSchedule.next(at(18, 21)).key)
         assertEquals("hourly", LocalDailyReminderSchedule.next(at(23, 30)).key)
         assertEquals(at(23, 20) + 60 * 60_000L,
             LocalDailyReminderSchedule.next(at(23, 30)).atMs)
@@ -38,6 +39,8 @@ class LocalDailyReminderTest {
             LocalDailyReminderSchedule.dueForRunningService(at(14, 20) + 30_000L)
                 .map { it.key }.toSet())
         assertTrue(LocalDailyReminderSchedule.dueForRunningService(at(14, 23)).isEmpty())
+        assertEquals(listOf("steps_evening"),
+            LocalDailyReminderSchedule.dueForRunningService(at(18, 30) + 45_000L).map { it.key })
     }
 
     @Test fun weatherNeverInventsTemperatureWhenUnavailable() {
