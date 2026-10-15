@@ -31,6 +31,15 @@ class LocalDailyReminderTest {
         assertFalse(a.contains("用户"))
     }
 
+    @Test fun runningServiceCatchesDueSlotsWithoutDuplicatingOtherMinutes() {
+        assertEquals(listOf("weather_morning"),
+            LocalDailyReminderSchedule.dueForRunningService(at(8, 0) + 45_000L).map { it.key })
+        assertEquals(setOf("hourly", "nap_followup_1420"),
+            LocalDailyReminderSchedule.dueForRunningService(at(14, 20) + 30_000L)
+                .map { it.key }.toSet())
+        assertTrue(LocalDailyReminderSchedule.dueForRunningService(at(14, 23)).isEmpty())
+    }
+
     @Test fun weatherNeverInventsTemperatureWhenUnavailable() {
         assertTrue(LocalDailyCopy.weather(null, true).contains("没读到实时数据"))
         val wet = WeatherState(11.0, 8.0, 1.2, 1.2, 61, 28.0, at(8, 0))

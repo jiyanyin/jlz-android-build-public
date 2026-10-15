@@ -183,6 +183,10 @@ class NativeRuntimeService : Service() {
                 runCatching { localLifeReminders.tick(focusRepository.current().modeNow()) }
                 runCatching { if (localLifeReminders.enabled()) sensorMonitor.start() else sensorMonitor.stop() }
                 runCatching { stepCounter.start(); stepCounter.tick() }
+                dev.jlz.presence.life.LocalDailyReminderSchedule.dueForRunningService(
+                    System.currentTimeMillis()).forEach { due ->
+                    runCatching { dev.jlz.presence.life.LocalDailyReminderSchedule.deliver(applicationContext, due) }
+                }
                 delay(60_000L)
             }
         }

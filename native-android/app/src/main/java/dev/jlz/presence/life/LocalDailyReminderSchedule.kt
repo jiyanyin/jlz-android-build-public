@@ -35,6 +35,28 @@ object LocalDailyReminderSchedule {
 
     data class Slot(val key: String, val atMs: Long)
 
+    /** Foreground-service fallback. AlarmManager may be late under OEM doze. */
+    fun dueForRunningService(nowMs: Long): List<Slot> {
+        val today = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
+        return (0..1).flatMap { back ->
+            val date = today.minusDays(back.toLong())
+            (fixed.toList() + (0..23).map { "hourly" to (it to 20) }).map { (key, time) ->
+                Slot(key, date.atTime(time.first, time.second).atZone(zone).toInstant().toEpochMilli())
+            }
+        }.filter { nowMs - it.atMs in 0..90_000L }
+    }
+
+    suspend fun deliver(context: Context, slot: Slot) {
+        val app = context.applicationContext
+        val engine = LocalLifeReminderEngine(app)
+        if (slot.key == "hourly") runCatching { WeeklyBehaviorStore(app).sample() }
+        if (slot.key.startsWith("weather_")) {
+            val weather = runCatching { PlaceWeatherCoordinator(app)
+                .snapshot(locationTimeoutMs = 1_500L, weatherTimeoutMs = 2_500).weather }.getOrNull()
+            engine.scheduledWeather(slot.key, weather, slot.atMs)
+        } else engine.scheduled(slot.key, slot.atMs)
+    }
+
     fun next(nowMs: Long): Slot {
         val now = Instant.ofEpochMilli(nowMs).atZone(zone)
         val date = now.toLocalDate()
@@ -70,13 +92,7 @@ class LocalDailyReminderReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val engine = LocalLifeReminderEngine(app)
-                if (slot == "hourly") runCatching { WeeklyBehaviorStore(app).sample() }
-                if (slot.startsWith("weather_")) {
-                    val weather = runCatching { PlaceWeatherCoordinator(app)
-                        .snapshot(locationTimeoutMs = 1_500L, weatherTimeoutMs = 2_500).weather }.getOrNull()
-                    engine.scheduledWeather(slot, weather, scheduledAt)
-                } else engine.scheduled(slot, scheduledAt)
+                LocalDailyReminderSchedule.deliver(app, LocalDailyReminderSchedule.Slot(slot, scheduledAt))
             } finally {
                 pending.finish()
             }
