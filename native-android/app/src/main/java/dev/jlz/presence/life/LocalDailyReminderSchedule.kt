@@ -92,7 +92,12 @@ class LocalDailyReminderReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                LocalDailyReminderSchedule.deliver(app, LocalDailyReminderSchedule.Slot(slot, scheduledAt))
+                // 14:20 has both the nap follow-up and the independent hourly slot.
+                val coincident = LocalDailyReminderSchedule.dueForRunningService(scheduledAt)
+                    .filter { it.atMs == scheduledAt }
+                for (due in coincident.ifEmpty { listOf(LocalDailyReminderSchedule.Slot(slot, scheduledAt)) }) {
+                    LocalDailyReminderSchedule.deliver(app, due)
+                }
             } finally {
                 pending.finish()
             }
