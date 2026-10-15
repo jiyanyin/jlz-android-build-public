@@ -43,7 +43,7 @@ object LocalDailyReminderSchedule {
             (fixed.toList() + (0..23).map { "hourly" to (it to 20) }).map { (key, time) ->
                 Slot(key, date.atTime(time.first, time.second).atZone(zone).toInstant().toEpochMilli())
             }
-        }.filter { nowMs - it.atMs in 0..90_000L }
+        }.filter { nowMs - it.atMs in 0L..90_000L }
     }
 
     suspend fun deliver(context: Context, slot: Slot) {

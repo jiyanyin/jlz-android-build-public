@@ -179,12 +179,30 @@ class NativeRuntimeService : Service() {
         commandJob = scope.launch { runCommandLoop() }
         planJob = scope.launch { runPresencePlanLoop() }
         lifeTickJob = scope.launch {
+            var lastLocalAnalysisAt = 0L
             while (isActive) {
-                runCatching { localLifeReminders.tick(focusRepository.current().modeNow()) }
+                val nowMs = System.currentTimeMillis()
+                val localMode = focusRepository.current().modeNow()
+                runCatching { localLifeReminders.tick(localMode) }
                 runCatching { if (localLifeReminders.enabled()) sensorMonitor.start() else sensorMonitor.stop() }
                 runCatching { stepCounter.start(); stepCounter.tick() }
+                if (nowMs - lastLocalAnalysisAt >= 20 * 60_000L) {
+                    runCatching { dev.jlz.presence.life.WeeklyBehaviorStore(applicationContext).sample(nowMs) }
+                    lastLocalAnalysisAt = nowMs
+                }
+                runCatching {
+                    val date = java.time.Instant.ofEpochMilli(nowMs)
+                        .atZone(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate().toString()
+                    val summary = dev.jlz.presence.life.WeeklyBehaviorStore(applicationContext).day(date)
+                    dev.jlz.presence.persona.JlzVoiceStateEngine(applicationContext).observe(
+                        localMode,
+                        entertainmentMinutes = summary.optLong("entertainment_minutes", -1L)
+                            .takeIf { summary.optBoolean("usage_available", false) && it >= 0L },
+                        focusMinutes = summary.optLong("study_minutes", -1L).takeIf { it >= 0L },
+                        nowMs = nowMs)
+                }
                 dev.jlz.presence.life.LocalDailyReminderSchedule.dueForRunningService(
-                    System.currentTimeMillis()).forEach { due ->
+                    nowMs).forEach { due ->
                     runCatching { dev.jlz.presence.life.LocalDailyReminderSchedule.deliver(applicationContext, due) }
                 }
                 delay(60_000L)
