@@ -201,7 +201,7 @@ class PresenceAccessibilityService : AccessibilityService() {
         while (queue.isNotEmpty() && parts.size < 60 && seen < 200) {
             val node = queue.removeFirst()
             seen++
-            if (!node.isPassword) {
+            if (node.isVisibleToUser && !node.isPassword) {
                 val value = node.text?.toString()?.trim().orEmpty()
                 if (value.isNotEmpty()) parts += value.take(120)
             }

@@ -27,6 +27,7 @@ class HuaweiHealthObservationTest {
         assertNull(HuaweiSleepTextParser.minutes("建议每天睡眠 8小时"))
         assertNull(HuaweiSleepTextParser.minutes("23:30 07:20"))
         assertNull(HuaweiSleepTextParser.minutes("睡眠时长 25小时30分钟"))
+        assertEquals(442, HuaweiSleepTextParser.minutes("夜间睡眠\n7 小时 22 分钟"))
     }
 
     @Test fun retainOriginalSourceAndReturnMissingIfUnseenOrStale() {
@@ -99,6 +100,33 @@ class HuaweiHealthObservationTest {
         assertEquals("huawei_page_not_visible", snap.getString("morning_check_result"))
         assertTrue(snap.isNull("sleep_minutes"))
         assertFalse(snap.getBoolean("sleep_date_verified"))
+    }
+
+    @Test fun selectedHuaweiNightDateVerifiesTodayButRejectsAnotherDay() {
+        val now = LocalDateTime.of(2026,10,15,16,47)
+            .atZone(ZoneId.of("Asia/Shanghai")).toInstant().toEpochMilli()
+        val store = HuaweiHealthObservationStore(context)
+        val observedText = "睡眠\n日\n周\n月\n年\n10月15日 周四\n夜间睡眠\n7 小时 22 分钟\n深睡\n1 小时 56 分钟"
+        assertTrue(store.recordVisibleHuaweiPage(observedText, now))
+        val snap = store.snapshot(now)
+        assertEquals(442, snap.getInt("sleep_minutes"))
+        assertTrue(snap.getBoolean("sleep_date_verified"))
+        assertEquals("selected_huawei_night_date_matches_observed_day",
+            snap.getString("sleep_date_semantics"))
+
+        assertFalse(store.recordVisibleHuaweiPage(
+            "10月14日 周三\n夜间睡眠\n6 小时 10 分钟", now + 1000L))
+        assertEquals(442, store.snapshot(now + 1000L).getInt("sleep_minutes"))
+        assertEquals("visible_page_wrong_date", store.mostRecentParseStatus())
+    }
+
+    @Test fun morningPromptReceiptDoesNotBreakResultPersistence() {
+        val store = HuaweiHealthObservationStore(context)
+        store.markMorningAttempt()
+        store.markMorningResult("huawei_page_not_visible", promptShown = true)
+        val snap = store.snapshot()
+        assertEquals("huawei_page_not_visible", snap.getString("morning_check_result"))
+        assertTrue(snap.getBoolean("morning_open_prompt_shown"))
     }
 
     @Test fun batteryAndEntertainmentThresholdsUseBounds() {

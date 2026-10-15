@@ -90,7 +90,7 @@ class DailyHealthCheckReceiver : BroadcastReceiver() {
                             contentIntent = launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         ).ok
                     } else false
-                    store.markMorningResult(result + if (prompted) ";open_prompt_shown" else "")
+                    store.markMorningResult(result, prompted)
                 } else {
                     LocalLifeReminderEngine(app).eveningSteps()
                 }

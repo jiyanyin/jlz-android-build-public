@@ -731,6 +731,7 @@ fun StudyScreen() {
                                 scope.launch {
                                     val sessionId = repo.start()
                                     StudyTimerService.sync(context)
+                                    StudyTimerService.nudgeStartedSession(context, sessionId)
                                     StudyRuntimeReporter.post(context, "start", sessionId)
                                     actionNote = "已经开始。我盯着时间。"
                                 }
