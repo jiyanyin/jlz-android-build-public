@@ -15,6 +15,8 @@ import androidx.core.app.NotificationCompat
 import dev.jlz.presence.R
 import dev.jlz.presence.data.LocalLifeStore
 import dev.jlz.presence.notification.NotificationAdapter
+import dev.jlz.presence.usage.PendingActivityEventStore
+import org.json.JSONObject
 import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
@@ -163,7 +165,14 @@ internal class WalkingSessionTracker(context: Context) {
                 prefs.getLong("exercise_minutes:$date", 0L) + minutes)
                 .putLong("exercise_steps:$date", prefs.getLong("exercise_steps:$date", 0L) + steps)
                 .remove("session_id").apply()
-            LocalLifeStore(app).recordTimeline("exercise", "步行", "确认步行${minutes}分钟 · ${steps}步")
+            val event = LocalLifeStore(app).recordTimeline("exercise", "步行",
+                "确认步行${minutes}分钟 · ${steps}步")
+            PendingActivityEventStore(app).use { outbox ->
+                outbox.enqueue(id = event.id, source = "native_step_counter",
+                    kind = "confirmed_walk", title = "确认步行", body = "${minutes}分钟 · ${steps}步",
+                    metadata = JSONObject().put("date", date).put("duration_minutes", minutes)
+                        .put("steps", steps).put("confirmed_by_user", true), observedAtMs = last)
+            }
         } else prefs.edit().remove("session_id").apply()
     }
 

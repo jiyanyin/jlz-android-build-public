@@ -16,6 +16,7 @@ export type EntertainmentGateSnapshot = {
   small_step_remaining_ms: number;
   small_step_text: string;
   current_effective_ms: number;
+  weekly_policy: { tighter: boolean; sampled_days: number; high_entertainment_days: number; high_this_app_days: number };
   error?: string;
 };
 
@@ -51,6 +52,7 @@ const empty = (packageName: string): EntertainmentGateSnapshot => ({
   small_step_remaining_ms: 0,
   small_step_text: "",
   current_effective_ms: 0,
+  weekly_policy: { tighter: false, sampled_days: 0, high_entertainment_days: 0, high_this_app_days: 0 },
 });
 
 const numberValue = (value: unknown, fallback = 0) => {
@@ -82,6 +84,14 @@ export const normalizeGateSnapshot = (
     small_step_remaining_ms: numberValue(raw.small_step_remaining_ms, 0),
     small_step_text: String(raw.small_step_text || ""),
     current_effective_ms: numberValue(raw.current_effective_ms, 0),
+    weekly_policy: (() => {
+      const value = raw.weekly_policy && typeof raw.weekly_policy === "object"
+        ? raw.weekly_policy as Record<string, unknown> : {};
+      return { tighter: value.tighter === true,
+        sampled_days: numberValue(value.sampled_days),
+        high_entertainment_days: numberValue(value.high_entertainment_days),
+        high_this_app_days: numberValue(value.high_this_app_days) };
+    })(),
     error: raw.error ? String(raw.error) : undefined,
   };
 };

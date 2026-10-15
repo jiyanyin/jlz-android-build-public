@@ -33,6 +33,12 @@ class WeeklyBehaviorStore(context: Context) {
     private val zone = ZoneId.of("Asia/Shanghai")
     private fun date(atMs: Long) = Instant.ofEpochMilli(atMs).atZone(zone).toLocalDate()
 
+    fun day(date: String): JSONObject {
+        require(Regex("\\d{4}-\\d{2}-\\d{2}").matches(date))
+        return prefs.getString("day:$date", null)?.let { runCatching { JSONObject(it) }.getOrNull() }
+            ?: JSONObject().put("date", date).put("available", false)
+    }
+
     fun sample(nowMs: Long = System.currentTimeMillis()) {
         val today = date(nowMs)
         val usage = SystemUsageSnapshot.today(app)

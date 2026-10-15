@@ -298,9 +298,13 @@ class LocalLifeReminderEngine(context: Context) {
         val scope = if (key == "hourly") date(scheduledAtMs) + ":" +
             Instant.ofEpochMilli(scheduledAtMs).atZone(zone).hour else date(scheduledAtMs)
         val ordinal = prefs.getInt("copy_count:daily_$key", 0)
+        val health = HuaweiHealthObservationStore(app).snapshot(nowMs)
+        val shortSleep = health.optBoolean("sleep_date_verified", false) &&
+            !health.isNull("sleep_minutes") && health.optInt("sleep_minutes") < 360
         val text = LocalDailyCopy.choose(if (key.startsWith("nap_followup_")) "nap" else key,
             ordinal, scheduledAtMs, dev.jlz.presence.persona.JlzVoiceStateEngine(app).read(nowMs).mood,
-            LocalStatusLamp(app).fresh(nowMs))
+            LocalStatusLamp(app).fresh(nowMs),
+            WeeklyBehaviorStore(app).decision("").optBoolean("tighter", false), shortSleep)
         return emitOnce("daily_$key", "今天的约定", nowMs, scope, text)
     }
 

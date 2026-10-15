@@ -36,7 +36,8 @@ class ArithmeticGateRepository(context: Context) {
             val left = prefs.getLong("left:$pkg", 0L)
             if (left > 0L && atMs - left > 5_000L) return false
         }
-        prefs.edit().putBoolean("entered:$pkg", true).putLong("left:$pkg", 0L).apply()
+        if (!prefs.getBoolean("entered:$pkg", false) || prefs.getLong("left:$pkg", 0L) != 0L)
+            prefs.edit().putBoolean("entered:$pkg", true).putLong("left:$pkg", 0L).apply()
         return true
     }
 }
@@ -62,10 +63,13 @@ class ArithmeticGateCoordinator(private val service: AccessibilityService) {
         service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
         handler.postDelayed({
             pending.remove(pkg)
-            if (prefs.enabled()) ArithmeticGateActivity.show(app, pkg,
-                EntertainmentPolicy.profile(pkg)?.tier != EntertainmentTier.SHOPPING &&
-                    (EntertainmentPolicy.profile(pkg) != null ||
-                        classifier.classify(pkg) in setOf(LocalAppCategory.GAME, LocalAppCategory.FEED)))
+            if (prefs.enabled()) runCatching {
+                val profile = EntertainmentPolicy.profile(pkg)
+                ArithmeticGateActivity.show(app, pkg,
+                    profile?.tier != EntertainmentTier.SHOPPING &&
+                        (profile != null || classifier.classify(pkg) in
+                            setOf(LocalAppCategory.GAME, LocalAppCategory.FEED)))
+            }
         }, 350L)
         return true
     }

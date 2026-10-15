@@ -825,10 +825,15 @@ class NativeRuntimeService : Service() {
             }
 
             "get_local_reminders_status" -> {
+                val nativeSteps = dev.jlz.presence.life.NativeStepSnapshot.today(applicationContext)
                 true to org.json.JSONObject()
                     .put("enabled", localLifeReminders.enabled())
                     .put("source", "android_local_reminder_engine")
                     .put("health", dev.jlz.presence.life.HuaweiHealthObservationStore(applicationContext).snapshot())
+                    .put("native_steps", JSONObject()
+                        .put("steps_since_first_observation", nativeSteps?.stepsSinceFirstObservation ?: JSONObject.NULL)
+                        .put("observed_at_ms", nativeSteps?.observedAtMs ?: JSONObject.NULL)
+                        .put("complete_day_estimate", nativeSteps?.completeDayEstimate ?: false))
                     .toString()
             }
 

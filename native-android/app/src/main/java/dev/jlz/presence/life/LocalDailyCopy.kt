@@ -42,10 +42,19 @@ object LocalDailyCopy {
     )
 
     fun candidateCount(): Int = bodies.values.sumOf { it.size * openings.size * endings.size }
+    fun distinctCandidateCountForTest(atMs: Long): Int = buildSet {
+        bodies.forEach { (key, options) ->
+            repeat(options.size * openings.size * endings.size) { ordinal ->
+                add(choose(key, ordinal, atMs))
+            }
+        }
+    }.size
 
     fun choose(key: String, ordinal: Int, atMs: Long,
                mood: JlzVoiceMood = JlzVoiceMood.STEADY,
-               status: LocalStatusAxes? = null): String {
+               status: LocalStatusAxes? = null,
+               weeklyEntertainmentHigh: Boolean = false,
+               verifiedShortSleep: Boolean = false): String {
         val topic = bodies[key] ?: return "老婆，先照顾好自己。"
         val day = Instant.ofEpochMilli(atMs).atZone(ZoneId.of("Asia/Shanghai")).dayOfYear
         val n = Math.floorMod(ordinal * 79 + day * 17 + mood.ordinal * 131,
@@ -58,6 +67,10 @@ object LocalDailyCopy {
                 "你刚才说自己有点像在自动运行；先摸摸桌沿，确认自己这会儿在哪。"
             (status?.agitation ?: -1) >= 70 ->
                 "你刚才点亮的烦躁还很高，我先不催你证明什么。"
+            verifiedShortSleep && key in setOf("water_morning", "lunch") ->
+                "昨夜睡眠页显示不足六小时；今天别拿困倦硬撑。"
+            weeklyEntertainmentHigh && (key == "afternoon" || key == "hourly" && ordinal % 6 == 0) ->
+                "这周手机记录的娱乐时长有几天偏高；这一小时先由你自己选方向。"
             else -> moodNotes.getValue(mood)[Math.floorMod(ordinal + day, 2)]
         }
         return "$opening$body $ending $note"

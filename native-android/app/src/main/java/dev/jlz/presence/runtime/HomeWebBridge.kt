@@ -97,6 +97,8 @@ class HomeWebBridge(private val context: Context, private val save: (String)->Un
             .put("native_day_estimate_complete", nativeToday?.completeDayEstimate ?: false)
             .toString()
     }
+    @JavascriptInterface fun behaviorDay(date: String): String =
+        dev.jlz.presence.life.WeeklyBehaviorStore(context).day(date).toString()
     @JavascriptInterface fun setGateEnabled(value: Boolean) { EntertainmentGateRepository(context).setEnabled(value) }
     @JavascriptInterface fun savePack(raw: String) { if(raw.toByteArray().size<=524288) save(raw) }
     @JavascriptInterface fun openPack() { open() }

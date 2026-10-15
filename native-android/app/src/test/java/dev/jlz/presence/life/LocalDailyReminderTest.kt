@@ -24,6 +24,7 @@ class LocalDailyReminderTest {
 
     @Test fun localPhraseMatrixIsLargeAndDeterministic() {
         assertTrue(LocalDailyCopy.candidateCount() >= 10_000)
+        assertTrue(LocalDailyCopy.distinctCandidateCountForTest(at(12, 0)) >= 10_000)
         val a = LocalDailyCopy.choose("lunch", 4, at(12, 0))
         assertEquals(a, LocalDailyCopy.choose("lunch", 4, at(12, 0)))
         assertTrue(a.length > 10)
