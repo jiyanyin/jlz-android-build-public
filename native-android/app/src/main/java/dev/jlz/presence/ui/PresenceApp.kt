@@ -1001,12 +1001,35 @@ fun QuickCaptureScreen() {
 
 @Composable
 fun DiagnosticsScreen() {
+    val context = LocalContext.current
+    var revision by remember { mutableIntStateOf(0) }
+    val health = remember(revision) { dev.jlz.presence.screen.AccessibilityHealthTrace.snapshot(context) }
+    val dateText: (Long) -> String = { when {
+        it <= 0L -> "暂无记录"
+        else -> java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date(it))
+    } }
     Column(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("\u5f00\u53d1\u4e0e\u8bca\u65ad", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
-            Text("\u8fd4\u56de", color = BlueGlow, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Home) }.padding(8.dp))
+            Text("开发与诊断", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
+            Text("返回", color = BlueGlow, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Home) }.padding(8.dp))
         }
         Spacer(Modifier.height(16.dp))
-        Text("Runtime \u72b6\u6001\u3001\u7248\u672c\u3001\u6700\u8fd1\u9519\u8bef\u65e5\u5fd7", color = TextSecondary)
+        IceButton("刷新无障碍诊断", onClick = { revision += 1 })
+        Spacer(Modifier.height(12.dp))
+        IceGlassCard {
+            Text("系统无障碍开关：" + if (health.systemEnabled) "已开启" else "已关闭", color = TextPrimary)
+            Text("APP 实际连接：" + if (health.serviceBound) "已连接" else "未连接", color = TextPrimary)
+            Spacer(Modifier.height(8.dp))
+            Text("上次连接：" + dateText(health.lastConnectedAtMs), color = TextSecondary)
+            Text("上次系统解绑：" + dateText(health.lastUnboundAtMs), color = TextSecondary)
+            Text("上次服务销毁：" + dateText(health.lastDestroyedAtMs), color = TextSecondary)
+            Spacer(Modifier.height(8.dp))
+            Text("最近进程退出：" +
+                (health.latestProcessExitAtMs?.let(dateText) ?: "暂无记录") +
+                " / " + (health.latestProcessExitReason ?: "未知"), color = TextSecondary)
+        }
+        Spacer(Modifier.height(12.dp))
+        Text("系统开关关闭不等于普通后台断连。无法由 APP 自动恢复授权；这里记录证据供排查，不会修改系统设置。", color = TextTertiary)
     }
 }
