@@ -702,6 +702,7 @@ export default function BetweenWorlds() {
     <div className={`scrim ${sheet ? "show" : ""}`} onClick={() => setSheet(null)} />
     <div className={`sheet ${sheet ? "open" : ""}`} role="dialog" aria-modal="true" aria-label={sheet === "status" ? "状态灯" : sheet === "note" ? "随手记" : sheet === "task" ? "今日任务" : sheet === "apps" ? "App 抽屉" : "此刻我在"}>
       <div className="sheet-handle" /><div className="sheet-head"><h3>{sheet === "status" ? "状态灯" : sheet === "note" ? "随手记" : sheet === "task" ? (editingTask ? "改这件事" : "加一件事") : sheet === "apps" ? "想去哪里" : "此刻我在"}</h3><button onClick={() => setSheet(null)} aria-label="关闭">×</button></div>
+      {sheet && sheet !== "apps" && <div className="owner-decision"><OwnerAvatar /><span>音音 · {sheet === "status" ? "我现在的状态" : sheet === "note" ? "我想记下的话" : sheet === "task" ? "我决定做的事" : "我正在做的事"}</span></div>}
       {sheet === "status" && <StatusEditor close={() => setSheet(null)} update={update} send={send} notify={notify} savedText={savedText} />}
       {sheet === "note" && <NoteEditor close={() => setSheet(null)} addRecord={addRecord} send={send} notify={notify} savedText={savedText} />}
       {sheet === "life" && <LifeEditor activeLife={state.activeLife} close={() => setSheet(null)} update={update} send={send} notify={notify} savedText={savedText} />}
@@ -1243,6 +1244,9 @@ function AppDrawerSheet({
   </div>;
 }
 
+function OwnerAvatar({ className = "message-avatar" }: { className?: string }) {
+  return <img className={className} src="/owner-avatar.jpg" alt="音音的头像" onError={e=>{if(!e.currentTarget.src.endsWith("/owner-avatar-placeholder.svg"))e.currentTarget.src="/owner-avatar-placeholder.svg";}} />;
+}
 function SectionHead({ title, english }: { title: string; english: string }) { return <div className="section-head"><b>{title}</b><span>{english}</span></div>; }
 function PageHead({ kicker, title, en, copy }: { kicker: string; title: string; en: string; copy: string }) { return <div className="page-head"><div><span>{kicker}</span><h2>{title} <em>{en}</em></h2><p>{copy}</p></div></div>; }
 
@@ -1424,6 +1428,7 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask, empty
             <button onClick={()=>{const id="echo-note-"+m.key.slice(-70);send("/api/web/journal",{kind:"echo_excerpt",text:m.text,source_ref:m.key},id);notify("片段已排队保存到共历");}}>留在共历</button>
           </div>
         </div>
+        {m.me&&<OwnerAvatar />}
       </div>)}
     </div>
     {newMessages&&<button type="button" className="echo-jump" onClick={jumpLatest}>有新消息 ↓</button>}

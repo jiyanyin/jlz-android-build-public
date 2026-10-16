@@ -135,9 +135,10 @@ class NotificationAdapter(private val context: Context) {
             .setAllowGeneratedReplies(true)
             .build()
 
-        val user = Person.Builder().setName("你").build()
+        val user = ConversationAvatars.owner(context)
         val companion = Person.Builder()
             .setName("纪临洲")
+            .setKey("world-between-companion")
             .setIcon(IconCompat.createWithBitmap(avatar))
             .setImportant(true)
             .build()
@@ -194,9 +195,10 @@ class NotificationAdapter(private val context: Context) {
     ): Boolean {
         if (notificationId < 0) return false
         val avatar = createAvatarBitmap()
-        val user = Person.Builder().setName("你").build()
+        val user = ConversationAvatars.owner(context)
         val companion = Person.Builder()
             .setName("纪临洲")
+            .setKey("world-between-companion")
             .setIcon(IconCompat.createWithBitmap(avatar))
             .build()
 

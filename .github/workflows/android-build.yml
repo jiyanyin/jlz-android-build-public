@@ -18,6 +18,11 @@ on:
         description: 'Draft release ID containing AES-GCM encrypted private poses; empty for ordinary build'
         required: false
         type: string
+      owner_avatar_required:
+        description: 'Require the owner-selected avatar in this private build'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: public-android-${{ github.ref }}
@@ -56,6 +61,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_ID: ${{ inputs.private_release_id }}
           WB_PRIVATE_BUILD_KEY: ${{ secrets.WB_PRIVATE_BUILD_KEY }}
+          OWNER_AVATAR_REQUIRED: ${{ inputs.owner_avatar_required }}
         shell: bash
         run: |
           set -euo pipefail
@@ -81,6 +87,15 @@ jobs:
           print('Four private packs staged; 115 single poses; no reference sheets.')
           PY
           rm -f "$RUNNER_TEMP/q-poses.zip" "$RUNNER_TEMP/q-poses.enc"
+          avatar_asset=$(jq -r '.assets[] | select(.name=="owner-avatar.enc") | .id' "$RUNNER_TEMP/private-release.json")
+          if test -n "$avatar_asset"; then
+            gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$avatar_asset" > "$RUNNER_TEMP/owner-avatar.enc"
+            node scripts/private-build-envelope.mjs decrypt "$RUNNER_TEMP/owner-avatar.enc" between-worlds-prod/public/owner-avatar.jpg
+            rm -f "$RUNNER_TEMP/owner-avatar.enc"
+          elif test "$OWNER_AVATAR_REQUIRED" = true; then
+            echo 'Required private owner avatar is missing.' >&2
+            exit 1
+          fi
 
       - name: Package unchanged WebShell UI for offline startup
         shell: bash
@@ -171,7 +186,7 @@ jobs:
 
       - name: Remove private runner resources
         if: always() && github.event_name == 'workflow_dispatch' && inputs.private_release_id != ''
-        run: rm -rf native-android/app/src/main/assets/avatar/packs native-android/app/build
+        run: rm -rf native-android/app/src/main/assets/avatar/packs native-android/app/build between-worlds-prod/public/owner-avatar.jpg between-worlds-prod/dist native-android/app/src/main/assets/world-between
 
       - name: Publish latest APK release
         if: success() && inputs.private_release_id == '' && github.ref == 'refs/heads/main'

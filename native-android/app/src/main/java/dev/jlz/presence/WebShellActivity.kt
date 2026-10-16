@@ -106,6 +106,7 @@ class WebShellActivity : ComponentActivity() {
                         val mime=when(asset.substringAfterLast('.')) {
                             "html"->"text/html"; "js"->"application/javascript"; "css"->"text/css";
                             "svg"->"image/svg+xml"; "webp"->"image/webp"; "png"->"image/png";
+                            "jpg","jpeg"->"image/jpeg";
                             "json","webmanifest"->"application/json"; "woff2"->"font/woff2"; else->"application/octet-stream"
                         }
                         WebResourceResponse(mime,"UTF-8",assets.open(asset))
