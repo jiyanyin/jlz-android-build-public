@@ -59,6 +59,19 @@ class EntertainmentGateV2PolicyTest {
         assertTrue(shopping > feed)
     }
 
+    @Test fun shoppingAlwaysUsesIndependentTenMinuteRelease() {
+        for (tablet in listOf(false, true)) {
+            for (choice in EntertainmentIntentChoice.entries) {
+                assertEquals(10, EntertainmentGateV2Policy.releasePlan(
+                    tablet, EntertainmentTier.SHOPPING, choice).minutes)
+            }
+        }
+        assertEquals(EntertainmentTier.SHOPPING,
+            EntertainmentPolicy.profile("com.ss.android.ugc.livelite")?.tier)
+        assertEquals(EntertainmentTier.FEED,
+            EntertainmentPolicy.profile("com.ss.android.ugc.aweme")?.tier)
+    }
+
     @Test
     fun smallStepRequiresThreeAdditionalEffectiveMinutes() {
         val baseline = 10 * 60_000L
@@ -81,9 +94,9 @@ class EntertainmentGateV2PolicyTest {
     }
 
     @Test
-    fun gateSentenceMatrixHasAtLeastFiveHundredDistinctLines() {
+    fun gateSentenceMatrixHasAtLeastTenThousandDistinctLines() {
         val count = EntertainmentGateCopy.candidateCountForTest()
-        assertTrue("candidate count was $count", count >= 500)
+        assertTrue("candidate count was $count", count >= 10_000)
     }
 
     @Test

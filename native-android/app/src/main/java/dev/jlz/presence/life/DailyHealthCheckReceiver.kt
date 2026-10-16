@@ -80,7 +80,17 @@ class DailyHealthCheckReceiver : BroadcastReceiver() {
                         !scanned -> "visible_source_check_failed"
                         else -> "huawei_page_not_visible"
                     }
-                    store.markMorningResult(result)
+                    val launch = app.packageManager.getLaunchIntentForPackage("com.huawei.health")
+                    val prompted = if (result == "huawei_page_not_visible" && launch != null) {
+                        val ordinal = Instant.ofEpochMilli(System.currentTimeMillis())
+                            .atZone(ZoneId.of("Asia/Shanghai")).dayOfYear
+                        dev.jlz.presence.notification.NotificationAdapter(app).showMessage(
+                            title = "纪临洲 · 早间睡眠查岗",
+                            message = LocalLifeCopy.choose("health", ordinal),
+                            contentIntent = launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        ).ok
+                    } else false
+                    store.markMorningResult(result, prompted)
                 } else {
                     LocalLifeReminderEngine(app).eveningSteps()
                 }

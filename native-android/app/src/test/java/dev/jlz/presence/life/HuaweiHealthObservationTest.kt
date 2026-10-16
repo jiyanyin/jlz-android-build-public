@@ -27,6 +27,7 @@ class HuaweiHealthObservationTest {
         assertNull(HuaweiSleepTextParser.minutes("建议每天睡眠 8小时"))
         assertNull(HuaweiSleepTextParser.minutes("23:30 07:20"))
         assertNull(HuaweiSleepTextParser.minutes("睡眠时长 25小时30分钟"))
+        assertEquals(442, HuaweiSleepTextParser.minutes("夜间睡眠\n7 小时 22 分钟"))
     }
 
     @Test fun retainOriginalSourceAndReturnMissingIfUnseenOrStale() {
@@ -101,17 +102,58 @@ class HuaweiHealthObservationTest {
         assertFalse(snap.getBoolean("sleep_date_verified"))
     }
 
+    @Test fun selectedHuaweiNightDateVerifiesTodayButRejectsAnotherDay() {
+        val now = LocalDateTime.of(2026,10,15,16,47)
+            .atZone(ZoneId.of("Asia/Shanghai")).toInstant().toEpochMilli()
+        val store = HuaweiHealthObservationStore(context)
+        val observedText = "睡眠\n日\n周\n月\n年\n10月15日 周四\n夜间睡眠\n7 小时 22 分钟\n深睡\n1 小时 56 分钟"
+        assertTrue(store.recordVisibleHuaweiPage(observedText, now))
+        val snap = store.snapshot(now)
+        assertEquals(442, snap.getInt("sleep_minutes"))
+        assertTrue(snap.getBoolean("sleep_date_verified"))
+        assertEquals("selected_huawei_night_date_matches_observed_day",
+            snap.getString("sleep_date_semantics"))
+
+        assertFalse(store.recordVisibleHuaweiPage(
+            "10月14日 周三\n夜间睡眠\n6 小时 10 分钟", now + 1000L))
+        assertEquals(442, store.snapshot(now + 1000L).getInt("sleep_minutes"))
+        assertEquals("visible_page_wrong_date", store.mostRecentParseStatus())
+    }
+
+    @Test fun morningPromptReceiptDoesNotBreakResultPersistence() {
+        val store = HuaweiHealthObservationStore(context)
+        store.markMorningAttempt()
+        store.markMorningResult("huawei_page_not_visible", promptShown = true)
+        val snap = store.snapshot()
+        assertEquals("huawei_page_not_visible", snap.getString("morning_check_result"))
+        assertTrue(snap.getBoolean("morning_open_prompt_shown"))
+    }
+
     @Test fun batteryAndEntertainmentThresholdsUseBounds() {
-        assertEquals(0, LocalLifeReminderPolicy.batteryBand(41))
-        assertEquals(40, LocalLifeReminderPolicy.batteryBand(40))
-        assertEquals(20, LocalLifeReminderPolicy.batteryBand(20))
-        assertEquals(10, LocalLifeReminderPolicy.batteryBand(10))
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(41, -1))
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(40, -1))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(39, -1))
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(38, 39))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(36, 39))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(1, 4))
         assertEquals(0, LocalLifeReminderPolicy.entertainmentStage(29))
         assertEquals(30, LocalLifeReminderPolicy.entertainmentStage(30))
         assertEquals(45, LocalLifeReminderPolicy.entertainmentStage(45))
         val now = System.currentTimeMillis()
         assertFalse(LocalLifeReminderPolicy.lowSteps(1234,now - 4 * 60 * 60_000L,now))
         assertTrue(LocalLifeReminderPolicy.lowSteps(1234,now,now))
+    }
+
+    @Test fun localReminderCopyRotatesAndUsesWifeLanguage() {
+        val keys = listOf("battery40","battery20","battery10","charging","light","shake",
+            "screen","entertain30","entertain45","steps","weather","health")
+        keys.forEach { key ->
+            val variants = (0 until 8).map { LocalLifeCopy.choose(key, it) }
+            assertEquals(8, variants.toSet().size)
+            assertTrue(variants.none { it.contains("用户") })
+        }
+        assertEquals("reminder.low_steps", LocalLifeCopy.worldKey("steps"))
+        assertEquals("reminder.weather", LocalLifeCopy.worldKey("weather"))
     }
 
     @Test fun oneFiveMinuteRestPerDayAndEmergencyRelease() {

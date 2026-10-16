@@ -15,6 +15,7 @@ import java.net.URL
 class HomeWebBridge(private val context: Context, private val save: (String)->Unit, private val open: ()->Unit, private val reply: (String,String)->Unit) {
     private val io = java.util.concurrent.ThreadPoolExecutor(2,2,0L,java.util.concurrent.TimeUnit.MILLISECONDS,java.util.concurrent.ArrayBlockingQueue<Runnable>(16))
     fun close() { io.shutdownNow() }
+    @JavascriptInterface fun connectionStatus(): String = LocalConnectionStatus.snapshot(context).toString()
     @JavascriptInterface fun contentIdentity(): String = runBlocking {
         val s=RuntimeSettingsRepository(context).load()
         JSONObject().put("device_id",s.deviceId).put("device_scope",if(s.deviceId.contains("tablet")) "tablet" else "phone").toString()
@@ -84,6 +85,21 @@ class HomeWebBridge(private val context: Context, private val save: (String)->Un
             .put("source",s.source).put("updated_at_ms",s.updatedAtMs)
             .put("expires_at_ms",s.expiresAtMs).toString()
     }
+    @JavascriptInterface fun recordStatusAxes(raw: String): Boolean =
+        dev.jlz.presence.life.LocalStatusLamp(context).record(raw)
+    @JavascriptInterface fun exerciseDay(date: String): String {
+        require(Regex("\\d{4}-\\d{2}-\\d{2}").matches(date))
+        val (minutes, steps) = dev.jlz.presence.life.NativeStepSnapshot.exercise(context, date)
+        val nativeToday = if (date == java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).toString())
+            dev.jlz.presence.life.NativeStepSnapshot.today(context) else null
+        return JSONObject().put("date", date).put("confirmed_walk_minutes", minutes)
+            .put("confirmed_walk_steps", steps)
+            .put("native_steps_since_first_observation", nativeToday?.stepsSinceFirstObservation ?: JSONObject.NULL)
+            .put("native_day_estimate_complete", nativeToday?.completeDayEstimate ?: false)
+            .toString()
+    }
+    @JavascriptInterface fun behaviorDay(date: String): String =
+        dev.jlz.presence.life.WeeklyBehaviorStore(context).day(date).toString()
     @JavascriptInterface fun setGateEnabled(value: Boolean) { EntertainmentGateRepository(context).setEnabled(value) }
     @JavascriptInterface fun savePack(raw: String) { if(raw.toByteArray().size<=524288) save(raw) }
     @JavascriptInterface fun openPack() { open() }

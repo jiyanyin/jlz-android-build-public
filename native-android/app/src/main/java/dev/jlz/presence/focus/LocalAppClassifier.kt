@@ -40,6 +40,21 @@ class LocalAppClassifier(private val context: Context) {
     }
     fun clear(pkg: String) { prefs.edit().remove("class:$pkg").remove("cert:$pkg").apply(); cache.remove(pkg) }
 
+    fun isTransientWindow(pkg: String): Boolean = pkg == "com.android.systemui" ||
+        pkg.contains("permissioncontroller") || pkg.contains("packageinstaller") ||
+        context.getSystemService(InputMethodManager::class.java).enabledInputMethodList.any { it.packageName == pkg }
+
+    fun arithmeticExempt(pkg: String): Boolean = classify(pkg) == LocalAppCategory.SYSTEM_SAFE ||
+        pkg == android.provider.Telephony.Sms.getDefaultSmsPackage(context) || pkg in setOf(
+            "com.google.android.apps.maps", "com.autonavi.minimap", "com.baidu.BaiduMap",
+            "com.android.camera", "com.huawei.camera", "com.huawei.systemmanager",
+            "com.android.dialer", "com.google.android.dialer", "com.android.phone",
+            "com.android.incallui", "com.android.emergency", "com.android.mms",
+            "com.google.android.apps.messaging", "com.google.android.deskclock", "com.android.deskclock",
+            "com.eg.android.AlipayGphone", "com.unionpay", "com.google.android.apps.authenticator2",
+            "com.azure.authenticator"
+        )
+
     fun eligibleLearning(pkg: String): Boolean {
         if (pkg in setOf("com.openai.chatgpt", "com.fenbi.android.servant")) return true
         if (!pkg.startsWith("org.chromium.webapk.")) return false
@@ -69,7 +84,7 @@ class LocalAppClassifier(private val context: Context) {
                 val sameSigner = correction != null && prefs.getString("cert:$pkg", null) == identity(pkg)
                 if (sameSigner) LocalAppCategory.valueOf(correction!!)
                 else if (info.category == ApplicationInfo.CATEGORY_GAME || (info.flags and ApplicationInfo.FLAG_IS_GAME) != 0 || pkg in setOf("com.tencent.tmgp.sgame", "com.tencent.tmgp.pubgmhd", "com.miHoYo.Yuanshen")) LocalAppCategory.GAME
-                else if (pkg in setOf("com.xingin.xhs", "com.ss.android.ugc.aweme", "com.smile.gifmaker", "tv.danmaku.bili", "com.sina.weibo", "com.taobao.taobao", "com.xunmeng.pinduoduo")) LocalAppCategory.FEED
+                else if (EntertainmentPolicy.profile(pkg) != null) LocalAppCategory.FEED
                 else LocalAppCategory.UNKNOWN
             }
         }.getOrDefault(LocalAppCategory.UNKNOWN)

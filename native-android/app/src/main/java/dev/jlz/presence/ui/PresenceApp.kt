@@ -2,6 +2,8 @@ package dev.jlz.presence.ui
 
 import android.content.Intent
 import android.provider.Settings
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -731,6 +733,7 @@ fun StudyScreen() {
                                 scope.launch {
                                     val sessionId = repo.start()
                                     StudyTimerService.sync(context)
+                                    StudyTimerService.nudgeStartedSession(context, sessionId)
                                     StudyRuntimeReporter.post(context, "start", sessionId)
                                     actionNote = "已经开始。我盯着时间。"
                                 }
@@ -909,8 +912,8 @@ fun SettingsScreen() {
             }
         }
         item { OverlaySettingsPanel() }
-        item { RuntimeIdentityPanel() }
         item { BridgePanel() }
+        item { SleepCollectionPanel() }
         item { PlaceSettingsPanel() }
         item { NotificationSourcesPanel() }
         item { UsageSettingsPanel() }
@@ -939,7 +942,7 @@ fun PermissionDoctorScreen() {
         IceButton("重新检查全部权限", onClick = { refresh += 1 })
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            item { RuntimeIdentityPanel() }
+            item { BridgePanel() }
             item { UnlockSoftGateSettingsPanel() }
             item { EntertainmentGateSettingsPanel() }
             item { DeviceUnlockSettingsPanel() }
@@ -1001,12 +1004,17 @@ fun QuickCaptureScreen() {
 
 @Composable
 fun DiagnosticsScreen() {
-    Column(Modifier.fillMaxSize().systemBarsPadding().padding(20.dp)) {
+    Column(Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("\u5f00\u53d1\u4e0e\u8bca\u65ad", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
             Text("\u8fd4\u56de", color = BlueGlow, modifier = Modifier.clickable { PresenceRouteBus.open(PresenceRoute.Home) }.padding(8.dp))
         }
         Spacer(Modifier.height(16.dp))
-        Text("Runtime \u72b6\u6001\u3001\u7248\u672c\u3001\u6700\u8fd1\u9519\u8bef\u65e5\u5fd7", color = TextSecondary)
+        val context = LocalContext.current
+        var snapshot by remember { mutableStateOf(dev.jlz.presence.runtime.LocalConnectionStatus.snapshot(context).toString(2)) }
+        Text("版本：${dev.jlz.presence.runtime.RuntimeApiClient.appVersion(context)}", color = TextSecondary)
+        Text("这里分别检查后台心跳、无障碍、位置权限、家／单位锚点与睡眠；保存配置不等于后台在线。", color = TextSecondary)
+        TextButton(onClick = { snapshot = dev.jlz.presence.runtime.LocalConnectionStatus.snapshot(context).toString(2) }) { Text("刷新实际状态") }
+        Text(snapshot, color = TextPrimary, style = MaterialTheme.typography.bodySmall)
     }
 }

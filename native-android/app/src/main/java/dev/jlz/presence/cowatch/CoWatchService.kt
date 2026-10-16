@@ -52,7 +52,7 @@ class CoWatchService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "STOP") {
-            CoWatchState.reason = "用户已挂断，停止共享"
+            CoWatchState.reason = "老婆已挂断，停止共享"
             stopSelf()
             return START_NOT_STICKY
         }

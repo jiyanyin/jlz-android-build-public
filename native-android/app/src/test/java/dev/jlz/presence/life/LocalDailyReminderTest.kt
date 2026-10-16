@@ -1,0 +1,70 @@
+package dev.jlz.presence.life
+
+import dev.jlz.presence.place.WeatherState
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.time.LocalDateTime
+import java.time.ZoneId
+
+class LocalDailyReminderTest {
+    private val zone = ZoneId.of("Asia/Shanghai")
+    private fun at(hour: Int, minute: Int): Long =
+        LocalDateTime.of(2026, 10, 15, hour, minute).atZone(zone).toInstant().toEpochMilli()
+
+    @Test fun rollingAlarmSelectsFixedAndHourlySlots() {
+        assertEquals("weather_morning", LocalDailyReminderSchedule.next(at(7, 59)).key)
+        assertEquals("hourly", LocalDailyReminderSchedule.next(at(8, 1)).key)
+        assertEquals("nap_followup_1340", LocalDailyReminderSchedule.next(at(13, 31)).key)
+        assertEquals("steps_evening", LocalDailyReminderSchedule.next(at(18, 21)).key)
+        assertEquals("hourly", LocalDailyReminderSchedule.next(at(23, 30)).key)
+        assertEquals(at(23, 20) + 60 * 60_000L,
+            LocalDailyReminderSchedule.next(at(23, 30)).atMs)
+    }
+
+    @Test fun localPhraseMatrixIsLargeAndDeterministic() {
+        assertTrue(LocalDailyCopy.candidateCount() >= 10_000)
+        assertTrue(LocalDailyCopy.distinctCandidateCountForTest(at(12, 0)) >= 10_000)
+        val a = LocalDailyCopy.choose("lunch", 4, at(12, 0))
+        assertEquals(a, LocalDailyCopy.choose("lunch", 4, at(12, 0)))
+        assertTrue(a.length > 10)
+        assertFalse(a.contains("用户"))
+    }
+
+    @Test fun runningServiceCatchesDueSlotsWithoutDuplicatingOtherMinutes() {
+        assertEquals(listOf("weather_morning"),
+            LocalDailyReminderSchedule.dueForRunningService(at(8, 0) + 45_000L).map { it.key })
+        assertEquals(setOf("hourly", "nap_followup_1420"),
+            LocalDailyReminderSchedule.dueForRunningService(at(14, 20) + 30_000L)
+                .map { it.key }.toSet())
+        assertTrue(LocalDailyReminderSchedule.dueForRunningService(at(14, 23)).isEmpty())
+        assertEquals(listOf("steps_evening"),
+            LocalDailyReminderSchedule.dueForRunningService(at(18, 30) + 45_000L).map { it.key })
+    }
+
+    @Test fun weatherNeverInventsTemperatureWhenUnavailable() {
+        assertTrue(LocalDailyCopy.weather(null, true).contains("没读到实时数据"))
+        val wet = WeatherState(11.0, 8.0, 1.2, 1.2, 61, 28.0, at(8, 0))
+        val text = LocalDailyCopy.weather(wet, true)
+        assertTrue(text.contains("11℃"))
+        assertTrue(text.contains("带伞"))
+        assertTrue(text.contains("外套"))
+    }
+
+    @Test fun batteryWarningsStartBelowFortyAndFollowActualThreePointDrops() {
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(40, -1))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(39, -1))
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(38, 39))
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(37, 39))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(36, 39))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(33, 36))
+        // Installation or a missed reading may start at 38%; next warning is 35%, not 36%.
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(38, -1))
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(36, 38))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(35, 38))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(0, 3))
+        assertEquals("reminder.battery40", LocalLifeCopy.worldKey("battery36"))
+        assertTrue(LocalLifeCopy.battery(36, 0).contains("36%"))
+    }
+}

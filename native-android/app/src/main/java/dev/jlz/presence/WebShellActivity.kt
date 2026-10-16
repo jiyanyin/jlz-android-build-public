@@ -5,6 +5,10 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
+import android.hardware.Sensor
+import android.hardware.SensorManager
+import android.content.pm.PackageManager
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -28,6 +32,7 @@ class WebShellActivity : ComponentActivity() {
     private lateinit var studyBridge: StudySessionBridge
     private var nativeFallbackOpened = false
     private var pendingPack = ""
+    private val askSteps = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private val savePack = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if(uri!=null && pendingPack.isNotBlank()) contentResolver.openOutputStream(uri)?.use { it.write(pendingPack.toByteArray()) }
         pendingPack=""
@@ -48,6 +53,16 @@ class WebShellActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (Build.VERSION.SDK_INT >= 29 &&
+            checkSelfPermission(android.Manifest.permission.ACTIVITY_RECOGNITION) != PackageManager.PERMISSION_GRANTED &&
+            getSystemService(SensorManager::class.java)?.getDefaultSensor(Sensor.TYPE_STEP_COUNTER) != null) {
+            val permissionPrefs = getSharedPreferences("jlz_step_permission_v1", MODE_PRIVATE)
+            if (!permissionPrefs.getBoolean("asked", false)) {
+                permissionPrefs.edit().putBoolean("asked", true).apply()
+                askSteps.launch(android.Manifest.permission.ACTIVITY_RECOGNITION)
+            }
+        }
 
         CookieManager.getInstance().setAcceptCookie(true)
 
@@ -91,6 +106,7 @@ class WebShellActivity : ComponentActivity() {
                         val mime=when(asset.substringAfterLast('.')) {
                             "html"->"text/html"; "js"->"application/javascript"; "css"->"text/css";
                             "svg"->"image/svg+xml"; "webp"->"image/webp"; "png"->"image/png";
+                            "jpg","jpeg"->"image/jpeg";
                             "json","webmanifest"->"application/json"; "woff2"->"font/woff2"; else->"application/octet-stream"
                         }
                         WebResourceResponse(mime,"UTF-8",assets.open(asset))
@@ -239,10 +255,7 @@ class WebShellActivity : ComponentActivity() {
 
     companion object {
         private const val WEB_HOST = "between-worlds-prod.pages.dev"
-        private val WEB_HOSTS = setOf(
-            WEB_HOST,
-            "between-worlds-prod.onrender.com"
-        )
+        private val WEB_HOSTS = setOf(WEB_HOST)
         private const val WEB_URL = "https://between-worlds-prod.pages.dev/?shell=android"
         const val EXTRA_WEB_FALLBACK_REASON = "web_fallback_reason"
 

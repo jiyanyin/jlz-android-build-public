@@ -5,7 +5,6 @@
     <base-config cleartextTrafficPermitted="true" />
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">pages.dev</domain>
-        <domain includeSubdomains="true">onrender.com</domain>
         <domain includeSubdomains="true">railway.app</domain>
     </domain-config>
 </network-security-config>

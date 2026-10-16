@@ -7,7 +7,7 @@ import android.app.NotificationManager
 import android.net.Uri
 import android.provider.Settings
 import dev.jlz.presence.usage.SystemUsageSnapshot
-import dev.jlz.presence.capture.AutomaticCaptureCoordinator
+import dev.jlz.presence.capture.CaptureTrafficPolicy
 import dev.jlz.presence.life.NativeCalendarBridge
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -371,6 +371,7 @@ fun PlaceSettingsPanel() {
         ) {
             Text("生活位置", style = MaterialTheme.typography.titleMedium)
             Text("精确坐标留在本机；Runtime 默认只拿语义位置和天气。")
+            Text("离家、到单位、离开单位、回家按稳定地点变化提醒。必须先分别在真实地点设置锚点；首次定位不冒充刚刚到达。重装后请检查下面两项是否还在。通知失败最多重试十五分钟。")
             Text(
                 "HOME：" + (if (homeConfigured) "已设置" else "未设置") +
                     " · OFFICE：" + (if (officeConfigured) "已设置" else "未设置"),
@@ -503,17 +504,33 @@ fun IncomingCallSettingsPanel() {
 @Composable
 fun AutomaticCaptureSettingsPanel() {
     val context = LocalContext.current
-    val coordinator = remember { AutomaticCaptureCoordinator(context.applicationContext) }
-    var enabled by remember { mutableStateOf(coordinator.enabled()) }
+    val policy = remember { CaptureTrafficPolicy(context.applicationContext) }
+    val initial = remember { policy.automaticSelection() }
+    var enabled by remember { mutableStateOf(initial.first) }
+    var selectedCount by remember { mutableIntStateOf(initial.second.size) }
+    LaunchedEffect(policy) {
+        while (true) {
+            val current = policy.automaticSelection()
+            enabled = current.first
+            selectedCount = current.second.size
+            kotlinx.coroutines.delay(1000)
+        }
+    }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("我自己看看你在干什么", style = MaterialTheme.typography.titleMedium)
-            Text("你授权后，我在亮屏且无障碍可读取时自动暂存截图：学习时段约每4分钟一张，其他时段约每12分钟一张，按实际学习会话分列。")
-            Text("原图先留在手机；上传成功不等于官端GPT已经看过。手机截屏被系统拒绝时不会绕过 Android 限制。")
+            Text("你选定应用并授权后，我会在切换进入约6秒、停留30秒／2分钟／5分钟、之后每5分钟，以及滑动停稳后采样。每个应用至少间隔18秒；不设每小时张数上限，但仍受本机字节空间、重复画面和敏感页保护。")
+            Text("原图先放在世界之间的手机私有目录；联网后上传到电脑 Home Node 的 captures 目录，官端读取并确认后再释放本机传输副本。上传成功不等于官端GPT已经看过；系统拒绝截屏时不会绕过 Android 限制。")
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(if (enabled) "自动截图已开启" else "自动截图已暂停")
+                Text(if (enabled) "自动截图已开启 · ${selectedCount}个App" else
+                    if (selectedCount == 0) "先到模式页选择App" else "自动截图已暂停 · ${selectedCount}个App")
                 Switch(checked = enabled, onCheckedChange = { value ->
-                    if (coordinator.setEnabled(value)) enabled = value
+                    val (_, selected) = policy.automaticSelection()
+                    if (policy.configureAutomatic(value, selected)) {
+                        val current = policy.automaticSelection()
+                        enabled = current.first
+                        selectedCount = current.second.size
+                    }
                 })
             }
         }
@@ -558,7 +575,7 @@ fun EntertainmentGateSettingsPanel() {
         ) {
             Text("娱乐来电门禁", style = MaterialTheme.typography.titleMedium)
             Text(
-                "打开小红书、抖音、淘宝、拼多多等娱乐/购物 App 时，先出现一次「纪临洲来电」。接通后说明目的，再按这一轮的理由限时放行。",
+                "娱乐应用先答五题，十分钟内免重复；购物先答五题，三十分钟内免重复。之后接通「纪临洲来电」，确认这一轮的使用时间。",
                 style = MaterialTheme.typography.bodySmall
             )
             Row(
@@ -583,6 +600,10 @@ fun EntertainmentGateSettingsPanel() {
             }
             Text(
                 "Feed：明确目的 ${feedPurpose} 分钟 · 休息 ${feedBreak} 分钟 · 直接进去 ${direct} 分钟",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                "购物每轮十分钟。工作、学习和普通工具三题后，同一应用六十分钟免重复；电话、导航、相机、闹钟、验证码等必要功能免启动算数。",
                 style = MaterialTheme.typography.bodySmall
             )
             Text(

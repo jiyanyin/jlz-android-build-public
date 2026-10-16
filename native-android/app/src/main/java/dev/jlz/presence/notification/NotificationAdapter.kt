@@ -36,7 +36,8 @@ class NotificationAdapter(private val context: Context) {
         title: String = "我在找你",
         message: String,
         eventId: String = UUID.randomUUID().toString(),
-        intentId: String = UUID.randomUUID().toString()
+        intentId: String = UUID.randomUUID().toString(),
+        contentIntent: Intent? = null
     ): NotificationResult {
         val sleepQuiet = kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { dev.jlz.presence.focus.FocusRepository(context).current().modeNow() == dev.jlz.presence.focus.DailyMode.SLEEP }
         ensureChannel()
@@ -68,18 +69,18 @@ class NotificationAdapter(private val context: Context) {
         if (!sleepQuiet) dev.jlz.presence.overlay.FloatingPresenceService.privateMessageReaction()
         val avatar = createAvatarBitmap()
 
+        val openIntent = contentIntent ?: Intent(
+            Intent.ACTION_VIEW,
+            android.net.Uri.parse("https://between-worlds-prod.pages.dev/?shell=android#echo"),
+            context,
+            WebShellActivity::class.java
+        ).putExtra(NotificationReplyReceiver.EXTRA_EVENT_ID, eventId)
+            .putExtra(NotificationReplyReceiver.EXTRA_INTENT_ID, intentId)
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val contentPendingIntent = PendingIntent.getActivity(
             context,
             notificationId,
-            Intent(
-                Intent.ACTION_VIEW,
-                android.net.Uri.parse("https://between-worlds-prod.pages.dev/?shell=android#echo"),
-                context,
-                WebShellActivity::class.java
-            )
-                .putExtra(NotificationReplyReceiver.EXTRA_EVENT_ID, eventId)
-                .putExtra(NotificationReplyReceiver.EXTRA_INTENT_ID, intentId)
-                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or
                 PendingIntent.FLAG_IMMUTABLE
         )
@@ -134,9 +135,10 @@ class NotificationAdapter(private val context: Context) {
             .setAllowGeneratedReplies(true)
             .build()
 
-        val user = Person.Builder().setName("你").build()
+        val user = ConversationAvatars.owner(context)
         val companion = Person.Builder()
             .setName("纪临洲")
+            .setKey("world-between-companion")
             .setIcon(IconCompat.createWithBitmap(avatar))
             .setImportant(true)
             .build()
@@ -193,9 +195,10 @@ class NotificationAdapter(private val context: Context) {
     ): Boolean {
         if (notificationId < 0) return false
         val avatar = createAvatarBitmap()
-        val user = Person.Builder().setName("你").build()
+        val user = ConversationAvatars.owner(context)
         val companion = Person.Builder()
             .setName("纪临洲")
+            .setKey("world-between-companion")
             .setIcon(IconCompat.createWithBitmap(avatar))
             .build()
 

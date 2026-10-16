@@ -25,6 +25,9 @@ class EntertainmentGateBridge(context: Context) {
     private val studyRepository = StudySessionRepository(app)
     private val metricsStore = StudyMetricsStore(app)
     private val isTablet = app.resources.configuration.smallestScreenWidthDp >= 600
+    private fun releasePlan(profile: EntertainmentProfile, choice: EntertainmentIntentChoice) =
+        dev.jlz.presence.life.WeeklyBehaviorStore(app).adjust(profile,
+            EntertainmentGateV2Policy.releasePlan(isTablet, profile.tier, choice))
 
     @JavascriptInterface
     fun snapshot(packageName: String, reason: String): String {
@@ -55,33 +58,17 @@ class EntertainmentGateBridge(context: Context) {
         } ?: 0L
         val stepDone = pending != null && remainingMs <= 0L
 
-        val purpose = EntertainmentGateV2Policy.releasePlan(
-            isTablet,
-            profile.tier,
-            EntertainmentIntentChoice.PURPOSE
-        )
-        val rest = EntertainmentGateV2Policy.releasePlan(
-            isTablet,
-            profile.tier,
-            EntertainmentIntentChoice.BREAK
-        )
-        val direct = EntertainmentGateV2Policy.releasePlan(
-            isTablet,
-            profile.tier,
-            EntertainmentIntentChoice.DIRECT
-        )
-        val smallStep = EntertainmentGateV2Policy.releasePlan(
-            isTablet,
-            profile.tier,
-            EntertainmentIntentChoice.SMALL_STEP
-        )
+        val purpose = releasePlan(profile, EntertainmentIntentChoice.PURPOSE)
+        val rest = releasePlan(profile, EntertainmentIntentChoice.BREAK)
+        val direct = releasePlan(profile, EntertainmentIntentChoice.DIRECT)
+        val smallStep = releasePlan(profile, EntertainmentIntentChoice.SMALL_STEP)
         val seed = now xor packageName.hashCode().toLong()
 
         val fallback = if (reason == "expired") {
             EntertainmentGateCopy.expired(profile.appName, seed)
         } else {
-            dev.jlz.presence.persona.JlzVoiceCopy.line(app, "gate.incoming", profile.appName, now)
-                .ifBlank { EntertainmentGateCopy.incoming(profile.appName, seed) }
+            EntertainmentGateCopy.incoming(profile.appName,
+                seed xor dev.jlz.presence.persona.JlzVoiceStateEngine(app).read(now).mood.ordinal.toLong())
         }
         val incoming = dev.jlz.presence.runtime.WorldContentCache(app).text("gate.incoming", fallback)
 
@@ -110,6 +97,7 @@ class EntertainmentGateBridge(context: Context) {
             .put("small_step_remaining_ms", remainingMs)
             .put("small_step_text", stepText)
             .put("current_effective_ms", currentEffectiveMs)
+            .put("weekly_policy", dev.jlz.presence.life.WeeklyBehaviorStore(app).decision(packageName))
             .toString()
     }
 
@@ -127,7 +115,7 @@ class EntertainmentGateBridge(context: Context) {
             ?: return JSONObject().put("ok", false).put("error", "unknown_app").toString()
         val choice = parseChoice(choiceName)
             ?: return JSONObject().put("ok", false).put("error", "unknown_choice").toString()
-        val plan = EntertainmentGateV2Policy.releasePlan(isTablet, profile.tier, choice)
+        val plan = releasePlan(profile, choice)
         val release = repository.grant(profile, choice, plan.minutes)
         val launched = launcher.launchApp(packageName)
 

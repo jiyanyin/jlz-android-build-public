@@ -9,6 +9,7 @@ import dev.jlz.presence.focus.FocusRepository
 import dev.jlz.presence.focus.FocusGateActivity
 import dev.jlz.presence.focus.FocusState
 import dev.jlz.presence.focus.EntertainmentGateV2Coordinator
+import dev.jlz.presence.focus.ArithmeticGateCoordinator
 import dev.jlz.presence.overlay.FloatingPresenceMode
 import dev.jlz.presence.overlay.FloatingPresenceService
 import dev.jlz.presence.usage.ForegroundUsageTracker
@@ -29,6 +30,7 @@ class PresenceAccessibilityService : AccessibilityService() {
     private lateinit var focusRepository: FocusRepository
     private lateinit var automaticCapture: AutomaticCaptureCoordinator
     private lateinit var entertainmentGateV2: EntertainmentGateV2Coordinator
+    private lateinit var arithmeticGate: ArithmeticGateCoordinator
     private lateinit var unlockSoftGate: UnlockSoftGateCoordinator
     private val classifier by lazy { dev.jlz.presence.focus.LocalAppClassifier(applicationContext) }
     private val packagesChanged = object : android.content.BroadcastReceiver() {
@@ -68,6 +70,7 @@ class PresenceAccessibilityService : AccessibilityService() {
         focusRepository = FocusRepository(applicationContext)
         automaticCapture = AutomaticCaptureCoordinator(applicationContext)
         entertainmentGateV2 = EntertainmentGateV2Coordinator(this)
+        arithmeticGate = ArithmeticGateCoordinator(this)
         unlockSoftGate = UnlockSoftGateCoordinator(this)
         unlockSoftGate.start()
         scope.launch {
@@ -81,6 +84,10 @@ class PresenceAccessibilityService : AccessibilityService() {
         val packageName = event?.packageName?.toString()
         val eventType = event?.eventType ?: return
         val now = System.currentTimeMillis()
+        // Observe even apps blocked by the higher-priority focus/rest gates.
+        val arithmeticEntry = ::arithmeticGate.isInitialized &&
+            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            arithmeticGate.observeWindow(packageName)
         AccessibilityActionGateway.observeEventSource(event)
         if (::unlockSoftGate.isInitialized && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             unlockSoftGate.observeForeground(packageName)
@@ -142,6 +149,7 @@ class PresenceAccessibilityService : AccessibilityService() {
             return
         }
 
+        if (::arithmeticGate.isInitialized && arithmeticGate.intercept(packageName, eventType, now, arithmeticEntry)) return
         if (::entertainmentGateV2.isInitialized && !safe && !dev.jlz.presence.focus.DailyModePolicy.bypassEntertainment(dailyMode, packageName.orEmpty())) {
             entertainmentGateV2.observe(packageName, eventType, now)
         }
@@ -185,6 +193,7 @@ class PresenceAccessibilityService : AccessibilityService() {
         if (::automaticCapture.isInitialized) automaticCapture.close()
         if (::unlockSoftGate.isInitialized) unlockSoftGate.close()
         if (::entertainmentGateV2.isInitialized) entertainmentGateV2.close()
+        if (::arithmeticGate.isInitialized) arithmeticGate.close()
         AccessibilityActionGateway.unbind(this)
         AccessibilityScreenshotGateway.unbind(this)
         ScreenObservationBus.setConnected(false)
@@ -201,7 +210,7 @@ class PresenceAccessibilityService : AccessibilityService() {
         while (queue.isNotEmpty() && parts.size < 60 && seen < 200) {
             val node = queue.removeFirst()
             seen++
-            if (!node.isPassword) {
+            if (node.isVisibleToUser && !node.isPassword) {
                 val value = node.text?.toString()?.trim().orEmpty()
                 if (value.isNotEmpty()) parts += value.take(120)
             }

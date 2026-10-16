@@ -25,7 +25,7 @@ class CoWatchActivity : Activity() {
         super.onCreate(savedInstanceState)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(36, 60, 36, 36); setBackgroundColor(0xFFF5F3F8.toInt()) }
         root.addView(TextView(this).apply { text = "视频通话"; textSize = 24f })
-        root.addView(TextView(this).apply { text = "5／10分钟屏幕陪看\n这是约每5秒一张的屏幕采样，不是摄像头或双向实时视频。GPT需要主动读取才看见。\n只分享本次选定的应用，包括小红书等内容应用；锁屏、输入框与检测到的敏感页面会暂停采样。部分内嵌隐私画面无法完整识别，请避开聊天、支付及身份信息；可随时挂断。最长10分钟，最多120次采样，仅暂存最近90秒有限画面，挂断立即清除。"; textSize = 13f; setPadding(0, 20, 0, 24) })
+        root.addView(TextView(this).apply { text = "5／10分钟屏幕陪看\n这是约每5秒一张的屏幕采样，不是摄像头或双向实时视频。先在官端Chat里叫我开始看，再回这里启动；我必须在通话进行时通过MCP逐帧读取。不要等挂断后才叫我，画面只暂存最近90秒。\n只分享本次选定的应用，包括小红书等内容应用；锁屏、输入框与检测到的敏感页面会暂停采样。部分内嵌隐私画面无法完整识别，请避开聊天、支付及身份信息；可随时挂断。最长10分钟，最多120次采样，挂断立即清除。"; textSize = 13f; setPadding(0, 20, 0, 24) })
         status = TextView(this).apply { textSize = 13f }; root.addView(status)
         for (m in listOf(5, 10)) root.addView(Button(this).apply { text = "开始 $m 分钟"; textSize = 13f; setOnClickListener { minutes = m; chooseTarget() } })
         root.addView(Button(this).apply { text = "挂断"; setOnClickListener { stopService(Intent(this@CoWatchActivity, CoWatchService::class.java)); CoWatchState.active = false } })

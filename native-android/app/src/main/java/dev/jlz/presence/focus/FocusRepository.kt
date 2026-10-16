@@ -151,6 +151,9 @@ class FocusRepository(private val context: Context) {
         val started = if (mode == DailyMode.FOCUS) study.start() else null
         if (mode in setOf(DailyMode.FOCUS, DailyMode.BREAK)) dev.jlz.presence.study.StudyTimerService.sync(context)
         else dev.jlz.presence.study.StudyTimerService.stop(context)
+        if (started != null && !callWindow) {
+            dev.jlz.presence.study.StudyTimerService.nudgeStartedSession(context, started)
+        }
         lifeStore.recordTimeline("daily_mode", "切换作息模式", mode.name)
         // Offline reporting must never delay the local gate, timer or sleep transition.
         reportingScope.launch {

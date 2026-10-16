@@ -572,6 +572,8 @@ body,button,input,select,textarea{font-size:var(--wb-body)}
 .echo-day-nav button:disabled{opacity:.35;cursor:default}
 .echo-day-nav input[type="date"]{max-width:172px;min-height:36px;border:0;border-radius:12px;background:var(--secondary);color:var(--text);font:inherit;font-size:13px;text-align:center;padding:0 5px}
 .echo-day-list{min-height:200px;max-height:min(62vh,650px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.echo-page .echo-day-list{margin-bottom:12px}
+.echo-page .composer{position:static;bottom:auto;scroll-margin-bottom:calc(108px + env(safe-area-inset-bottom))}
 .echo-older{display:block;margin:6px auto 18px;padding:10px 14px;background:var(--secondary);color:var(--accent);border-radius:22px;border:0;cursor:pointer}
 .echo-older:disabled{opacity:.5}
 .echo-empty{padding:28px 16px;text-align:center;color:var(--muted);font-size:13px;line-height:1.8}
@@ -586,3 +588,4 @@ body,button,input,select,textarea{font-size:var(--wb-body)}
 .calendar-highlight:last-of-type{border-bottom:0}
 .calendar-highlight small{color:var(--accent);font-size:11px}
 .calendar-highlight p{margin:5px 0 0;line-height:1.7}
+.owner-decision{display:flex;align-items:center;gap:10px;margin:4px 0 16px;color:var(--muted-foreground);font-size:12px}

@@ -119,7 +119,7 @@ class FocusGateActivity : ComponentActivity() {
                                         Intent(
                                             Intent.ACTION_VIEW,
                                             android.net.Uri.parse(
-                                                "https://between-worlds-prod.onrender.com/?shell=android#echo"
+                                                "https://between-worlds-prod.pages.dev/?shell=android#echo"
                                             ),
                                             this@FocusGateActivity,
                                             WebShellActivity::class.java

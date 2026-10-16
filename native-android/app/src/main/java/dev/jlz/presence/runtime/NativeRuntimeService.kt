@@ -83,6 +83,7 @@ class NativeRuntimeService : Service() {
     private lateinit var deviceSystem: DeviceSystemController
     private lateinit var localLifeReminders: dev.jlz.presence.life.LocalLifeReminderEngine
     private lateinit var sensorMonitor: dev.jlz.presence.life.LocalLifeSensorMonitor
+    private lateinit var stepCounter: dev.jlz.presence.life.NativeStepCounter
     private var lifeTickJob: Job? = null
 
     private val deviceEventReceiver = object : BroadcastReceiver() {
@@ -138,7 +139,10 @@ class NativeRuntimeService : Service() {
         localLifeReminders = dev.jlz.presence.life.LocalLifeReminderEngine(applicationContext)
         sensorMonitor = dev.jlz.presence.life.LocalLifeSensorMonitor(applicationContext)
         sensorMonitor.start()
+        stepCounter = dev.jlz.presence.life.NativeStepCounter(applicationContext)
+        stepCounter.start()
         dev.jlz.presence.life.DailyHealthSchedule.scheduleAll(applicationContext)
+        dev.jlz.presence.life.LocalDailyReminderSchedule.schedule(applicationContext)
         val eventFilter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
@@ -175,9 +179,32 @@ class NativeRuntimeService : Service() {
         commandJob = scope.launch { runCommandLoop() }
         planJob = scope.launch { runPresencePlanLoop() }
         lifeTickJob = scope.launch {
+            var lastLocalAnalysisAt = 0L
             while (isActive) {
-                runCatching { localLifeReminders.tick(focusRepository.current().modeNow()) }
+                val nowMs = System.currentTimeMillis()
+                val localMode = focusRepository.current().modeNow()
+                runCatching { localLifeReminders.tick(localMode) }
                 runCatching { if (localLifeReminders.enabled()) sensorMonitor.start() else sensorMonitor.stop() }
+                runCatching { stepCounter.start(); stepCounter.tick() }
+                if (nowMs - lastLocalAnalysisAt >= 20 * 60_000L) {
+                    runCatching { dev.jlz.presence.life.WeeklyBehaviorStore(applicationContext).sample(nowMs) }
+                    lastLocalAnalysisAt = nowMs
+                }
+                runCatching {
+                    val date = java.time.Instant.ofEpochMilli(nowMs)
+                        .atZone(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate().toString()
+                    val summary = dev.jlz.presence.life.WeeklyBehaviorStore(applicationContext).day(date)
+                    dev.jlz.presence.persona.JlzVoiceStateEngine(applicationContext).observe(
+                        localMode,
+                        entertainmentMinutes = summary.optLong("entertainment_minutes", -1L)
+                            .takeIf { summary.optBoolean("usage_available", false) && it >= 0L },
+                        focusMinutes = summary.optLong("study_minutes", -1L).takeIf { it >= 0L },
+                        nowMs = nowMs)
+                }
+                dev.jlz.presence.life.LocalDailyReminderSchedule.dueForRunningService(
+                    nowMs).forEach { due ->
+                    runCatching { dev.jlz.presence.life.LocalDailyReminderSchedule.deliver(applicationContext, due) }
+                }
                 delay(60_000L)
             }
         }
@@ -189,6 +216,7 @@ class NativeRuntimeService : Service() {
         planJob?.cancel()
         lifeTickJob?.cancel()
         sensorMonitor.stop()
+        stepCounter.stop()
         scope.cancel()
         runCatching { unregisterReceiver(deviceEventReceiver) }
         runCatching {
@@ -249,6 +277,7 @@ class NativeRuntimeService : Service() {
                     localLifeReminders.weatherRain(weather.weatherCode, weather.precipitationMm)
                 }
 
+                placeWeatherSnapshot?.let { snapshot -> runCatching { localLifeReminders.observePlace(snapshot) } }
                 if (placeWeatherSnapshot?.transitioned == true) {
                     val previous =
                         placeWeatherSnapshot.previousPlace?.name
@@ -352,7 +381,8 @@ class NativeRuntimeService : Service() {
                         val pkg = item.optString("package_name")
                         val duration = item.optLong("duration_ms")
                         val category = when {
-                            pkg in setOf("com.taobao.taobao","com.xunmeng.pinduoduo","com.jingdong.app.mall") -> "shopping"
+                            dev.jlz.presence.focus.EntertainmentPolicy.profile(pkg)?.tier ==
+                                dev.jlz.presence.focus.EntertainmentTier.SHOPPING -> "shopping"
                             pkg in setOf("com.tencent.mm","com.tencent.mobileqq") -> "chat"
                             pkg in setOf("com.ss.android.ugc.aweme","com.smile.gifmaker") -> "short_video"
                             classifier.eligibleLearning(pkg) -> "learning"
@@ -813,10 +843,15 @@ class NativeRuntimeService : Service() {
             }
 
             "get_local_reminders_status" -> {
+                val nativeSteps = dev.jlz.presence.life.NativeStepSnapshot.today(applicationContext)
                 true to org.json.JSONObject()
                     .put("enabled", localLifeReminders.enabled())
                     .put("source", "android_local_reminder_engine")
                     .put("health", dev.jlz.presence.life.HuaweiHealthObservationStore(applicationContext).snapshot())
+                    .put("native_steps", JSONObject()
+                        .put("steps_since_first_observation", nativeSteps?.stepsSinceFirstObservation ?: JSONObject.NULL)
+                        .put("observed_at_ms", nativeSteps?.observedAtMs ?: JSONObject.NULL)
+                        .put("complete_day_estimate", nativeSteps?.completeDayEstimate ?: false))
                     .toString()
             }
 

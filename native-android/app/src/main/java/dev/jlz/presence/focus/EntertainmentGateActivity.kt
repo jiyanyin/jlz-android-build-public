@@ -244,9 +244,9 @@ private fun EntertainmentGateScreen(
                             }
                         },
                         onChoice = { choice ->
-                            val plan = EntertainmentGateV2Policy.releasePlan(
-                                isTablet, profile.tier, choice
-                            )
+                            val plan = dev.jlz.presence.life.WeeklyBehaviorStore(context)
+                                .adjust(profile, EntertainmentGateV2Policy.releasePlan(
+                                    isTablet, profile.tier, choice))
                             onOpenApp(choice, plan.minutes)
                         },
                         onSmallStep = {
@@ -289,8 +289,9 @@ private fun IncomingGate(
     val message = contentCache.text("gate.incoming", if (reason == "expired") {
         EntertainmentGateCopy.expired(appName, seed)
     } else {
-        dev.jlz.presence.persona.JlzVoiceCopy.line(
-            androidx.compose.ui.platform.LocalContext.current, "gate.incoming", appName)
+        EntertainmentGateCopy.incoming(appName,
+            seed xor dev.jlz.presence.persona.JlzVoiceStateEngine(
+                androidx.compose.ui.platform.LocalContext.current).read().mood.ordinal.toLong())
     })
 
     Column(
@@ -380,6 +381,10 @@ private fun ConnectedGate(
     onOpenStudy: () -> Unit,
     onClose: () -> Unit
 ) {
+    val localContext = androidx.compose.ui.platform.LocalContext.current
+    fun adjusted(choice: EntertainmentIntentChoice) =
+        dev.jlz.presence.life.WeeklyBehaviorStore(localContext).adjust(profile,
+            EntertainmentGateV2Policy.releasePlan(isTablet, profile.tier, choice))
     val remaining = pending?.let {
         EntertainmentGateV2Policy.remainingSmallStepMs(
             it.baselineEffectiveMs,
@@ -419,9 +424,7 @@ private fun ConnectedGate(
 
             Spacer(Modifier.height(18.dp))
             if (stepDone) {
-                val plan = EntertainmentGateV2Policy.releasePlan(
-                    isTablet, profile.tier, EntertainmentIntentChoice.SMALL_STEP
-                )
+                val plan = adjusted(EntertainmentIntentChoice.SMALL_STEP)
                 Button(
                     onClick = { onChoice(EntertainmentIntentChoice.SMALL_STEP) },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -451,9 +454,7 @@ private fun ConnectedGate(
             }
         } else if (selectedChoice != null) {
             val choice = selectedChoice!!
-            val plan = EntertainmentGateV2Policy.releasePlan(
-                isTablet, profile.tier, choice
-            )
+            val plan = adjusted(choice)
             GateSpeech(EntertainmentGateCopy.response(choice, seed))
             Spacer(Modifier.height(16.dp))
             Button(

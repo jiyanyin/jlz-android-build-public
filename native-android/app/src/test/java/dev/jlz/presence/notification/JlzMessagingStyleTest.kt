@@ -1,6 +1,8 @@
 package dev.jlz.presence.notification
 
 import android.graphics.Bitmap
+import android.app.NotificationManager
+import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import androidx.core.graphics.drawable.IconCompat
 import org.junit.Assert.assertEquals
@@ -10,6 +12,8 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
@@ -19,6 +23,19 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class JlzMessagingStyleTest {
+    @Test
+    fun realReplyNotificationIncludesSeparateOwnerAndCompanionAvatars() {
+        val context = RuntimeEnvironment.getApplication()
+        NotificationAdapter(context).updateReplyState(91, "纪临洲", "收到就回我", "收到", "已存本机")
+        val notification = shadowOf(context.getSystemService(NotificationManager::class.java)).getNotification(91)
+        val style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notification)!!
+        assertEquals("world-between-owner", style.user.key)
+        assertNotNull(style.user.icon)
+        assertEquals("world-between-companion", style.messages[0].person?.key)
+        assertNotNull(style.messages[0].person?.icon)
+        assertEquals("world-between-owner", style.messages[1].person?.key)
+    }
+
     private val user = Person.Builder().setName("你").build()
     private val companion = Person.Builder()
         .setName("纪临洲")

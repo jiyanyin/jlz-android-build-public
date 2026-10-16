@@ -45,6 +45,9 @@ object NativePhoneSnapshot {
         }
         val activity = DeviceActivityJournal(context.applicationContext)
         val highFrequency = activity.highFrequencySummary(context, deviceId = deviceId)
+        val nativeSteps = dev.jlz.presence.life.NativeStepSnapshot.today(context)
+        val exerciseDate = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).toString()
+        val confirmedWalk = dev.jlz.presence.life.NativeStepSnapshot.exercise(context, exerciseDate)
         return JSONObject()
             .put("source", "android_system_battery_power_network+android_usage_events")
             .put("device_id", deviceId)
@@ -74,5 +77,16 @@ object NativePhoneSnapshot {
             .put("current_screen_session_started_at_ms", highFrequency.opt("current_screen_session_started_at_ms"))
             .put("previous_screen_session", highFrequency.opt("previous_screen_session"))
             .put("network_type", kind)
+            .put("walking_state", dev.jlz.presence.life.NativeStepSnapshot.walking(context))
+            .put("native_step_counter", JSONObject()
+                .put("steps_since_first_observation", nativeSteps?.stepsSinceFirstObservation ?: JSONObject.NULL)
+                .put("observed_at_ms", nativeSteps?.observedAtMs ?: JSONObject.NULL)
+                .put("complete_day_estimate", nativeSteps?.completeDayEstimate ?: false)
+                .put("source", "android_step_counter_sensor"))
+            .put("confirmed_walk_today", JSONObject()
+                .put("date", exerciseDate)
+                .put("minutes", confirmedWalk.first)
+                .put("steps", confirmedWalk.second)
+                .put("source", "user_confirmed_android_step_counter"))
     }
 }

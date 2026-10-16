@@ -56,6 +56,7 @@ class StudySessionBridge(context: Context) {
         if (!state.active) {
             val sessionId = repository.start()
             StudyTimerService.sync(app)
+            StudyTimerService.nudgeStartedSession(app, sessionId)
             publish("start", sessionId, JSONObject(), now)
             state = repository.state.first()
         }

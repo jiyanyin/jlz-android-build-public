@@ -12,9 +12,8 @@ import java.time.ZoneId
  * expose a sleep duration after the user opens that page.
  */
 object HuaweiSleepTextParser {
-    private val duration = Regex("""(?:睡眠时长|昨晚睡眠|昨夜睡眠|总睡眠|睡了)\s*[:：]?\s*(?:(\d{1,2})\s*(?:小时|时|h))?\s*(\d{1,2})?\s*(?:分钟|分|min)?""", RegexOption.IGNORE_CASE)
-    private val hourMinute = Regex("""(?:睡眠时长|昨晚睡眠|昨夜睡眠|总睡眠)\s*[:：]?\s*(\d{1,2})\s*(?:小时|时|h)\s*(\d{1,2})\s*(?:分|分钟|min)""", RegexOption.IGNORE_CASE)
-    private val hoursOnly = Regex("""(?:睡眠时长|昨晚睡眠|昨夜睡眠|总睡眠)\s*[:：]?\s*(\d{1,2}(?:\.\d)?)\s*(?:小时|时|h)""", RegexOption.IGNORE_CASE)
+    private val hourMinute = Regex("""(?:睡眠时长|昨晚睡眠|昨夜睡眠|总睡眠|夜间睡眠)\s*[:：]?\s*(\d{1,2})\s*(?:小时|时|h)\s*(\d{1,2})\s*(?:分|分钟|min)""", RegexOption.IGNORE_CASE)
+    private val hoursOnly = Regex("""(?:睡眠时长|昨晚睡眠|昨夜睡眠|总睡眠|夜间睡眠)\s*[:：]?\s*(\d{1,2}(?:\.\d)?)\s*(?:小时|时|h)""", RegexOption.IGNORE_CASE)
     fun minutes(text: String): Int? {
         if (text.isBlank()) return null
         val exact = hourMinute.find(text.take(3500))
@@ -44,12 +43,23 @@ object HuaweiSleepDateEvidence {
     private val date = Regex(
         """(入睡日期|开始睡眠日期|起床日期|醒来日期)\s*[:：]?\s*(\d{4})[年./-](\d{1,2})[月./-](\d{1,2})日?"""
     )
-    enum class Result { VERIFIED, NO_DATE_EVIDENCE, MISMATCH }
+    // Huawei's daily sleep detail shows a selected wake-day header directly
+    // above the nighttime total, without a year or a "起床日期" label.
+    private val selectedNightDate = Regex(
+        """(?m)^\s*(\d{1,2})月(\d{1,2})日(?:\s*周[一二三四五六日天])?\s*\r?\n\s*夜间睡眠\s*\r?\n"""
+    )
+    enum class Result { VERIFIED, VERIFIED_SELECTED_DAY, NO_DATE_EVIDENCE, MISMATCH }
     fun check(text: String, observedAtMs: Long): Result {
         val today = Instant.ofEpochMilli(observedAtMs)
             .atZone(ZoneId.of("Asia/Shanghai")).toLocalDate()
         val entries = date.findAll(text.take(3500)).toList()
-        if (entries.isEmpty()) return Result.NO_DATE_EVIDENCE
+        if (entries.isEmpty()) {
+            val selected = selectedNightDate.find(text.take(3500)) ?: return Result.NO_DATE_EVIDENCE
+            val month = selected.groupValues[1].toIntOrNull() ?: return Result.MISMATCH
+            val day = selected.groupValues[2].toIntOrNull() ?: return Result.MISMATCH
+            return if (month == today.monthValue && day == today.dayOfMonth)
+                Result.VERIFIED_SELECTED_DAY else Result.MISMATCH
+        }
         val nighttime = listOf("昨晚", "昨夜", "夜间睡眠").any(text::contains)
         var valid = false
         for (entry in entries) {
@@ -96,7 +106,8 @@ class HuaweiHealthObservationStore(context: Context) {
             prefs.edit().putString("sleep_last_parse_status", "visible_page_wrong_date").apply()
             return false
         }
-        val verified = evidence == HuaweiSleepDateEvidence.Result.VERIFIED
+        val verified = evidence == HuaweiSleepDateEvidence.Result.VERIFIED ||
+            evidence == HuaweiSleepDateEvidence.Result.VERIFIED_SELECTED_DAY
         val existingVerified = prefs.getBoolean("sleep_date_evidence_verified", false) &&
             prefs.getString("sleep_observed_day", "") == date(observedAtMs)
         if (!verified && existingVerified) {
@@ -112,7 +123,11 @@ class HuaweiHealthObservationStore(context: Context) {
             .putBoolean("sleep_date_evidence_verified", verified)
             .putString("sleep_source", "huawei_health_accessibility_visible_page")
             .putString("sleep_date_semantics",
-                if (verified) "explicit_prior_night_date_on_visible_page" else "shown_page_date_not_verified")
+                when (evidence) {
+                    HuaweiSleepDateEvidence.Result.VERIFIED -> "explicit_prior_night_date_on_visible_page"
+                    HuaweiSleepDateEvidence.Result.VERIFIED_SELECTED_DAY -> "selected_huawei_night_date_matches_observed_day"
+                    else -> "shown_page_date_not_verified"
+                })
             .putString("sleep_last_parse_status",
                 if (verified) "sleep_visible_verified" else "sleep_visible_date_unverified")
             .commit()
@@ -120,15 +135,17 @@ class HuaweiHealthObservationStore(context: Context) {
 
     fun markMorningAttempt(atMs: Long = System.currentTimeMillis()) {
         prefs.edit().putLong("morning_check_at_ms", atMs)
-            .putString("morning_check_result", "checking_visible_sources").apply()
+            .putString("morning_check_result", "checking_visible_sources")
+            .putBoolean("morning_open_prompt_shown", false).apply()
     }
 
-    fun markMorningResult(reason: String) {
+    fun markMorningResult(reason: String, promptShown: Boolean = false) {
         require(reason in setOf("sleep_visible_verified", "sleep_visible_date_unverified",
             "visible_page_wrong_date", "sleep_duration_missing",
             "sleep_visible_unverified_ignored",
             "huawei_page_not_visible", "visible_source_check_failed"))
-        prefs.edit().putString("morning_check_result", reason).apply()
+        prefs.edit().putString("morning_check_result", reason)
+            .putBoolean("morning_open_prompt_shown", promptShown).apply()
     }
 
     fun mostRecentParseStatus(): String =
@@ -158,6 +175,7 @@ class HuaweiHealthObservationStore(context: Context) {
             .put("sleep_fresh", sleepValid)
             .put("morning_check_at_ms", prefs.getLong("morning_check_at_ms", 0L))
             .put("morning_check_result", prefs.getString("morning_check_result", "not_checked"))
+            .put("morning_open_prompt_shown", prefs.getBoolean("morning_open_prompt_shown", false))
             .put("medical_sensor_connected", false)
     }
 }

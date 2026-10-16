@@ -67,13 +67,13 @@ class LocalReminderDeliveryLedgerTest {
     }
 
     @Test fun batteryWarningsOnlyEscalateUntilRealChargingRearm() {
-        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(40, 0))
-        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(20, 40))
-        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(10, 20))
-        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(20, 10))
-        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(40, 20))
-        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(0, 40))
-        // New discharge cycle resets lowest-notified to zero.
-        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(40, 0))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(39, -1))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(36, 39))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(33, 36))
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(36, 33))
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(35, 33))
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(-1, 33))
+        // A rearmed discharge cycle resets the last-notified percentage to -1.
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(38, -1))
     }
 }

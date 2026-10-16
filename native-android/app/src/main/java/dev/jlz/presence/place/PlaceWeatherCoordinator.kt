@@ -28,14 +28,14 @@ class PlaceWeatherCoordinator(context: Context) {
     private val stabilizer = SemanticPlaceStabilizer(appContext)
     private val weather = WeatherAdapter()
 
-    suspend fun snapshot(): PlaceWeatherSnapshot {
-        val current = location.currentLocation()
+    suspend fun snapshot(locationTimeoutMs: Long = 8_000L, weatherTimeoutMs: Int = 8_000): PlaceWeatherSnapshot {
+        val current = location.currentLocation(locationTimeoutMs)
         val raw = semantic.classify(current)
         val stable = stabilizer.stabilize(raw)
         return PlaceWeatherSnapshot(
             place = stable.state,
             weather = runCatching {
-                weather.current(current)
+                weather.current(current, weatherTimeoutMs)
             }.getOrNull(),
             transitioned = stable.transitioned,
             previousPlace = stable.previousPlace

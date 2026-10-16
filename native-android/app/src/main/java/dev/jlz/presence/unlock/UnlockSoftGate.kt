@@ -176,7 +176,7 @@ class UnlockSoftGateCoordinator(
         if (!UnlockSoftGatePolicy.shouldPresent(input)) return
 
         val uri = Uri.parse(
-            "https://between-worlds-prod.onrender.com/?shell=android&entry=unlock"
+            "https://between-worlds-prod.pages.dev/?shell=android&entry=unlock"
         )
         val launched = runCatching {
             service.startActivity(

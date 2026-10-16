@@ -25,17 +25,15 @@ object EntertainmentGateV2Policy {
         isTablet: Boolean,
         tier: EntertainmentTier,
         choice: EntertainmentIntentChoice
-    ): EntertainmentReleasePlan = when (choice) {
+    ): EntertainmentReleasePlan = if (tier == EntertainmentTier.SHOPPING) {
+        EntertainmentReleasePlan(10, "这一轮逛十分钟")
+    } else when (choice) {
         EntertainmentIntentChoice.PURPOSE -> when {
-            isTablet && tier == EntertainmentTier.SHOPPING -> EntertainmentReleasePlan(12, "办完事就出来")
             isTablet -> EntertainmentReleasePlan(8, "有目的地看")
-            tier == EntertainmentTier.SHOPPING -> EntertainmentReleasePlan(10, "买完就走")
             else -> EntertainmentReleasePlan(5, "只看要找的")
         }
         EntertainmentIntentChoice.BREAK -> when {
-            isTablet && tier == EntertainmentTier.SHOPPING -> EntertainmentReleasePlan(10, "休息一小段")
             isTablet -> EntertainmentReleasePlan(8, "休息一小段")
-            tier == EntertainmentTier.SHOPPING -> EntertainmentReleasePlan(6, "逛一小段")
             else -> EntertainmentReleasePlan(5, "休息一小段")
         }
         EntertainmentIntentChoice.DIRECT -> EntertainmentReleasePlan(

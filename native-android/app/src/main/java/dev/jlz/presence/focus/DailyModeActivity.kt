@@ -17,6 +17,7 @@ import kotlinx.coroutines.*
 class DailyModeActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val repo by lazy { FocusRepository(applicationContext) }
+    private val content by lazy { dev.jlz.presence.runtime.WorldContentCache(applicationContext) }
     private lateinit var root: LinearLayout
     private var tick: Job? = null
     private val ice by lazy { dev.jlz.presence.ui.theme.NativeIceStyle(this) }
@@ -87,7 +88,8 @@ class DailyModeActivity : Activity() {
         val remaining = label("", 32f)
         root.addView(clock)
         root.addView(remaining)
-        root.addView(label("这一段交给我。先做完眼前的题。", 13f))
+        root.addView(label(content.text("mode.focus", "这一段交给我。先做完眼前的题。"), 13f))
+        content.displayed(listOf("mode.focus"))
         tick = scope.launch {
             while (isActive) {
                 val state = repo.current()
@@ -131,11 +133,12 @@ class DailyModeActivity : Activity() {
                 delay(1000)
             }
         }
-        section("留一段时间给学习", "专注仅 GPT／粉笔／独立伴读；先核对学习应用。")
+        section("留一段时间给学习", content.text("mode.focus", "专注仅 GPT／粉笔／独立伴读；先核对学习应用。"))
         presets(DailyMode.FOCUS, listOf(25, 45, 60))
-        section("休息，也有分寸", "短休不放行游戏；哔哩哔哩可用。")
+        section("休息，也有分寸", content.text("mode.break", "短休不放行游戏；哔哩哔哩可用。"))
         presets(DailyMode.BREAK, listOf(5, 10, 15))
-        section("收好今天", "睡眠保持安静，电话与原生闹钟照常。")
+        section("收好今天", content.text("mode.sleep", "睡眠保持安静，电话与原生闹钟照常。"))
+        content.displayed(listOf("mode.focus", "mode.break", "mode.sleep"))
         button("睡眠模式") { change(DailyMode.SLEEP) }
         button("结束当前模式") { change(DailyMode.NORMAL) }
         section("生活里的小安排", "应用身份、起床时间与已有日历。")
@@ -200,7 +203,8 @@ class DailyModeActivity : Activity() {
         root.addView(Space(this), LinearLayout.LayoutParams(1, 0, 1f))
         val sleeper = ChibiPresenceView(this).apply { setSizeDp(126); setMood("sleep") }
         root.addView(sleeper)
-        root.addView(label("安心睡。电话和闹钟照常。", 13f).apply { setTextColor(0xFFBAC4D5.toInt()) })
+        root.addView(label(content.text("mode.sleep", "安心睡。电话和闹钟照常。"), 13f).apply { setTextColor(0xFFBAC4D5.toInt()) })
+        content.displayed(listOf("mode.sleep"))
         button("我醒了") {
             val keyguard = getSystemService(KeyguardManager::class.java)
             if (keyguard.isDeviceLocked && android.os.Build.VERSION.SDK_INT >= 26) {
@@ -276,22 +280,19 @@ class DailyModeActivity : Activity() {
             Toast.makeText(this, "找不到合适的可选应用", Toast.LENGTH_LONG).show()
             return
         }
-        val checked = BooleanArray(installed.size) { i ->
-            installed[i].activityInfo.packageName in selected
+        val choices = installed.map {
+            dev.jlz.presence.ui.AutomaticCaptureAppChoice(
+                it.activityInfo.packageName, it.loadLabel(packageManager).toString())
         }
-        val labels = installed.map { it.loadLabel(packageManager).toString() }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("允许我在哪些 App 截图？")
-            .setMessage("开启后只在勾选的应用中自动采样。图片短暂存储于手机和私人 Runtime，供官端读取；不包含系统安全界面。可随时暂停。")
-            .setMultiChoiceItems(labels, checked) { _, index, selectedNow -> checked[index] = selectedNow }
-            .setPositiveButton("保存并开启") { _, _ ->
-                val packages = installed.indices.filter { checked[it] }
-                    .map { installed[it].activityInfo.packageName }.toSet()
-                val ok = traffic.configureAutomatic(true, packages)
-                Toast.makeText(this,
-                    if (ok) "已保存：允许自动截图 ${packages.size} 个 App" else "保存失败",
-                    Toast.LENGTH_LONG).show()
-            }.setNegativeButton("取消", null).show()
+        dev.jlz.presence.ui.AutomaticCaptureAppDialog.show(this, choices, selected) { packages ->
+            val committed = traffic.configureAutomatic(true, packages)
+            val (enabled, saved) = traffic.automaticSelection()
+            val ok = committed && enabled && saved == packages
+            Toast.makeText(this,
+                if (ok) "已保存并开启：${saved.size} 个 App" else "保存未确认，请重试",
+                Toast.LENGTH_LONG).show()
+            ok
+        }
     }
 
     private fun callWindowPermission() {
