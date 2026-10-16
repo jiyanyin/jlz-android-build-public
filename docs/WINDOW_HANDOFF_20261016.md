@@ -1,5 +1,7 @@
 # World Between — October 16 engineering handoff
 
+Latest phone state at 12:34: owner reinstalled local.5 and restored existing native Runtime settings. A fresh heartbeat reports local.5+2026101603 on the original phone identity; live capabilities returned through the authenticated local command path. Gate and input-color device behavior remain pending. Secure-unlock setup is absent; connector requests timed out while the local read path succeeded. Earlier uninstall/not-installed text below is historical, not the current phone connection state.
+
 Later owner-approved gate revision: [APP_GATE_POLICY_20261016.md](APP_GATE_POLICY_20261016.md), targeting `.5 / 2026101603`. Entertainment: five questions / ten-minute per-app arithmetic exemption; shopping: five / thirty minutes with independent ten-minute time gates; work/tools: three / sixty minutes. Explicit dark input text replaces theme-dependent colors. The owner has since uninstalled the phone app; `.4` device evidence below is historical. No reinstall or pairing is authorized by this revision.
 
 12:00 build receipt: `.5` private complete APK is now prepared. CI 38847645449 passed 124 tests, lint, assembly and stable signing; local authenticated decryption, manifest/certificate checks and all private resource comparisons passed. No device installation or behavioral acceptance occurred. See the gate policy document for exact artifact hash and evidence boundaries.
