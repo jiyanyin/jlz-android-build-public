@@ -52,13 +52,19 @@ class LocalDailyReminderTest {
         assertTrue(text.contains("外套"))
     }
 
-    @Test fun batteryBandsContinueEveryThreePercentBelowTwenty() {
-        assertEquals(20, LocalLifeReminderPolicy.batteryBand(19))
-        assertEquals(17, LocalLifeReminderPolicy.batteryBand(17))
-        assertEquals(14, LocalLifeReminderPolicy.batteryBand(14))
-        assertEquals(11, LocalLifeReminderPolicy.batteryBand(10))
-        assertEquals(8, LocalLifeReminderPolicy.batteryBand(8))
-        assertEquals(5, LocalLifeReminderPolicy.batteryBand(5))
-        assertEquals(2, LocalLifeReminderPolicy.batteryBand(1))
+    @Test fun batteryWarningsStartBelowFortyAndFollowActualThreePointDrops() {
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(40, -1))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(39, -1))
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(38, 39))
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(37, 39))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(36, 39))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(33, 36))
+        // Installation or a missed reading may start at 38%; next warning is 35%, not 36%.
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(38, -1))
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(36, 38))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(35, 38))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(0, 3))
+        assertEquals("reminder.battery40", LocalLifeCopy.worldKey("battery36"))
+        assertTrue(LocalLifeCopy.battery(36, 0).contains("36%"))
     }
 }

@@ -130,12 +130,12 @@ class HuaweiHealthObservationTest {
     }
 
     @Test fun batteryAndEntertainmentThresholdsUseBounds() {
-        assertEquals(0, LocalLifeReminderPolicy.batteryBand(41))
-        assertEquals(40, LocalLifeReminderPolicy.batteryBand(40))
-        assertEquals(20, LocalLifeReminderPolicy.batteryBand(20))
-        assertEquals(17, LocalLifeReminderPolicy.batteryBand(17))
-        assertEquals(11, LocalLifeReminderPolicy.batteryBand(10))
-        assertEquals(2, LocalLifeReminderPolicy.batteryBand(1))
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(41, -1))
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(40, -1))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(39, -1))
+        assertFalse(LocalLifeReminderPolicy.shouldWarnBattery(38, 39))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(36, 39))
+        assertTrue(LocalLifeReminderPolicy.shouldWarnBattery(1, 4))
         assertEquals(0, LocalLifeReminderPolicy.entertainmentStage(29))
         assertEquals(30, LocalLifeReminderPolicy.entertainmentStage(30))
         assertEquals(45, LocalLifeReminderPolicy.entertainmentStage(45))

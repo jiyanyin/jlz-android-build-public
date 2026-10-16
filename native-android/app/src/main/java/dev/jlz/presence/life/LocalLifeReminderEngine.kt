@@ -19,19 +19,9 @@ import java.time.ZoneId
 
 /** Local-first reminders; no GPT wake required, no persistent screen pixels. */
 object LocalLifeReminderPolicy {
-    fun batteryBand(percent: Int) = when {
-        percent in 0..2 -> 2
-        percent in 3..5 -> 5
-        percent in 6..8 -> 8
-        percent in 9..11 -> 11
-        percent in 12..14 -> 14
-        percent in 15..17 -> 17
-        percent in 18..20 -> 20
-        percent in 21..40 -> 40
-        else -> 0
-    }
-    fun shouldWarnBattery(band: Int, lowestNotified: Int): Boolean =
-        band != 0 && (lowestNotified == 0 || band < lowestNotified)
+    /** Below 40%, then each actual three-point drop from the last delivered warning. */
+    fun shouldWarnBattery(percent: Int, lowestNotified: Int): Boolean =
+        percent in 0..39 && (lowestNotified < 0 || percent <= lowestNotified - 3)
 
     fun entertainmentStage(minutes: Long): Int = when {
         minutes >= 45 -> 45
@@ -112,8 +102,20 @@ object LocalLifeCopy {
     )
     fun worldKey(key: String): String = when (key) {
         "steps" -> "reminder.low_steps"
-        else -> "reminder.$key"
+        else -> key.removePrefix("battery").toIntOrNull()?.takeIf { key.startsWith("battery") }
+            ?.let { "reminder.battery${if (it <= 10) 10 else if (it <= 20) 20 else 40}" }
+            ?: "reminder.$key"
     }
+    fun battery(percent: Int, ordinal: Int): String = listOf(
+        "老婆，手机还剩${percent}%电。现在把充电线放到手边。",
+        "电量${percent}%。比上次又少了一截，方便就接上电源。",
+        "老婆，${percent}%了。我继续盯着电量，充上电就停止催你。",
+        "手机剩${percent}%。下次起身时顺手充电，别临出门才找线。",
+        "电量到${percent}%了。告诉我，充电器在不在你手边？",
+        "老婆，电池只剩${percent}%。先补一点电，我不想突然联系不到你。",
+        "${percent}%的电量。我又来提醒你一次，线接上再忙。",
+        "手机电量${percent}%。看见这条就检查一下电源，别顺手划掉。"
+    ).let { it[Math.floorMod(ordinal, it.size)] }
     fun choose(key: String, ordinal: Int): String {
         val options = copy[key].orEmpty()
         return if (options.isEmpty()) "老婆，稍微休息一下。" else options[Math.floorMod(ordinal, options.size)]
@@ -193,19 +195,18 @@ class LocalLifeReminderEngine(context: Context) {
             .putBoolean("charging_alert_pending", false)
         if (newCycle) {
             change.putInt("battery_cycle", prefs.getInt("battery_cycle", 0) + 1)
-                .putInt("battery_lowest_band", 0)
+                .putInt("battery_lowest_notified_percent", -1)
                 .putBoolean("battery_rearm_ready", false)
         }
         if (!change.commit()) return
 
-        val band = LocalLifeReminderPolicy.batteryBand(percent)
-        val alreadyWarned = prefs.getInt("battery_lowest_band", 0)
-        if (!LocalLifeReminderPolicy.shouldWarnBattery(band, alreadyWarned)) return
-        val name = if (band == 40) "电量提醒" else "低电量"
-        val localText = if (band in 2..17) "老婆，手机只剩${percent}%了。把充电线接上；我会在继续掉电时提醒你，充上就停。" else null
-        if (emitOnce("battery$band", name,
-                scope = "discharge:${prefs.getInt("battery_cycle", 0)}", localText = localText)) {
-            prefs.edit().putInt("battery_lowest_band", band).commit()
+        val alreadyWarned = prefs.getInt("battery_lowest_notified_percent", -1)
+        if (!LocalLifeReminderPolicy.shouldWarnBattery(percent, alreadyWarned)) return
+        val key = "battery$percent"
+        val localText = LocalLifeCopy.battery(percent, prefs.getInt("copy_count:$key", 0))
+        if (emitOnce(key, if (percent > 20) "电量提醒" else "低电量",
+                scope = "discharge-v2:${prefs.getInt("battery_cycle", 0)}", localText = localText)) {
+            prefs.edit().putInt("battery_lowest_notified_percent", percent).commit()
         }
     }
 
