@@ -43,6 +43,8 @@ class CaptureTrafficPolicy(context: Context) {
             !pkg.contains("bank", ignoreCase = true) &&
             pkg !in setOf("com.tencent.mm", "com.eg.android.AlipayGphone")
         }.toSet()
+        // A rejected enable request must preserve the last valid saved selection.
+        if (enabled && safePackages.isEmpty()) return@synchronized false
         prefs.edit().putBoolean("automatic_enabled", enabled && safePackages.isNotEmpty())
             .putStringSet("automatic_packages", safePackages).commit()
     }

@@ -507,7 +507,15 @@ fun AutomaticCaptureSettingsPanel() {
     val policy = remember { CaptureTrafficPolicy(context.applicationContext) }
     val initial = remember { policy.automaticSelection() }
     var enabled by remember { mutableStateOf(initial.first) }
-    val selectedCount = remember { initial.second.size }
+    var selectedCount by remember { mutableIntStateOf(initial.second.size) }
+    LaunchedEffect(policy) {
+        while (true) {
+            val current = policy.automaticSelection()
+            enabled = current.first
+            selectedCount = current.second.size
+            kotlinx.coroutines.delay(1000)
+        }
+    }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("我自己看看你在干什么", style = MaterialTheme.typography.titleMedium)
@@ -519,7 +527,9 @@ fun AutomaticCaptureSettingsPanel() {
                 Switch(checked = enabled, onCheckedChange = { value ->
                     val (_, selected) = policy.automaticSelection()
                     if (policy.configureAutomatic(value, selected)) {
-                        enabled = value && selected.isNotEmpty()
+                        val current = policy.automaticSelection()
+                        enabled = current.first
+                        selectedCount = current.second.size
                     }
                 })
             }

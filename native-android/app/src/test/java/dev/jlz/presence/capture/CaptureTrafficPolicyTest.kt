@@ -23,6 +23,20 @@ class CaptureTrafficPolicyTest {
         context.getSharedPreferences("jlz_capture_traffic_v1", Context.MODE_PRIVATE).edit()
             .putBoolean("automatic_enabled", true).putStringSet("automatic_packages", setOf("test.app", "com.openai.chatgpt")).commit()
     }
+    @Test fun emptyOrUnsafeEnableCannotEraseDurableSelection() {
+        val selected = setOf("com.xingin.xhs", "tv.danmaku.bili")
+        assertTrue(policy.configureAutomatic(true, selected))
+        assertFalse(policy.configureAutomatic(true, emptySet()))
+        assertFalse(policy.configureAutomatic(true, setOf("com.tencent.mm", "com.openai.chatgpt", "com.android.settings")))
+        assertEquals(true to selected, CaptureTrafficPolicy(context).automaticSelection())
+        assertTrue(policy.configureAutomatic(false, selected))
+        assertEquals(false to selected, CaptureTrafficPolicy(context).automaticSelection())
+    }
+
+    @Test fun initialEmptyEnableStaysClosed() {
+        assertFalse(policy.configureAutomatic(true, emptySet()))
+        assertEquals(false to emptySet<String>(), CaptureTrafficPolicy(context).automaticSelection())
+    }
     @Test fun defaultClosedAndExplicitWhitelist() {
         assertFalse(policy.canCapture("test.app")); allow()
         assertTrue(policy.canCapture("test.app"))

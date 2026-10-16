@@ -280,22 +280,19 @@ class DailyModeActivity : Activity() {
             Toast.makeText(this, "找不到合适的可选应用", Toast.LENGTH_LONG).show()
             return
         }
-        val checked = BooleanArray(installed.size) { i ->
-            installed[i].activityInfo.packageName in selected
+        val choices = installed.map {
+            dev.jlz.presence.ui.AutomaticCaptureAppChoice(
+                it.activityInfo.packageName, it.loadLabel(packageManager).toString())
         }
-        val labels = installed.map { it.loadLabel(packageManager).toString() }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("允许我在哪些 App 截图？")
-            .setMessage("开启后只在勾选的应用中自动采样。图片短暂存储于手机和私人 Runtime，供官端读取；不包含系统安全界面。可随时暂停。")
-            .setMultiChoiceItems(labels, checked) { _, index, selectedNow -> checked[index] = selectedNow }
-            .setPositiveButton("保存并开启") { _, _ ->
-                val packages = installed.indices.filter { checked[it] }
-                    .map { installed[it].activityInfo.packageName }.toSet()
-                val ok = traffic.configureAutomatic(true, packages)
-                Toast.makeText(this,
-                    if (ok) "已保存：允许自动截图 ${packages.size} 个 App" else "保存失败",
-                    Toast.LENGTH_LONG).show()
-            }.setNegativeButton("取消", null).show()
+        dev.jlz.presence.ui.AutomaticCaptureAppDialog.show(this, choices, selected) { packages ->
+            val committed = traffic.configureAutomatic(true, packages)
+            val (enabled, saved) = traffic.automaticSelection()
+            val ok = committed && enabled && saved == packages
+            Toast.makeText(this,
+                if (ok) "已保存并开启：${saved.size} 个 App" else "保存未确认，请重试",
+                Toast.LENGTH_LONG).show()
+            ok
+        }
     }
 
     private fun callWindowPermission() {
