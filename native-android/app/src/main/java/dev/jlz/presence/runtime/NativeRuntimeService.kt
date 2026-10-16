@@ -183,6 +183,13 @@ class NativeRuntimeService : Service() {
         }
     }
 
+    // Recreate the long-running command/heartbeat transport after recoverable process death.
+    // This cannot and must not silently re-enable Accessibility in Android Settings.
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
+        return START_STICKY
+    }
+
     override fun onDestroy() {
         heartbeatJob?.cancel()
         commandJob?.cancel()
