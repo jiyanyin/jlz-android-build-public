@@ -15,6 +15,7 @@ export type TripTrace = {ok:boolean;session:TripSummary;points:TripPoint[];next_
 
 export type HomeBridge = {
   available(): boolean;
+  connectionStatus?(): string;
   request(path: string, method: string, body: string): string;
   requestAsync?(id: string, path: string, method: string, body: string): void;
   snapshot(): string;

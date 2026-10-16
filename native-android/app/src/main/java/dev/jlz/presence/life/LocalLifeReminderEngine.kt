@@ -248,8 +248,9 @@ class LocalLifeReminderEngine(context: Context) {
             val pkg = row.optString("package_name")
             val category = classifier.classify(pkg)
             // Work/study/ordinary shopping are deliberately excluded.
-            if (category == LocalAppCategory.GAME || category == LocalAppCategory.FEED ||
-                EntertainmentPolicy.profile(pkg)?.tier == dev.jlz.presence.focus.EntertainmentTier.FEED) {
+            if (EntertainmentPolicy.profile(pkg)?.tier != dev.jlz.presence.focus.EntertainmentTier.SHOPPING &&
+                (category == LocalAppCategory.GAME || category == LocalAppCategory.FEED ||
+                EntertainmentPolicy.profile(pkg)?.tier == dev.jlz.presence.focus.EntertainmentTier.FEED)) {
                 ms += row.optLong("duration_ms", 0L).coerceAtLeast(0L)
             }
         }
@@ -317,17 +318,41 @@ class LocalLifeReminderEngine(context: Context) {
             LocalDailyCopy.weather(weather, key == "weather_morning"))
     }
 
-    fun departure(previous: SemanticPlace?, current: SemanticPlace, freshnessMs: Long,
-                  confidence: Float, nowMs: Long = System.currentTimeMillis()): Boolean {
-        if (previous !in setOf(SemanticPlace.HOME, SemanticPlace.OFFICE) ||
-            current !in setOf(SemanticPlace.OUTSIDE, SemanticPlace.COMMUTING) ||
-            freshnessMs !in 0..(5 * 60_000L) || confidence < 0.55f) return false
-        val key = if (previous == SemanticPlace.HOME) "depart_home" else "depart_office"
-        val scope = date(nowMs) + ":" + (nowMs / (4 * 60 * 60_000L))
-        return emitOnce(key, "出门路上", nowMs, scope,
-            LocalDailyCopy.choose(key, prefs.getInt("copy_count:$key", 0), nowMs,
-                dev.jlz.presence.persona.JlzVoiceStateEngine(app).read(nowMs).mood,
-                LocalStatusLamp(app).fresh(nowMs)))
+    /** Durable bounded retry; one stable transition, rather than one four-hour bucket. */
+    @Synchronized
+    fun observePlace(snapshot: dev.jlz.presence.place.PlaceWeatherSnapshot,
+                     nowMs: Long = System.currentTimeMillis()) {
+        val current = snapshot.place
+        val raw = runCatching { org.json.JSONArray(prefs.getString("place_pending_v1", "[]")) }
+            .getOrElse { org.json.JSONArray() }
+        val pending = (0 until raw.length()).mapNotNull { raw.optJSONObject(it) }.toMutableList()
+        if (snapshot.transitioned && current.lastTransitionAtMs > 0L) {
+            PlaceReminderPolicy.keys(snapshot.previousPlace, current.place, current.freshnessMs, current.confidence).forEach { key ->
+                val id = "${current.lastTransitionAtMs}:$key"
+                if (pending.none { it.optString("id") == id }) pending.add(JSONObject()
+                    .put("id", id).put("key", key).put("at_ms", nowMs).put("to", current.place.name))
+            }
+        }
+        // Save intent before attempting notification, so a process interruption can retry.
+        if (!prefs.edit().putString("place_pending_v1", org.json.JSONArray(pending.takeLast(8)).toString()).commit()) return
+        val remaining = org.json.JSONArray()
+        pending.takeLast(8).forEach { item ->
+            val age = nowMs - item.optLong("at_ms")
+            if (age !in 0..900_000L || item.optString("to") != current.place.name) return@forEach
+            val key = item.optString("key")
+            val scope = item.optString("id")
+            if (prefs.getString("sent:$key", "") == "$scope:$key") return@forEach
+            val sent = current.freshnessMs in 0..300_000L && current.confidence >= 0.55f &&
+                emitOnce(key, when(key) {
+                    "arrive_home" -> "你到家了"
+                    "arrive_office" -> "你到单位了"
+                    else -> "你出发了"
+                }, nowMs, scope, LocalDailyCopy.choose(key, prefs.getInt("copy_count:$key", 0), nowMs,
+                    dev.jlz.presence.persona.JlzVoiceStateEngine(app).read(nowMs).mood,
+                    LocalStatusLamp(app).fresh(nowMs)))
+            if (!sent) remaining.put(item)
+        }
+        prefs.edit().putString("place_pending_v1", remaining.toString()).commit()
     }
 
     fun weatherRain(weatherCode: Int?, precipitationMm: Double?, nowMs: Long = System.currentTimeMillis()) {

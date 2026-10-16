@@ -24,19 +24,26 @@ fun BridgePanel() {
     var customKey by remember { mutableStateOf("") }
     var result by remember { mutableStateOf("") }
     var diagnostics by remember { mutableStateOf(store.diagnostics().toString(2)) }
+    var advanced by remember { mutableStateOf(false) }
+    val client by NativeClientDiagnostics.status.collectAsState()
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            Text("连接 / Bridge", style=MaterialTheme.typography.titleMedium)
+            Text("连接与后台", style=MaterialTheme.typography.titleMedium)
+            Text(if (client.runtimeConnected && client.lastHeartbeatAtMs?.let { System.currentTimeMillis()-it in 0..180_000L } == true)
+                "原生后台已连接 · 最近心跳已确认" else if (client.serviceRunning) "原生后台运行中 · 等待心跳确认" else "原生后台尚未启动")
             Text("优先 Home Node；连续 3 次失败才切备用。留空的端点不启用。密钥留空保留已保存值。")
             Text("推荐 Funnel HTTPS：保留手机现有 VPN，无需安装或运行 Tailscale。")
             OutlinedTextField(home,{home=it},label={Text("Home Node · Funnel HTTPS（推荐）")},singleLine=true)
             TextButton(onClick={home=BridgeStore.RECOMMENDED_HOME_URL}) { Text("使用推荐公网地址") }
-            OutlinedTextField(lan,{lan=it},label={Text("高级可选 · Home LAN / 私网（可留空）")},singleLine=true)
             OutlinedTextField(homeKey,{homeKey=it},label={Text("Home Node 密钥")},visualTransformation=PasswordVisualTransformation(),singleLine=true)
-            OutlinedTextField(standby,{standby=it},label={Text("Railway Standby · HTTPS")},singleLine=true)
+            TextButton(onClick={advanced=!advanced}) { Text(if(advanced) "收起备用地址与诊断" else "高级：备用地址与诊断") }
+            if (advanced) {
+            OutlinedTextField(lan,{lan=it},label={Text("Home LAN / 私网（可留空）")},singleLine=true)
+            OutlinedTextField(standby,{standby=it},label={Text("历史备用 · Railway（当前已停用，留空不启用）")},singleLine=true)
             OutlinedTextField(standbyKey,{standbyKey=it},label={Text("Standby 密钥")},visualTransformation=PasswordVisualTransformation(),singleLine=true)
             OutlinedTextField(custom,{custom=it},label={Text("Custom")},singleLine=true)
             OutlinedTextField(customKey,{customKey=it},label={Text("Custom 密钥")},visualTransformation=PasswordVisualTransformation(),singleLine=true)
+            }
             Button(onClick={scope.launch {
                 result = runCatching {
                     val old = store.endpoints()
@@ -47,13 +54,16 @@ fun BridgePanel() {
                             BridgeEndpoint(name,url.trim().trimEnd('/'),token,priority=index)
                         } }
                     store.save(rows)
+                    NativeRuntimeService.start(context)
                     homeKey=""; standbyKey=""; customKey=""
                     diagnostics=store.diagnostics().toString(2)
-                    "连接配置已保存；本地 Gate 和学习不受影响。"
+                    "配置已保存，后台已请求重连；请等上方出现心跳确认。"
                 }.getOrElse { "请检查地址和对应密钥。HTTPS 或私有 IPv4 HTTP 地址均可。" }
-            }}) { Text("保存连接") }
+            }}) { Text("保存并重连后台") }
+            if (advanced) {
             Button(onClick={diagnostics=store.diagnostics().toString(2)}) { Text("刷新诊断") }
             Text(diagnostics,style=MaterialTheme.typography.bodySmall)
+            }
             if(result.isNotBlank()) Text(result)
         }
     }

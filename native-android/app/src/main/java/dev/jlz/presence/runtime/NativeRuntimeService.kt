@@ -277,13 +277,8 @@ class NativeRuntimeService : Service() {
                     localLifeReminders.weatherRain(weather.weatherCode, weather.precipitationMm)
                 }
 
+                placeWeatherSnapshot?.let { snapshot -> runCatching { localLifeReminders.observePlace(snapshot) } }
                 if (placeWeatherSnapshot?.transitioned == true) {
-                    runCatching {
-                        localLifeReminders.departure(placeWeatherSnapshot.previousPlace,
-                            placeWeatherSnapshot.place.place,
-                            placeWeatherSnapshot.place.freshnessMs,
-                            placeWeatherSnapshot.place.confidence)
-                    }
                     val previous =
                         placeWeatherSnapshot.previousPlace?.name
                             ?: "UNKNOWN"

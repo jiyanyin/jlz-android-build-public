@@ -57,6 +57,22 @@ data class NativeStepReading(val stepsSinceFirstObservation: Int, val observedAt
                              val dayBaselineAtMs: Long, val completeDayEstimate: Boolean)
 
 object NativeStepSnapshot {
+    fun walking(context: Context, nowMs: Long = System.currentTimeMillis()): JSONObject {
+        val p = context.applicationContext.getSharedPreferences("jlz_native_steps_v1", Context.MODE_PRIVATE)
+        val at = p.getLong("session_last_step_at", 0L)
+        val active = p.getString("session_id", null) != null
+        val fresh = active && at > 0 && nowMs - at in 0..300_000L
+        return JSONObject().put("state", when {
+            !active -> "no_active_session"
+            !fresh -> "awaiting_finish_confirmation"
+            p.getBoolean("start_confirmed", false) -> "walking_confirmed"
+            else -> "you_are_moving"
+        }).put("observed_at_ms", if (active && at > 0) at else JSONObject.NULL)
+            .put("started_at_ms", if (active) p.getLong("session_start_at", 0L) else JSONObject.NULL)
+            .put("confirmed_by_user", active && p.getBoolean("start_confirmed", false))
+            .put("fresh", fresh)
+            .put("steps", if (active) (p.getLong("session_end_count", 0L) - p.getLong("session_start_count", 0L)).coerceAtLeast(0L) else JSONObject.NULL)
+    }
     fun today(context: Context, nowMs: Long = System.currentTimeMillis()): NativeStepReading? {
         val prefs = context.applicationContext.getSharedPreferences("jlz_native_steps_v1", Context.MODE_PRIVATE)
         val date = Instant.ofEpochMilli(nowMs).atZone(ZoneId.of("Asia/Shanghai")).toLocalDate().toString()
@@ -123,6 +139,7 @@ internal class WalkingSessionTracker(context: Context) {
                 .putLong("session_last_step_at", atMs).putLong("session_start_count", windowCount)
                 .putLong("session_end_count", count).putBoolean("start_confirmed", false)
                 .putBoolean("end_prompted", false).commit()) {
+            publish(id, "walking_detected", "你开始持续走动了", atMs, false)
             prompt(id, false, "我看到你在持续走动。开始步行了吗？", "是，在走", "不是")
         }
     }
@@ -146,8 +163,13 @@ internal class WalkingSessionTracker(context: Context) {
         if (prefs.getString("session_id", null) != id) return
         notifications?.cancel(if (ending) END_NOTIFICATION else START_NOTIFICATION)
         if (!ending) {
-            if (yes) prefs.edit().putBoolean("start_confirmed", true).apply()
-            else prefs.edit().remove("session_id").putLong("declined_until", nowMs + 15 * 60_000L).apply()
+            if (yes) {
+                prefs.edit().putBoolean("start_confirmed", true).apply()
+                publish(id, "walking_confirmed", "你确认开始步行", nowMs, true)
+            } else {
+                publish(id, "walking_not_exercise", "你未将这段走动确认为散步", nowMs, false)
+                prefs.edit().remove("session_id").putLong("declined_until", nowMs + 15 * 60_000L).apply()
+            }
             return
         }
         if (!yes) {
@@ -174,6 +196,15 @@ internal class WalkingSessionTracker(context: Context) {
                         .put("steps", steps).put("confirmed_by_user", true), observedAtMs = last)
             }
         } else prefs.edit().remove("session_id").apply()
+    }
+
+    private fun publish(session: String, kind: String, title: String, atMs: Long, confirmed: Boolean) {
+        PendingActivityEventStore(app).use { outbox ->
+            outbox.enqueue(id = UUID.nameUUIDFromBytes("$session:$kind".toByteArray()).toString(),
+                source = "native_step_counter", kind = kind, title = title, body = title,
+                metadata = JSONObject().put("actor", "owner").put("motion_state", kind)
+                    .put("confirmed_by_user", confirmed).put("date", day(atMs)), observedAtMs = atMs)
+        }
     }
 
     private fun prompt(id: String, ending: Boolean, message: String, yes: String, no: String) {

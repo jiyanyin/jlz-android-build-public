@@ -77,6 +77,7 @@ object NativePhoneSnapshot {
             .put("current_screen_session_started_at_ms", highFrequency.opt("current_screen_session_started_at_ms"))
             .put("previous_screen_session", highFrequency.opt("previous_screen_session"))
             .put("network_type", kind)
+            .put("walking_state", dev.jlz.presence.life.NativeStepSnapshot.walking(context))
             .put("native_step_counter", JSONObject()
                 .put("steps_since_first_observation", nativeSteps?.stepsSinceFirstObservation ?: JSONObject.NULL)
                 .put("observed_at_ms", nativeSteps?.observedAtMs ?: JSONObject.NULL)

@@ -15,6 +15,7 @@ import java.net.URL
 class HomeWebBridge(private val context: Context, private val save: (String)->Unit, private val open: ()->Unit, private val reply: (String,String)->Unit) {
     private val io = java.util.concurrent.ThreadPoolExecutor(2,2,0L,java.util.concurrent.TimeUnit.MILLISECONDS,java.util.concurrent.ArrayBlockingQueue<Runnable>(16))
     fun close() { io.shutdownNow() }
+    @JavascriptInterface fun connectionStatus(): String = LocalConnectionStatus.snapshot(context).toString()
     @JavascriptInterface fun contentIdentity(): String = runBlocking {
         val s=RuntimeSettingsRepository(context).load()
         JSONObject().put("device_id",s.deviceId).put("device_scope",if(s.deviceId.contains("tablet")) "tablet" else "phone").toString()

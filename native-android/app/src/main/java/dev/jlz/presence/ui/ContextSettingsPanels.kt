@@ -371,6 +371,7 @@ fun PlaceSettingsPanel() {
         ) {
             Text("生活位置", style = MaterialTheme.typography.titleMedium)
             Text("精确坐标留在本机；Runtime 默认只拿语义位置和天气。")
+            Text("离家、到单位、离开单位、回家按稳定地点变化提醒。必须先分别在真实地点设置锚点；首次定位不冒充刚刚到达。重装后请检查下面两项是否还在。通知失败最多重试十五分钟。")
             Text(
                 "HOME：" + (if (homeConfigured) "已设置" else "未设置") +
                     " · OFFICE：" + (if (officeConfigured) "已设置" else "未设置"),
