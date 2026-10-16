@@ -965,20 +965,38 @@ fun PermissionDoctorScreen() {
                     val target = item.intent
                     if (target != null && item.status != PermissionItem.Status.OK) {
                         Spacer(Modifier.height(8.dp))
-                        IceButton("\u53bb\u8bbe\u7f6e", onClick = {
-                            val opened = runCatching {
-                                context.startActivity(target)
-                                true
-                            }.getOrDefault(false)
-                            if (!opened && item.key == "battery") {
-                                runCatching {
-                                    context.startActivity(
-                                        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    )
+                        IceButton(
+                            if (item.key == "notification_listener" && item.status == PermissionItem.Status.LIMITED)
+                                "请求系统重新绑定" else "去设置",
+                            onClick = {
+                                if (item.key == "notification_listener" && item.status == PermissionItem.Status.LIMITED) {
+                                    // Only asks Android to rebind an already user-authorized listener.
+                                    // The user must still grant access in system Settings if it was revoked.
+                                    runCatching {
+                                        android.service.notification.NotificationListenerService.requestRebind(
+                                            android.content.ComponentName(
+                                                context,
+                                                dev.jlz.presence.notification.PresenceNotificationListenerService::class.java
+                                            )
+                                        )
+                                    }
+                                    refresh += 1
+                                } else {
+                                    val opened = runCatching {
+                                        context.startActivity(target)
+                                        true
+                                    }.getOrDefault(false)
+                                    if (!opened && item.key == "battery") {
+                                        runCatching {
+                                            context.startActivity(
+                                                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            )
+                                        }
+                                    }
                                 }
                             }
-                        })
+                        )
                     }
                 }
             }
