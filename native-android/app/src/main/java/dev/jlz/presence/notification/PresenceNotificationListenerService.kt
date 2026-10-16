@@ -52,6 +52,29 @@ class PresenceNotificationListenerService :
     override fun onListenerDisconnected() {
         if (connected === this) connected = null
         super.onListenerDisconnected()
+
+        // A rebind request is permitted only for an already user-authorized
+        // listener. Never toggle the Android special-access setting ourselves.
+        val component = android.content.ComponentName(
+            this, PresenceNotificationListenerService::class.java
+        )
+        val stillAuthorized = runCatching {
+            android.provider.Settings.Secure.getString(
+                contentResolver, "enabled_notification_listeners"
+            ).orEmpty().split(':').any {
+                android.content.ComponentName.unflattenFromString(it) == component
+            }
+        }.getOrDefault(false)
+        if (stillAuthorized) {
+            val prefs = getSharedPreferences("jlz_notification_rebind", MODE_PRIVATE)
+            val now = System.currentTimeMillis()
+            if (now - prefs.getLong("last_attempt_ms", 0L) >= 15 * 60_000L) {
+                prefs.edit().putLong("last_attempt_ms", now).apply()
+                runCatching {
+                    android.service.notification.NotificationListenerService.requestRebind(component)
+                }
+            }
+        }
     }
 
     override fun onNotificationPosted(
