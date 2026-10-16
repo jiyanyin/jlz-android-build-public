@@ -1018,8 +1018,8 @@ fun DiagnosticsScreen() {
         IceButton("刷新无障碍诊断", onClick = { revision += 1 })
         Spacer(Modifier.height(12.dp))
         IceGlassCard {
-            Text("系统无障碍开关：" + if (health.systemEnabled) "已开启" else "已关闭", color = TextPrimary)
-            Text("APP 实际连接：" + if (health.serviceBound) "已连接" else "未连接", color = TextPrimary)
+            Text("系统无障碍开关：" + (if (health.systemEnabled) "已开启" else "已关闭"), color = TextPrimary)
+            Text("APP 实际连接：" + (if (health.serviceBound) "已连接" else "未连接"), color = TextPrimary)
             Spacer(Modifier.height(8.dp))
             Text("上次连接：" + dateText(health.lastConnectedAtMs), color = TextSecondary)
             Text("上次系统解绑：" + dateText(health.lastUnboundAtMs), color = TextSecondary)
