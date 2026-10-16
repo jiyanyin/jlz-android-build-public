@@ -605,6 +605,14 @@ fun UnlockSoftGateSettingsPanel() {
     var enabled by remember { mutableStateOf(prefs.enabled()) }
     var accessibilityReady by remember { mutableStateOf(prefs.accessibilityEnabled()) }
     var note by remember { mutableStateOf("") }
+    var evidence by remember {
+        mutableStateOf(Triple(prefs.lastUnlockObservedAtMs(), prefs.lastLaunchRequestedAtMs(), prefs.lastSkipReason()))
+    }
+    val whenRecorded: (Long) -> String = { time ->
+        if (time <= 0L) "暂无"
+        else java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date(time))
+    }
 
     Card(Modifier.fillMaxWidth()) {
         Column(
@@ -649,8 +657,14 @@ fun UnlockSoftGateSettingsPanel() {
             }
             Button(onClick = {
                 accessibilityReady = prefs.accessibilityEnabled()
-                note = if (accessibilityReady) "无障碍已经连上。" else "暂时还没连上无障碍服务。"
+                evidence = Triple(prefs.lastUnlockObservedAtMs(), prefs.lastLaunchRequestedAtMs(), prefs.lastSkipReason())
+                note = if (accessibilityReady) "系统授权已开启；实际连接另看权限诊断。"
+                    else "暂时未获得无障碍授权。"
             }) { Text("重新检查") }
+            Text("最近解锁事件：" + whenRecorded(evidence.first), style = MaterialTheme.typography.bodySmall)
+            Text("最近跳转请求：" + whenRecorded(evidence.second), style = MaterialTheme.typography.bodySmall)
+            Text("最近判断：" + evidence.third.ifBlank { "暂无" }, style = MaterialTheme.typography.bodySmall)
+            Text("跳转请求不等于 Android 已将页面展示到前台。", style = MaterialTheme.typography.bodySmall)
             Text(
                 "电话、相机、紧急界面和闹钟会被安全跳过，不抢前台。",
                 style = MaterialTheme.typography.bodySmall

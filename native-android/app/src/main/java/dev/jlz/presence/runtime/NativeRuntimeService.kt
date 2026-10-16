@@ -175,12 +175,21 @@ class NativeRuntimeService : Service() {
         commandJob = scope.launch { runCommandLoop() }
         planJob = scope.launch { runPresencePlanLoop() }
         lifeTickJob = scope.launch {
+            val permissionContinuity = dev.jlz.presence.permissions.PermissionContinuityMonitor(applicationContext)
             while (isActive) {
                 runCatching { localLifeReminders.tick(focusRepository.current().modeNow()) }
                 runCatching { if (localLifeReminders.enabled()) sensorMonitor.start() else sensorMonitor.stop() }
+                runCatching { permissionContinuity.check() }
                 delay(60_000L)
             }
         }
+    }
+
+    // Recreate the long-running command/heartbeat transport after recoverable process death.
+    // This cannot and must not silently re-enable Accessibility in Android Settings.
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
+        return START_STICKY
     }
 
     override fun onDestroy() {

@@ -23,9 +23,14 @@ data class PermissionItem(
 class PermissionDoctor(private val context: Context) {
     fun checkAll(): List<PermissionItem> {
         val items = mutableListOf<PermissionItem>()
-        val accEnabled = Secure.getString(context.contentResolver, Secure.ENABLED_ACCESSIBILITY_SERVICES)?.contains(context.packageName) == true
+        val acc = dev.jlz.presence.screen.AccessibilityHealthTrace.snapshot(context)
+        val accEnabled = acc.systemEnabled
         items += PermissionItem("accessibility", "\u65e0\u969c\u788d\u670d\u52a1", "\u773c\u775b",
-            if (accEnabled) PermissionItem.Status.OK else PermissionItem.Status.MISSING,
+            when {
+                !accEnabled -> PermissionItem.Status.MISSING
+                !acc.serviceBound -> PermissionItem.Status.LIMITED
+                else -> PermissionItem.Status.OK
+            },
             Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 
         val softGateEnabled = UnlockSoftGatePreferences(context).enabled()
@@ -35,8 +40,9 @@ class PermissionDoctor(private val context: Context) {
             "软门禁",
             when {
                 !softGateEnabled -> PermissionItem.Status.LIMITED
-                accEnabled -> PermissionItem.Status.OK
-                else -> PermissionItem.Status.MISSING
+                !accEnabled -> PermissionItem.Status.MISSING
+                acc.serviceBound -> PermissionItem.Status.OK
+                else -> PermissionItem.Status.LIMITED
             },
             Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -47,7 +53,12 @@ class PermissionDoctor(private val context: Context) {
             flat.split(":").any { it.startsWith(context.packageName + "/") || it == context.packageName }
         }
         items += PermissionItem("notification_listener", "\u901a\u77e5\u76d1\u542c", "\u773c\u775b",
-            if (nlEnabled) PermissionItem.Status.OK else PermissionItem.Status.MISSING,
+            when {
+                !nlEnabled -> PermissionItem.Status.MISSING
+                !dev.jlz.presence.notification.PresenceNotificationListenerService.isConnected() ->
+                    PermissionItem.Status.LIMITED
+                else -> PermissionItem.Status.OK
+            },
             Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 
         val usageAllowed = try {
