@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.os.Build
 import android.provider.Settings
+import androidx.annotation.RequiresApi
 
 /**
  * Local, privacy-safe evidence for an Accessibility toggle that turns itself off.
@@ -48,11 +49,7 @@ object AccessibilityHealthTrace {
         }.getOrDefault(false)
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val latestExit = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            runCatching {
-                app.getSystemService(ActivityManager::class.java)
-                    ?.getHistoricalProcessExitReasons(null, 0, 8)
-                    ?.firstOrNull()
-            }.getOrNull()
+            latestExitInfo(app)
         } else null
         return Snapshot(
             systemEnabled = enabled,
@@ -60,8 +57,15 @@ object AccessibilityHealthTrace {
             lastConnectedAtMs = prefs.getLong(CONNECTED_AT, 0L),
             lastUnboundAtMs = prefs.getLong(UNBOUND_AT, 0L),
             lastDestroyedAtMs = prefs.getLong(DESTROYED_AT, 0L),
-            latestProcessExitAtMs = latestExit?.timestamp,
-            latestProcessExitReason = latestExit?.let { "code=${it.reason}, status=${it.status}" }
+            latestProcessExitAtMs = latestExit?.first,
+            latestProcessExitReason = latestExit?.second
         )
     }
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun latestExitInfo(app: Context): Pair<Long, String>? = runCatching {
+        app.getSystemService(ActivityManager::class.java)
+            ?.getHistoricalProcessExitReasons(null, 0, 8)
+            ?.firstOrNull()
+            ?.let { exit -> exit.timestamp to "code=${exit.reason}, status=${exit.status}" }
+    }.getOrNull()
 }
