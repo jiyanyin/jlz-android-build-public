@@ -42,17 +42,15 @@ object AutomaticCaptureAppDialog {
             .setPositiveButton("保存并开启", null)
             .setNegativeButton("取消", null)
             .create()
-        dialog.setOnShowListener {
-            count.text = "已选择 ${packages().size} 个应用"
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).apply {
-                isEnabled = checked.any { it }
-                setOnClickListener {
-                    val requested = packages()
-                    if (requested.isNotEmpty() && onSave(requested)) dialog.dismiss()
-                }
+        dialog.show()
+        count.text = "已选择 ${packages().size} 个应用"
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).apply {
+            isEnabled = checked.any { it }
+            setOnClickListener {
+                val requested = packages()
+                if (requested.isNotEmpty() && onSave(requested)) dialog.dismiss()
             }
         }
-        dialog.show()
         return dialog
     }
 }
