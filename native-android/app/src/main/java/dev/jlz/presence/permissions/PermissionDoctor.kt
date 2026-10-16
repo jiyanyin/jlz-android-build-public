@@ -40,8 +40,9 @@ class PermissionDoctor(private val context: Context) {
             "软门禁",
             when {
                 !softGateEnabled -> PermissionItem.Status.LIMITED
-                accEnabled -> PermissionItem.Status.OK
-                else -> PermissionItem.Status.MISSING
+                !accEnabled -> PermissionItem.Status.MISSING
+                acc.serviceBound -> PermissionItem.Status.OK
+                else -> PermissionItem.Status.LIMITED
             },
             Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
