@@ -52,7 +52,12 @@ class PermissionDoctor(private val context: Context) {
             flat.split(":").any { it.startsWith(context.packageName + "/") || it == context.packageName }
         }
         items += PermissionItem("notification_listener", "\u901a\u77e5\u76d1\u542c", "\u773c\u775b",
-            if (nlEnabled) PermissionItem.Status.OK else PermissionItem.Status.MISSING,
+            when {
+                !nlEnabled -> PermissionItem.Status.MISSING
+                !dev.jlz.presence.notification.PresenceNotificationListenerService.isConnected() ->
+                    PermissionItem.Status.LIMITED
+                else -> PermissionItem.Status.OK
+            },
             Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 
         val usageAllowed = try {
