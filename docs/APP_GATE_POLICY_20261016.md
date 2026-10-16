@@ -26,3 +26,11 @@ Regression coverage includes all three exact expiry boundaries, app switching, r
 At takeover both PRs were open. Android main `a9837f3` was an ancestor of PR head `c10d996`; Runtime main `6215155` was an ancestor of PR head `a8d475f`. Windows remained at `0cb4706`, with Runtime/MCP healthy. The owner states the phone app has since been uninstalled. The last `.4` heartbeat is historical and offline, not evidence of a currently installed app. No install, pairing, permission grant, VPN change, merge or Runtime deployment is part of this fix.
 
 Build and real-device acceptance are recorded separately after checks complete. Do not distribute an ordinary placeholder-resource CI APK as the private complete build.
+
+## Build receipt — 12:00 Beijing time
+
+Private CI [38847645449](https://github.com/jiyanyin/jlz-android-build-public/actions/runs/38847645449) passed all 124 unit checks (zero failures, errors or skips), Android lint, assembly, stable-certificate signing and encrypted artifact upload. The PR build also passed. Code commit: `54388586bc2083f219b0e079eb1b1df13f6f2312`.
+
+Authenticated local decryption succeeded. APK manifest confirms `dev.jlz.presence`, `.5 / 2026101603`. SHA256: `654D4E80E2609B95D12D4803706F5FCDE420643BA544E4932D0675E13230EE6A`; size: 24,684,017 bytes. Local apksigner verification confirms the existing `a129340ee73c5ef1d05808258582a83dfa53d4191e0bd49b5516ef083f3e5ef5` certificate. All APK ZIP entries were readable; the owner avatar, private pack index and all 115 Q poses are byte-identical to the previous complete local.4 APK. Packaged offline HTML exists.
+
+CODED / CI_PASS / SIGNED_APK are confirmed. PHONE_BEHAVIOR, TABLET_BEHAVIOR and actual answer-field rendering remain unverified. The APK was prepared on the owner's Windows computer; no device installation, pairing, Runtime deployment or official Task acceptance was performed.
