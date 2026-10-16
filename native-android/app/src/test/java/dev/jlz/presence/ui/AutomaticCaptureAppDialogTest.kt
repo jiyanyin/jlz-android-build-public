@@ -3,6 +3,7 @@ package dev.jlz.presence.ui
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
+import android.os.Looper
 import dev.jlz.presence.capture.CaptureTrafficPolicy
 import org.junit.Assert.*
 import org.junit.Before
@@ -11,6 +12,7 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -32,6 +34,7 @@ class AutomaticCaptureAppDialogTest {
 
     private fun open(selected: Set<String> = policy.automaticSelection().second) =
         AutomaticCaptureAppDialog.show(activity, choices, selected) { policy.configureAutomatic(true, it) }
+            .also { shadowOf(Looper.getMainLooper()).idle() }
 
     private fun toggle(dialog: AlertDialog, index: Int) {
         val list = dialog.listView
@@ -62,11 +65,14 @@ class AutomaticCaptureAppDialogTest {
         assertFalse(dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled)
         toggle(dialog, 1)
         dialog.getButton(AlertDialog.BUTTON_NEGATIVE).performClick()
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(dialog.isShowing)
         assertEquals(true to setOf("com.xingin.xhs"), CaptureTrafficPolicy(activity).automaticSelection())
     }
 
     @Test fun failedSaveKeepsSelectionOpenForRetry() {
         val dialog = AutomaticCaptureAppDialog.show(activity, choices, emptySet()) { false }
+        shadowOf(Looper.getMainLooper()).idle()
         toggle(dialog, 1)
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).performClick()
         assertTrue(dialog.isShowing)
@@ -82,6 +88,7 @@ class AutomaticCaptureAppDialogTest {
         activity.resources.updateConfiguration(configuration, activity.resources.displayMetrics)
         val many = (1..40).map { AutomaticCaptureAppChoice("test.app$it", "可选择的应用 $it") }
         val dialog = AutomaticCaptureAppDialog.show(activity, many, emptySet()) { true }
+        shadowOf(Looper.getMainLooper()).idle()
         assertTrue(dialog.listView.isShown)
         assertEquals(40, dialog.listView.adapter.count)
         toggle(dialog, 39)
