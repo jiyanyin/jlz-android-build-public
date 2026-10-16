@@ -23,9 +23,14 @@ data class PermissionItem(
 class PermissionDoctor(private val context: Context) {
     fun checkAll(): List<PermissionItem> {
         val items = mutableListOf<PermissionItem>()
-        val accEnabled = Secure.getString(context.contentResolver, Secure.ENABLED_ACCESSIBILITY_SERVICES)?.contains(context.packageName) == true
+        val acc = dev.jlz.presence.screen.AccessibilityHealthTrace.snapshot(context)
+        val accEnabled = acc.systemEnabled
         items += PermissionItem("accessibility", "\u65e0\u969c\u788d\u670d\u52a1", "\u773c\u775b",
-            if (accEnabled) PermissionItem.Status.OK else PermissionItem.Status.MISSING,
+            when {
+                !accEnabled -> PermissionItem.Status.MISSING
+                !acc.serviceBound -> PermissionItem.Status.LIMITED
+                else -> PermissionItem.Status.OK
+            },
             Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 
         val softGateEnabled = UnlockSoftGatePreferences(context).enabled()
