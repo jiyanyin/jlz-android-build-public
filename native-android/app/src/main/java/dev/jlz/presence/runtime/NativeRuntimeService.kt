@@ -386,7 +386,8 @@ class NativeRuntimeService : Service() {
                         val pkg = item.optString("package_name")
                         val duration = item.optLong("duration_ms")
                         val category = when {
-                            pkg in setOf("com.taobao.taobao","com.xunmeng.pinduoduo","com.jingdong.app.mall") -> "shopping"
+                            dev.jlz.presence.focus.EntertainmentPolicy.profile(pkg)?.tier ==
+                                dev.jlz.presence.focus.EntertainmentTier.SHOPPING -> "shopping"
                             pkg in setOf("com.tencent.mm","com.tencent.mobileqq") -> "chat"
                             pkg in setOf("com.ss.android.ugc.aweme","com.smile.gifmaker") -> "short_video"
                             classifier.eligibleLearning(pkg) -> "learning"

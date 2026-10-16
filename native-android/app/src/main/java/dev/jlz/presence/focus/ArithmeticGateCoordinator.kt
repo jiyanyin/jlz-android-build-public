@@ -6,39 +6,32 @@ import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 
-/** One arithmetic pass per app entry, then the existing entertainment gate. */
+/** Persisted per-app arithmetic windows, independent of entertainment releases. */
 class ArithmeticGateRepository(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("jlz_arithmetic_gate_v1", Context.MODE_PRIVATE)
     fun enabled(): Boolean = prefs.getBoolean("enabled", true)
     fun setEnabled(value: Boolean) { prefs.edit().putBoolean("enabled", value).apply() }
-    fun revoke(pkg: String) { prefs.edit().remove("stage:$pkg").remove("until:$pkg")
-        .remove("left:$pkg").remove("entered:$pkg").apply() }
-    fun passed(pkg: String, entertainment: Boolean, atMs: Long) {
-        prefs.edit().putString("stage:$pkg", if (entertainment) "waiting_entertainment" else "active")
-            .putLong("until:$pkg", atMs + 4 * 60 * 60_000L)
-            .putLong("left:$pkg", 0L).putBoolean("entered:$pkg", false).apply()
+    fun revoke(pkg: String) { prefs.edit().remove("kind:$pkg").remove("passed:$pkg")
+        .remove("quiz_until:$pkg").remove("resume:$pkg").apply() }
+    fun passed(pkg: String, kind: ArithmeticGateKind, atMs: Long) {
+        prefs.edit().putString("kind:$pkg", kind.name).putLong("passed:$pkg", atMs)
+            .putLong("quiz_until:$pkg", atMs + kind.exemptionMs)
+            .remove("resume:$pkg").apply()
     }
-    fun entertainmentGranted(pkg: String) {
-        if (prefs.getString("stage:$pkg", "") == "waiting_entertainment")
-            prefs.edit().putString("stage:$pkg", "active").putLong("left:$pkg", 0L)
-                .putBoolean("entered:$pkg", false).apply()
+    fun entertainmentGranted(pkg: String, atMs: Long) {
+        // One immediate return from the time gate continues the existing visit.
+        // It neither renews the arithmetic window nor grants another app access.
+        if (prefs.contains("passed:$pkg")) prefs.edit().putLong("resume:$pkg", atMs).apply()
     }
-    fun left(pkg: String, atMs: Long) {
-        if (prefs.getBoolean("entered:$pkg", false) &&
-            prefs.getString("stage:$pkg", "") == "active" &&
-            prefs.getLong("left:$pkg", 0L) == 0L)
-            prefs.edit().putLong("left:$pkg", atMs).apply()
-    }
-    fun allowed(pkg: String, atMs: Long): Boolean {
-        val stage = prefs.getString("stage:$pkg", "")
-        if (stage.isNullOrBlank() || atMs >= prefs.getLong("until:$pkg", 0L)) return false
-        if (stage == "active") {
-            val left = prefs.getLong("left:$pkg", 0L)
-            if (left > 0L && atMs - left > 5_000L) return false
-        }
-        if (!prefs.getBoolean("entered:$pkg", false) || prefs.getLong("left:$pkg", 0L) != 0L)
-            prefs.edit().putBoolean("entered:$pkg", true).putLong("left:$pkg", 0L).apply()
-        return true
+    fun allowed(pkg: String, kind: ArithmeticGateKind, atMs: Long): Boolean {
+        // Old four-hour/leave-five-seconds grants are deliberately not reused.
+        if (prefs.getString("kind:$pkg", "") != kind.name) return false
+        val passedAt = prefs.getLong("passed:$pkg", Long.MAX_VALUE)
+        if (atMs < passedAt) return false
+        val resumeAt = prefs.getLong("resume:$pkg", Long.MIN_VALUE)
+        prefs.edit().remove("resume:$pkg").apply()
+        if (resumeAt != Long.MIN_VALUE && atMs >= resumeAt && atMs - resumeAt < 30_000L) return true
+        return atMs < prefs.getLong("quiz_until:$pkg", 0L)
     }
 }
 
@@ -48,27 +41,28 @@ class ArithmeticGateCoordinator(private val service: AccessibilityService) {
     private val classifier = LocalAppClassifier(app)
     private val handler = Handler(Looper.getMainLooper())
     private val pending = mutableSetOf<String>()
-    private var lastPackage: String? = null
+    private val visits = ArithmeticVisitTracker()
 
-    fun intercept(pkg: String?, eventType: Int, nowMs: Long): Boolean {
+    fun observeWindow(pkg: String?): Boolean =
+        visits.enter(pkg, pkg != null && classifier.isTransientWindow(pkg))
+
+    fun intercept(pkg: String?, eventType: Int, nowMs: Long, entry: Boolean): Boolean {
         if (eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return false
-        if (lastPackage != pkg) lastPackage?.let { prefs.left(it, nowMs) }
-        lastPackage = pkg
         if (pkg.isNullOrBlank() || !prefs.enabled()) return false
-        if (classifier.classify(pkg) == LocalAppCategory.SYSTEM_SAFE ||
-            pkg in CRITICAL_BYPASS ||
+        if (classifier.isTransientWindow(pkg)) return false
+        if (classifier.arithmeticExempt(pkg) ||
             app.packageManager.getLaunchIntentForPackage(pkg) == null) return false
-        if (prefs.allowed(pkg, nowMs)) return false
+        if (pkg in pending) return true
+        // Content/dialog window events inside a visit must not become a new quiz.
+        if (!entry) return false
+        val kind = ArithmeticGatePolicy.kind(EntertainmentPolicy.profile(pkg), classifier.classify(pkg))
+        if (prefs.allowed(pkg, kind, nowMs)) return false
         if (!pending.add(pkg)) return true
         service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
         handler.postDelayed({
             pending.remove(pkg)
             if (prefs.enabled()) runCatching {
-                val profile = EntertainmentPolicy.profile(pkg)
-                ArithmeticGateActivity.show(app, pkg,
-                    profile?.tier != EntertainmentTier.SHOPPING &&
-                        (profile != null || classifier.classify(pkg) in
-                            setOf(LocalAppCategory.GAME, LocalAppCategory.FEED)))
+                ArithmeticGateActivity.show(app, pkg)
             }
         }, 350L)
         return true
@@ -76,10 +70,4 @@ class ArithmeticGateCoordinator(private val service: AccessibilityService) {
 
     fun close() { handler.removeCallbacksAndMessages(null); pending.clear() }
 
-    private companion object {
-        val CRITICAL_BYPASS = setOf(
-            "com.google.android.apps.maps", "com.autonavi.minimap", "com.baidu.BaiduMap",
-            "com.android.camera", "com.huawei.camera", "com.huawei.systemmanager"
-        )
-    }
 }

@@ -564,7 +564,7 @@ fun EntertainmentGateSettingsPanel() {
         ) {
             Text("娱乐来电门禁", style = MaterialTheme.typography.titleMedium)
             Text(
-                "打开小红书、抖音、淘宝、拼多多等娱乐/购物 App 时，先出现一次「纪临洲来电」。接通后说明目的，再按这一轮的理由限时放行。",
+                "娱乐应用先答五题，十分钟内免重复；购物先答五题，三十分钟内免重复。之后接通「纪临洲来电」，确认这一轮的使用时间。",
                 style = MaterialTheme.typography.bodySmall
             )
             Row(
@@ -589,6 +589,10 @@ fun EntertainmentGateSettingsPanel() {
             }
             Text(
                 "Feed：明确目的 ${feedPurpose} 分钟 · 休息 ${feedBreak} 分钟 · 直接进去 ${direct} 分钟",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                "购物每轮十分钟。工作、学习和普通工具三题后，同一应用六十分钟免重复；电话、导航、相机、闹钟、验证码等必要功能免启动算数。",
                 style = MaterialTheme.typography.bodySmall
             )
             Text(

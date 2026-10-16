@@ -163,7 +163,8 @@ class LauncherRepository(private val context: Context) {
             pkg.contains("xuexi", ignoreCase = true) -> "学习"
         pkg.startsWith("com.tencent.mm") ||
             pkg.startsWith("com.tencent.mobileqq") -> "通讯"
-        pkg.startsWith("com.xingin") ||
+        dev.jlz.presence.focus.EntertainmentPolicy.profile(pkg) != null ||
+            pkg.startsWith("com.xingin") ||
             pkg.startsWith("com.ss.android.ugc.aweme") ||
             pkg.startsWith("com.taobao") ||
             pkg.startsWith("com.xunmeng") ||

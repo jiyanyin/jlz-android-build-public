@@ -20,7 +20,8 @@ object EntertainmentPolicy {
         EntertainmentProfile("com.xunmeng.pinduoduo", "拼多多", EntertainmentTier.SHOPPING),
         EntertainmentProfile("com.taobao.taobao", "淘宝", EntertainmentTier.SHOPPING),
         EntertainmentProfile("com.jingdong.app.mall", "京东", EntertainmentTier.SHOPPING),
-        EntertainmentProfile("com.taobao.idlefish", "闲鱼", EntertainmentTier.SHOPPING)
+        EntertainmentProfile("com.taobao.idlefish", "闲鱼", EntertainmentTier.SHOPPING),
+        EntertainmentProfile("com.ss.android.ugc.livelite", "抖音商城", EntertainmentTier.SHOPPING)
     ).associateBy { it.packageName }
 
     fun profile(packageName: String?): EntertainmentProfile? =

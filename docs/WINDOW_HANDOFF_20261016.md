@@ -1,5 +1,7 @@
 # World Between — October 16 engineering handoff
 
+Later owner-approved gate revision: [APP_GATE_POLICY_20261016.md](APP_GATE_POLICY_20261016.md), targeting `.5 / 2026101603`. Entertainment: five questions / ten-minute per-app arithmetic exemption; shopping: five / thirty minutes with independent ten-minute time gates; work/tools: three / sixty minutes. Explicit dark input text replaces theme-dependent colors. The owner has since uninstalled the phone app; `.4` device evidence below is historical. No reinstall or pairing is authorized by this revision.
+
 The current private owner APK is **0.6.5-world-between-local.4 / 2026101602**, package `dev.jlz.presence`. APK source is commit `5087faf14f33252d7179f86cc7faa451fec09ff2`; later documentation commits do not change that artifact.
 
 - Private CI [38832573357](https://github.com/jiyanyin/jlz-android-build-public/actions/runs/38832573357) passed unit checks, lint, assemble and stable-certificate signing. Authenticated artifact decryption and ZIP/resource checks passed.

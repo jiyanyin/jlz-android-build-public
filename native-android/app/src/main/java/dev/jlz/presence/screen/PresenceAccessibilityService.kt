@@ -84,6 +84,10 @@ class PresenceAccessibilityService : AccessibilityService() {
         val packageName = event?.packageName?.toString()
         val eventType = event?.eventType ?: return
         val now = System.currentTimeMillis()
+        // Observe even apps blocked by the higher-priority focus/rest gates.
+        val arithmeticEntry = ::arithmeticGate.isInitialized &&
+            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            arithmeticGate.observeWindow(packageName)
         AccessibilityActionGateway.observeEventSource(event)
         if (::unlockSoftGate.isInitialized && eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             unlockSoftGate.observeForeground(packageName)
@@ -145,7 +149,7 @@ class PresenceAccessibilityService : AccessibilityService() {
             return
         }
 
-        if (::arithmeticGate.isInitialized && arithmeticGate.intercept(packageName, eventType, now)) return
+        if (::arithmeticGate.isInitialized && arithmeticGate.intercept(packageName, eventType, now, arithmeticEntry)) return
         if (::entertainmentGateV2.isInitialized && !safe && !dev.jlz.presence.focus.DailyModePolicy.bypassEntertainment(dailyMode, packageName.orEmpty())) {
             entertainmentGateV2.observe(packageName, eventType, now)
         }

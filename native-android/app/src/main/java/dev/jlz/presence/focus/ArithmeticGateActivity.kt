@@ -20,6 +20,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -33,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
@@ -47,21 +49,22 @@ class ArithmeticGateActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val pkg = intent.getStringExtra("package_name")?.takeIf { it.isNotBlank() }
         if (pkg == null || pkg == packageName ||
-            LocalAppClassifier(this).classify(pkg) == LocalAppCategory.SYSTEM_SAFE) {
+            LocalAppClassifier(this).arithmeticExempt(pkg)) {
             finish(); return
         }
-        val entertainment = intent.getBooleanExtra("entertainment", false)
+        val kind = ArithmeticGatePolicy.kind(EntertainmentPolicy.profile(pkg),
+            LocalAppClassifier(this).classify(pkg))
         val name = runCatching {
             EntertainmentPolicy.profile(pkg)?.appName ?: packageManager
                 .getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
         }.getOrDefault("这个应用")
-        val questions = ArithmeticGatePolicy.questions(entertainment,
+        val questions = ArithmeticGatePolicy.questions(kind,
             (System.currentTimeMillis() xor pkg.hashCode().toLong()).toInt())
         setContent {
             IceCrystalTheme {
                 QuizScreen(name, questions, onLeave = { finish() }, onPass = {
                     val repository = ArithmeticGateRepository(this)
-                    repository.passed(pkg, entertainment, System.currentTimeMillis())
+                    repository.passed(pkg, kind, System.currentTimeMillis())
                     if (LauncherRepository(this).launchApp(pkg)) finish()
                     else repository.revoke(pkg)
                 })
@@ -70,9 +73,9 @@ class ArithmeticGateActivity : ComponentActivity() {
     }
 
     companion object {
-        fun show(context: Context, pkg: String, entertainment: Boolean) {
+        fun show(context: Context, pkg: String) {
             context.startActivity(Intent(context, ArithmeticGateActivity::class.java)
-                .putExtra("package_name", pkg).putExtra("entertainment", entertainment)
+                .putExtra("package_name", pkg)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
         }
     }
@@ -116,6 +119,18 @@ private fun QuizScreen(appName: String, questions: List<ArithmeticQuestion>,
                     OutlinedTextField(value = value, onValueChange = { input ->
                         if (input.length <= 5 && input.all(Char::isDigit)) { value = input; feedback = "" }
                     }, label = { Text("写下答案") }, singleLine = true,
+                        textStyle = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.Medium),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color(0xFF2F2946),
+                            unfocusedTextColor = Color(0xFF2F2946),
+                            focusedContainerColor = Color(0xFFFAF8FD),
+                            unfocusedContainerColor = Color(0xFFFAF8FD),
+                            cursorColor = Color(0xFF2F2946),
+                            focusedLabelColor = Color(0xFF514366),
+                            unfocusedLabelColor = Color(0xFF514366),
+                            focusedBorderColor = Color(0xFF66507F),
+                            unfocusedBorderColor = Color(0xFF81718F)
+                        ),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth())
                     if (feedback.isNotBlank()) {
