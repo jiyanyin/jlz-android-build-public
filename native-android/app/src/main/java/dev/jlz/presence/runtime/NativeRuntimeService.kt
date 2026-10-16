@@ -175,9 +175,11 @@ class NativeRuntimeService : Service() {
         commandJob = scope.launch { runCommandLoop() }
         planJob = scope.launch { runPresencePlanLoop() }
         lifeTickJob = scope.launch {
+            val permissionContinuity = dev.jlz.presence.permissions.PermissionContinuityMonitor(applicationContext)
             while (isActive) {
                 runCatching { localLifeReminders.tick(focusRepository.current().modeNow()) }
                 runCatching { if (localLifeReminders.enabled()) sensorMonitor.start() else sensorMonitor.stop() }
+                runCatching { permissionContinuity.check() }
                 delay(60_000L)
             }
         }
