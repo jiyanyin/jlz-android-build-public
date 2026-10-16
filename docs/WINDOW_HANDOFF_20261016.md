@@ -1,19 +1,13 @@
-# World Between — October 16 engineering handoff
+# 世界之间 Android｜当前窗口交接
 
-Latest phone state at 12:34: owner reinstalled local.5 and restored existing native Runtime settings. A fresh heartbeat reports local.5+2026101603 on the original phone identity; live capabilities returned through the authenticated local command path. Gate and input-color device behavior remain pending. Secure-unlock setup is absent; connector requests timed out while the local read path succeeded. Earlier uninstall/not-installed text below is historical, not the current phone connection state.
+更新：2026-10-16。当前Android PR #51与Runtime PR #102均OPEN，禁止重置、强推或擅自合并。Android main核对点`a9837f3`，Runtime main`6215155`；后续先fetch。
 
-Later owner-approved gate revision: [APP_GATE_POLICY_20261016.md](APP_GATE_POLICY_20261016.md), targeting `.5 / 2026101603`. Entertainment: five questions / ten-minute per-app arithmetic exemption; shopping: five / thirty minutes with independent ten-minute time gates; work/tools: three / sixty minutes. Explicit dark input text replaces theme-dependent colors. The owner has since uninstalled the phone app; `.4` device evidence below is historical. No reinstall or pairing is authorized by this revision.
+继续施工树为`D:\ChatGPT\World-Between-Worktrees\android-final-20261014`，分支`work/final-owner-control-20261014`。整合代码`6dc3961`，候选`0.6.5-world-between-local.6 / 2026101604`。手机目前实查`.5 / 2026101603`在线；平板`.4 / 2026101402`离线。没有安装候选、重新配对或改VPN。
 
-12:00 build receipt: `.5` private complete APK is now prepared. CI 38847645449 passed 124 tests, lint, assembly and stable signing; local authenticated decryption, manifest/certificate checks and all private resource comparisons passed. No device installation or behavioral acceptance occurred. See the gate policy document for exact artifact hash and evidence boundaries.
+本轮实际实现：连接保存与原生服务重连统一；后台心跳单独显示；移除Android重复网页钥匙输入；睡眠操作和日期／时长核验状态；四种地点变化和十五分钟有界重试；当前步行状态与阶段事件；六状态144条独立情感正文；本地历史清理保护。保留此前门禁、学习、共历、回响、Q私有素材和头像。
 
-The current private owner APK is **0.6.5-world-between-local.4 / 2026101602**, package `dev.jlz.presence`. APK source is commit `5087faf14f33252d7179f86cc7faa451fec09ff2`; later documentation commits do not change that artifact.
+网页构建与38项检查本机通过。完整私有CI为[38877895280](https://github.com/jiyanyin/jlz-android-build-public/actions/runs/38877895280)，状态以最新回执为准。APK必须从该私有模式生成并认证解密、验证原签名与115姿势／头像哈希；普通公共CI无私人素材，不交付给手机。
 
-- Private CI [38832573357](https://github.com/jiyanyin/jlz-android-build-public/actions/runs/38832573357) passed unit checks, lint, assemble and stable-certificate signing. Authenticated artifact decryption and ZIP/resource checks passed.
-- The owner phone reported the new exact client version on October 16, and the application UI opened with its existing device identity/connection. Tablet upgrade and comprehensive feature acceptance remain pending.
-- The APK preserves the owner-selected avatar, 115 private Q poses and packaged offline WebShell. Private images/signing material/plaintext private APK are not committed to this public repository.
-- Battery warnings now begin below 40%, then after each actual three-percentage-point drop from the last successful warning, suppressed during charging. This replaces the former sparse 40%/20% policy. Lifecycle and upgrade regression checks passed.
-- Existing GPS reminders cover qualified home/office departure transitions; there is no dedicated arrival-home reminder. This release did not change location logic.
+逐项事实与操作见[OWNER_REQUIREMENTS_AND_ENABLE_20261016.md](OWNER_REQUIREMENTS_AND_ENABLE_20261016.md)，门禁见[APP_GATE_POLICY_20261016.md](APP_GATE_POLICY_20261016.md)。跨库唯一当前入口为私库`docs/window-handoff/CURRENT.md`，系统清理账为`SYSTEM_INTEGRATION_20261016.md`；旧交接已归档，不能再照旧文字重复安装／配对。
 
-Read the [full private cross-repository handoff](https://github.com/jiyanyin/jlz-runtime-private/blob/work/final-owner-control-20261014/docs/window-handoff/CURRENT.md) with repository access. It records implemented vs. missing behavior, Windows deployment, owner-phone installation evidence, official scheduled-task delivery gaps, temporary transfer cleanup and next steps. See also the [requirement and enablement matrix](OWNER_REQUIREMENTS_AND_ENABLE_20261016.md).
-
-Continue PR [#51](https://github.com/jiyanyin/jlz-android-build-public/pull/51) alongside Runtime PR [#102](https://github.com/jiyanyin/jlz-runtime-private/pull/102). Fetch current main and preserve both merged behavior and these unmerged additions; no reset, force push, automatic merge, downgrade, uninstall or data clearing. Phone version/launch confirmation is not acceptance of every feature or unattended official Task delivery.
+最高原则：两台都是你的本人设备；真实使用与移动直接归属于你，同时保留时间／来源／缺失／自动化边界。官端需实际调用连接器才能收到上下文。云端停用不等于已经删干净，设备与官端实际验收尚未完成。
