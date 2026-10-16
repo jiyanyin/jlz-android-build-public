@@ -61,6 +61,7 @@ class PresenceAccessibilityService : AccessibilityService() {
             android.content.IntentFilter().apply { addAction(android.content.Intent.ACTION_PACKAGE_ADDED); addAction(android.content.Intent.ACTION_PACKAGE_REPLACED); addAction(android.content.Intent.ACTION_PACKAGE_REMOVED); addDataScheme("package") },
             androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED)
         ScreenObservationBus.setConnected(true)
+        AccessibilityHealthTrace.onConnected(applicationContext)
         AccessibilityScreenshotGateway.bind(this)
         AccessibilityActionGateway.bind(this)
         ForegroundUsageTracker.bind(applicationContext)
@@ -179,7 +180,13 @@ class PresenceAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() = Unit
 
+    override fun onUnbind(intent: android.content.Intent?): Boolean {
+        AccessibilityHealthTrace.onUnbound(applicationContext)
+        return super.onUnbind(intent)
+    }
+
     override fun onDestroy() {
+        AccessibilityHealthTrace.onDestroyed(applicationContext)
         runCatching { unregisterReceiver(packagesChanged) }
         ForegroundUsageTracker.unbind()
         if (::automaticCapture.isInitialized) automaticCapture.close()
