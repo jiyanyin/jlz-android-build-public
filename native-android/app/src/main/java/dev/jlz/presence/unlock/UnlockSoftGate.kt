@@ -73,6 +73,24 @@ class UnlockSoftGatePreferences(context: Context) {
 
     fun lastPresentedAtMs(): Long = prefs.getLong(KEY_LAST_PRESENTED, 0L)
 
+    fun lastUnlockObservedAtMs(): Long = prefs.getLong("last_unlock_observed_at_ms", 0L)
+    fun lastSkipReason(): String = prefs.getString("last_skip_reason", "") ?: ""
+    fun lastLaunchRequestedAtMs(): Long = prefs.getLong("last_launch_requested_at_ms", 0L)
+
+    fun markUnlockObserved() {
+        prefs.edit().putLong("last_unlock_observed_at_ms", System.currentTimeMillis()).apply()
+    }
+
+    fun markSkipped(reason: String) {
+        prefs.edit().putString("last_skip_reason", reason.take(80)).apply()
+    }
+
+    fun markLaunchRequested(nowMs: Long) {
+        // A startActivity() return is only a request, NOT proof the OS displayed it.
+        prefs.edit().putLong("last_launch_requested_at_ms", nowMs)
+            .putString("last_skip_reason", "launch_requested_unverified").apply()
+    }
+
     fun markPresented(nowMs: Long) {
         prefs.edit().putLong(KEY_LAST_PRESENTED, nowMs).apply()
     }
@@ -148,6 +166,7 @@ class UnlockSoftGateCoordinator(
     }
 
     private fun schedulePresentation() {
+        preferences.markUnlockObserved()
         cancelPending()
         val task = Runnable { presentIfAllowed() }
         pending = task
@@ -173,7 +192,19 @@ class UnlockSoftGateCoordinator(
             interactive = power?.isInteractive == true,
             keyguardLocked = keyguard?.isKeyguardLocked == true
         )
-        if (!UnlockSoftGatePolicy.shouldPresent(input)) return
+        if (!UnlockSoftGatePolicy.shouldPresent(input)) {
+            val reason = when {
+                !input.enabled -> "user_disabled"
+                !input.interactive -> "screen_not_interactive"
+                input.keyguardLocked -> "keyguard_still_locked"
+                now - input.lastPresentedAtMs < UnlockSoftGatePolicy.COOLDOWN_MS -> "cooldown"
+                input.foregroundPackage == input.ownPackage -> "already_in_world_between"
+                UnlockSoftGatePolicy.isSafetySensitivePackage(input.foregroundPackage.orEmpty()) -> "protected_foreground"
+                else -> "policy_rejected"
+            }
+            preferences.markSkipped(reason)
+            return
+        }
 
         val uri = Uri.parse(
             "https://between-worlds-prod.onrender.com/?shell=android&entry=unlock"
@@ -192,7 +223,11 @@ class UnlockSoftGateCoordinator(
             true
         }.getOrDefault(false)
 
-        if (!launched) return
+        if (!launched) {
+            preferences.markSkipped("start_activity_exception")
+            return
+        }
+        preferences.markLaunchRequested(now)
         preferences.markPresented(now)
         runCatching {
             LocalLifeStore(app).recordTimeline(
