@@ -45,6 +45,9 @@ fun LifeHealthJournalPanel() {
     var expectedSource by remember { mutableStateOf<String?>(null) }
     var foodText by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
+    var lastActualStartInput by remember { mutableStateOf("") }
+    var typicalCycleDaysInput by remember { mutableStateOf("29") }
+    var typicalPeriodDaysInput by remember { mutableStateOf("3") }
 
     suspend fun refresh() {
         val snapshot = withContext(Dispatchers.IO) {
@@ -65,6 +68,14 @@ fun LifeHealthJournalPanel() {
     }
 
     LaunchedEffect(Unit) {
+        val prefs = withContext(Dispatchers.IO) {
+            journal.cyclePreferences()
+        }
+        lastActualStartInput = prefs.lastConfirmedStartEpochDay?.let {
+            LocalDate.ofEpochDay(it).toString()
+        }.orEmpty()
+        typicalCycleDaysInput = prefs.typicalCycleDays.toString()
+        typicalPeriodDaysInput = prefs.typicalPeriodDays.toString()
         refresh()
     }
 
@@ -95,6 +106,88 @@ fun LifeHealthJournalPanel() {
                         "；只作生活提醒，不作诊断或避孕依据。",
                     style = MaterialTheme.typography.bodySmall
                 )
+            }
+
+            Text(
+                "经期参数（保存在本机）",
+                style = MaterialTheme.typography.titleSmall
+            )
+            OutlinedTextField(
+                value = lastActualStartInput,
+                onValueChange = { lastActualStartInput = it },
+                label = { Text("上次实际开始日 YYYY-MM-DD") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            OutlinedTextField(
+                value = typicalCycleDaysInput,
+                onValueChange = { typicalCycleDaysInput = it },
+                label = { Text("平均周期（天）") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            OutlinedTextField(
+                value = typicalPeriodDaysInput,
+                onValueChange = { typicalPeriodDaysInput = it },
+                label = { Text("通常经期持续（天）") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            Button(
+                onClick = {
+                    val start = runCatching {
+                        LocalDate.parse(lastActualStartInput.trim())
+                    }.getOrNull()
+                    val cycle = typicalCycleDaysInput.toIntOrNull()
+                    val days = typicalPeriodDaysInput.toIntOrNull()
+                    if (start == null ||
+                        start.isAfter(LocalDate.now()) ||
+                        cycle == null || cycle !in 15..60 ||
+                        days == null || days !in 1..14
+                    ) {
+                        note = "请输入真实的历史开始日期、15–60天的周期和1–14天的经期长度。"
+                    } else {
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                journal.saveCyclePreferences(start, cycle, days)
+                                timeline.recordTimeline(
+                                    type = "cycle_settings",
+                                    title = "更新生理期参考信息",
+                                    detail = "上次实际开始：$start；自述周期：$cycle 天；通常持续：$days 天"
+                                )
+                            }
+                            note = "已保存历史日期和自述周期；仅用于估计。"
+                            refresh()
+                        }
+                    }
+                }
+            ) {
+                Text("保存周期参考信息")
+            }
+            TextButton(
+                onClick = {
+                    scope.launch {
+                        val written = withContext(Dispatchers.IO) {
+                            journal.recordExpectedSoon()
+                        }
+                        if (written) {
+                            withContext(Dispatchers.IO) {
+                                timeline.recordTimeline(
+                                    type = "cycle_expected_soon",
+                                    title = "感觉生理期快来了",
+                                    detail = "用户预计，尚未确认实际开始"
+                                )
+                            }
+                        }
+                        note = if (written) {
+                            "已记录预感；不是实际来潮，等确认后再点「今天开始」。"
+                        } else {
+                            "今天已记过一次临近预感，不重复记录。"
+                        }
+                    }
+                }
+            ) {
+                Text("今天感觉快来了（不等于实际开始）")
             }
 
             Row(
