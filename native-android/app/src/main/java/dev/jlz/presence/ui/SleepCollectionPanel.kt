@@ -18,8 +18,19 @@ fun SleepCollectionPanel() {
     LaunchedEffect(Unit) { while (true) { state = store.snapshot(); delay(3000) } }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("昨夜睡眠 · 采集状态", style = MaterialTheme.typography.titleMedium)
-            Text("点晨间通知只会打开华为运动健康。继续进入「健康 → 睡眠 → 昨夜／当天夜间详情」，让日期和总睡眠时长同时显示，停留约十秒。回来后在这里检查。")
+            Text("手机推测休息／未用手机窗口", style = MaterialTheme.typography.titleMedium)
+            var rest by remember { mutableStateOf(org.json.JSONObject()) }
+            LaunchedEffect(Unit) {
+                rest = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    dev.jlz.presence.usage.DeviceActivityJournal(context).use { it.phoneRestWindow(context) }
+                }
+            }
+            Text(if (!rest.isNull("unused_phone_window_minutes") && rest.has("unused_phone_window_minutes"))
+                "未用手机窗口约 "+rest.optLong("unused_phone_window_minutes")+" 分钟；不是实际睡眠时长。"
+                else "夜间证据不足，暂不计算时长。保留中途使用、未知来源与覆盖缺口。")
+            Text("以你的自述为先；排除 Runtime 自动亮屏，UNKNOWN 不算本人操作。早晨自动检查手机使用窗口，不再要求打开健康页。")
+            Text("可选：华为睡眠记录", style = MaterialTheme.typography.titleSmall)
+            Text("需要核对健康记录时，可手动进入「健康 → 睡眠 → 昨夜／当天夜间详情」，让日期和总睡眠时长同时显示，停留约十秒。回来后在这里检查。")
             val verified = state.optBoolean("sleep_date_verified") && state.optBoolean("sleep_fresh") && !state.isNull("sleep_minutes")
             Text(if (verified) "已读到：${state.optInt("sleep_minutes") / 60}小时${state.optInt("sleep_minutes") % 60}分钟 · 日期已核验"
                 else when (state.optString("sleep_parse_status")) {

@@ -17,7 +17,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
-/** Structured app observation first. Only explicit allowlisted long-stay rules may capture. */
+/** Structured app observation first. Explicit selected-app or all-foreground consent gates capture. */
 class AutomaticCaptureCoordinator(context: Context) {
     private val appContext = context.applicationContext
     private val traffic = CaptureTrafficPolicy(appContext)
@@ -63,7 +63,7 @@ class AutomaticCaptureCoordinator(context: Context) {
         scrollJob = null
         lastScrollAtMs = 0L
 
-        if (pkg in NO_AUTOMATIC_CAPTURE_PACKAGES || pkg in SYSTEM_SURFACE_PACKAGES) {
+        if (AutomaticCaptureScopePolicy.blockedPackage(pkg)) {
             return
         }
 
@@ -109,7 +109,7 @@ class AutomaticCaptureCoordinator(context: Context) {
         val pkg = packageName?.trim().orEmpty()
         if (pkg.isBlank() || pkg != currentPackage || !enabled() ||
             dev.jlz.presence.cowatch.CoWatchState.active) return
-        if (pkg in NO_AUTOMATIC_CAPTURE_PACKAGES || pkg in SYSTEM_SURFACE_PACKAGES) return
+        if (AutomaticCaptureScopePolicy.blockedPackage(pkg)) return
         if (observedAtMs - lastScrollAtMs < SCROLL_TRIGGER_COOLDOWN_MS) return
         if (!traffic.canCapture(pkg, observedAtMs)) return
         lastScrollAtMs = observedAtMs
@@ -139,7 +139,8 @@ class AutomaticCaptureCoordinator(context: Context) {
     private fun stillOn(packageName: String, expectedGeneration: Long): Boolean {
         if (generation != expectedGeneration || currentPackage != packageName) return false
         val power = appContext.getSystemService(PowerManager::class.java)
-        return power?.isInteractive == true
+        val keyguard = appContext.getSystemService(android.app.KeyguardManager::class.java)
+        return power?.isInteractive == true && keyguard?.isKeyguardLocked == false
     }
 
     private suspend fun captureAndUpload(
@@ -147,11 +148,11 @@ class AutomaticCaptureCoordinator(context: Context) {
         expectedGeneration: Long,
         origin: String
     ): String = captureMutex.withLock {
-        if (!stillOn(packageName, expectedGeneration) ||
+        if (!enabled() || !traffic.enabledFor(packageName) || !stillOn(packageName, expectedGeneration) ||
             dev.jlz.presence.cowatch.CoWatchState.active) return@withLock "foreground_changed_or_cowatch_active"
         // Fail closed if accessibility sees an editable, keyboard, payment,
         // password, foreign application or otherwise uncertain hierarchy.
-        if (!dev.jlz.presence.screen.AccessibilityActionGateway.safeForCoWatch(packageName)) {
+        if (!dev.jlz.presence.screen.AccessibilityActionGateway.safeForAutomaticCapture(packageName)) {
             return@withLock "sensitive_or_unverified_foreground"
         }
 
@@ -163,9 +164,9 @@ class AutomaticCaptureCoordinator(context: Context) {
 
         // The screen can change during the screenshot callback. Do not label a
         // later app's pixels as the earlier package.
-        if (!stillOn(packageName, expectedGeneration) ||
+        if (!enabled() || !traffic.enabledFor(packageName) || !stillOn(packageName, expectedGeneration) ||
             dev.jlz.presence.cowatch.CoWatchState.active ||
-            !dev.jlz.presence.screen.AccessibilityActionGateway.safeForCoWatch(packageName)) {
+            !dev.jlz.presence.screen.AccessibilityActionGateway.safeForAutomaticCapture(packageName)) {
             return@withLock "foreground_changed_after_capture"
         }
 

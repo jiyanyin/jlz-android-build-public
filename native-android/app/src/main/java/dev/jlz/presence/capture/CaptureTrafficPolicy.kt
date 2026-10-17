@@ -37,15 +37,10 @@ class CaptureTrafficPolicy(context: Context) {
 
     /** Visible user opt-in only, not silently enabled by an hourly wakeup. */
     fun configureAutomatic(enabled: Boolean, packages: Set<String>): Boolean = synchronized(LOCK) {
-        val safePackages = packages.filter { pkg ->
-            pkg.isNotBlank() && pkg != "com.openai.chatgpt" &&
-            !pkg.startsWith("com.android.") && !pkg.startsWith("com.google.android.") &&
-            !pkg.contains("bank", ignoreCase = true) &&
-            pkg !in setOf("com.tencent.mm", "com.eg.android.AlipayGphone")
-        }.toSet()
+        val safePackages = packages.filter { !AutomaticCaptureScopePolicy.blockedPackage(it) }.toSet()
         // A rejected enable request must preserve the last valid saved selection.
-        if (enabled && safePackages.isEmpty()) return@synchronized false
-        prefs.edit().putBoolean("automatic_enabled", enabled && safePackages.isNotEmpty())
+        if (enabled && safePackages.isEmpty() && !allForegroundApps()) return@synchronized false
+        prefs.edit().putBoolean("automatic_enabled", enabled)
             .putStringSet("automatic_packages", safePackages).commit()
     }
 
@@ -54,10 +49,20 @@ class CaptureTrafficPolicy(context: Context) {
             prefs.getStringSet("automatic_packages", emptySet()).orEmpty().toSet()
     }
 
+    fun allForegroundApps(): Boolean = synchronized(LOCK) { prefs.getBoolean("automatic_all_foreground_apps", false) }
+
+    // The scope is visible and durable; returning to an empty selected scope pauses sampling.
+    fun setAllForegroundApps(value: Boolean): Boolean = synchronized(LOCK) {
+        val change = prefs.edit().putBoolean("automatic_all_foreground_apps", value)
+        if (!value && automaticSelection().second.isEmpty()) change.putBoolean("automatic_enabled", false)
+        change.commit()
+    }
+
+    fun setAutomaticEnabled(value: Boolean): Boolean = configureAutomatic(value, automaticSelection().second)
+
     fun enabledFor(pkg: String): Boolean = synchronized(LOCK) {
         prefs.getBoolean("automatic_enabled", false) &&
-            prefs.getStringSet("automatic_packages", emptySet()).orEmpty().contains(pkg) &&
-            pkg != "com.openai.chatgpt"
+            AutomaticCaptureScopePolicy.allowed(pkg, prefs.getStringSet("automatic_packages", emptySet()).orEmpty(), allForegroundApps())
     }
 
     fun canCapture(pkg: String, now: Long = System.currentTimeMillis()): Boolean = synchronized(LOCK) {
@@ -113,7 +118,7 @@ class CaptureTrafficPolicy(context: Context) {
     fun snapshot(): JSONObject = synchronized(LOCK) {
         roll(System.currentTimeMillis())
         JSONObject().put("source", "android_http_body_bytes").put("excludes", "TLS/headers,Runtime-Storage,MCP-client")
-            .put("automatic_default", false).put("automatic_daily_count_limit", JSONObject.NULL)
+            .put("automatic_all_foreground_apps", allForegroundApps()).put("automatic_default", false).put("automatic_daily_count_limit", JSONObject.NULL)
             .put("automatic_count_semantics", "no_hourly_or_daily_frame_count_cap;bounded_by_bytes_and_dedupe")
             .put("automatic_daily_byte_limit", DAILY_BYTES).put("automatic_monthly_byte_limit", MONTHLY_BYTES)
             .also { json -> for (name in listOf("upload_bytes", "download_bytes", "screenshot_bytes", "auto_bytes")) {

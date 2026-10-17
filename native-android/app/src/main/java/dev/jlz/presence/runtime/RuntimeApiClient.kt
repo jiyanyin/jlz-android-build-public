@@ -99,6 +99,9 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
         settings.traffic?.record(upload = pixels.size.toLong(), screenshot = pixels.size.toLong())
         conn.outputStream.use { it.write(pixels) }; return readJson(conn)
     }
+    fun notificationSettings(): JSONObject = getJson("/api/world/notification-settings?device_id=" + settings.deviceId)
+    fun setNotificationMode(mode: String): JSONObject = postJson("/api/world/notification-settings",
+        JSONObject().put("device_id", settings.deviceId).put("mode", mode).put("user_confirmed", true))
     fun contentReceipt(receipt: JSONObject): JSONObject = postJson("/api/world/content/receipt",receipt)
     fun dailyPlanForReaction(): JSONObject = getJson("/api/daily-plan?space_id=world-between-primary").getJSONObject("plan")
     fun reminderCheck(payload: JSONObject): Boolean = postJson("/api/world/reminder-check",payload).optBoolean("allowed",false)

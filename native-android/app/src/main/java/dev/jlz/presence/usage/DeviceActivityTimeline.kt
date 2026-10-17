@@ -392,76 +392,29 @@ class DeviceActivityJournal(context: Context) :
         nowMs: Long = System.currentTimeMillis(),
         deviceId: String = DEFAULT_DEVICE_ID
     ): JSONObject {
-        val lookback = nowMs - 36L * 60L * 60L * 1000L
-        val screen = readScreenTimeline(context, lookback, nowMs, null, 1000, null, deviceId)
-        val events = jsonObjects(screen.optJSONArray("items") ?: JSONArray())
-        val sessionsJson = readAppSessions(context, lookback, nowMs, null, null, 1000, null, deviceId)
-        val sessions = jsonObjects(sessionsJson.optJSONArray("sessions") ?: JSONArray())
-
-        val cal = Calendar.getInstance().apply { timeInMillis = nowMs }
-        cal.set(Calendar.HOUR_OF_DAY, 4); cal.set(Calendar.MINUTE, 0)
-        cal.set(Calendar.SECOND, 0); cal.set(Calendar.MILLISECOND, 0)
-        val morningStart = cal.timeInMillis
-        cal.set(Calendar.HOUR_OF_DAY, 12)
-        val morningEnd = cal.timeInMillis
-
-        val firstMorningUnlock = events.firstOrNull {
-            it.optString("event_type") == "KEYGUARD_HIDDEN" &&
-                it.optLong("wall_clock_timestamp") in morningStart..morningEnd &&
-                it.optString("origin") !in setOf(Origin.JLZ_RUNTIME.name, Origin.WORK_TEST.name)
-        }?.optLong("wall_clock_timestamp")?.takeIf { it > 0L }
-
-        val cutoff = firstMorningUnlock ?: nowMs
-        val lastNonRuntimeScreenOff = events.lastOrNull {
-            it.optString("event_type") == "SCREEN_OFF" &&
-                it.optLong("wall_clock_timestamp") <= cutoff &&
-                it.optString("origin") !in setOf(Origin.JLZ_RUNTIME.name, Origin.WORK_TEST.name)
-        }?.optLong("wall_clock_timestamp")?.takeIf { it > 0L }
-        val lastUserPresent = events.lastOrNull {
-            it.optString("event_type") == "USER_PRESENT" &&
-                it.optString("origin") !in setOf(Origin.JLZ_RUNTIME.name, Origin.WORK_TEST.name)
-        }?.optLong("wall_clock_timestamp")?.takeIf { it > 0L }
-        val nonRuntimeSessions = sessions.filter {
-            it.optString("origin") !in setOf(Origin.JLZ_RUNTIME.name, Origin.WORK_TEST.name)
+        val range = PhoneRestWindowPolicy.range(nowMs)
+        val events = mutableListOf<JSONObject>()
+        val sessions = mutableListOf<JSONObject>()
+        var screenComplete = false
+        var sessionComplete = false
+        var cursor: String? = null
+        for (pageIndex in 0 until 16) {
+            val page = readScreenTimeline(context, range.first, range.second, null, 500, cursor, deviceId)
+            if (!page.optBoolean("ok")) break
+            events.addAll(jsonObjects(page.optJSONArray("items") ?: JSONArray()))
+            cursor = page.optString("next_cursor").takeIf { it.isNotBlank() }
+            if (cursor == null) { screenComplete = true; break }
         }
-        val lastForeground = nonRuntimeSessions.maxOfOrNull { it.optLong("session_end") }
-        val lastNonRuntimeInteraction = listOfNotNull(lastUserPresent, lastForeground)
-            .filter { it <= cutoff }.maxOrNull()
-        val quietStart = listOfNotNull(lastNonRuntimeScreenOff, lastNonRuntimeInteraction).maxOrNull()
-
-        val runtimeAfter = if (quietStart == null) emptyList() else events.filter {
-            it.optLong("wall_clock_timestamp") >= quietStart &&
-                it.optString("origin") in setOf(Origin.JLZ_RUNTIME.name, Origin.WORK_TEST.name) &&
-                it.optString("event_type") in setOf("SCREEN_ON", "SCREEN_OFF")
+        cursor = null
+        for (pageIndex in 0 until 16) {
+            val page = readAppSessions(context, range.first, range.second, null, null, 500, cursor, deviceId)
+            if (!page.optBoolean("ok")) break
+            sessions.addAll(jsonObjects(page.optJSONArray("sessions") ?: JSONArray()))
+            cursor = page.optString("next_cursor").takeIf { it.isNotBlank() }
+            if (cursor == null) { sessionComplete = true; break }
         }
-        val nonRuntimeAfter = if (quietStart == null) emptyList() else events.filter {
-            it.optLong("wall_clock_timestamp") > quietStart &&
-                it.optString("origin") == Origin.USER_OR_NON_RUNTIME.name &&
-                it.optString("event_type") in setOf("SCREEN_ON", "SCREEN_OFF", "USER_PRESENT")
-        }
-        val evidence = JSONArray()
-        quietStart?.let { evidence.put(JSONObject().put("kind", "quiet_window_start").put("at_ms", it)) }
-        firstMorningUnlock?.let { evidence.put(JSONObject().put("kind", "first_morning_unlock").put("at_ms", it)) }
-        if (runtimeAfter.isNotEmpty()) evidence.put(JSONObject()
-            .put("kind", "runtime_screen_events_ignored_for_user_presence").put("count", runtimeAfter.size))
-
-        return JSONObject()
-            .put("ok", screen.optBoolean("ok", false))
-            .put("classification", "phone_inferred_rest_window")
-            .put("medical_sleep_data", false).put("warning", "NOT_MEDICAL_SLEEP_DATA")
+        return PhoneRestWindowPolicy.estimate(events, sessions, nowMs, screenComplete && sessionComplete)
             .put("device_id", deviceId).put("device_type", deviceTypeForId(deviceId))
-            .put("last_non_runtime_screen_off_at", lastNonRuntimeScreenOff ?: JSONObject.NULL)
-            .put("last_non_runtime_interaction_at", lastNonRuntimeInteraction ?: JSONObject.NULL)
-            .put("last_user_present_at", lastUserPresent ?: JSONObject.NULL)
-            .put("last_foreground_activity_at", lastForeground ?: JSONObject.NULL)
-            .put("runtime_screen_events_after_that", JSONArray(runtimeAfter))
-            .put("non_runtime_screen_events_after_that", JSONArray(nonRuntimeAfter))
-            .put("first_morning_unlock_at", firstMorningUnlock ?: JSONObject.NULL)
-            .put("quiet_window_start", quietStart ?: JSONObject.NULL)
-            .put("quiet_window_end", firstMorningUnlock ?: JSONObject.NULL)
-            .put("confidence", if (quietStart != null && firstMorningUnlock != null)
-                "medium_phone_evidence" else "low_incomplete_phone_evidence")
-            .put("evidence", evidence)
     }
 
     fun highFrequencySummary(

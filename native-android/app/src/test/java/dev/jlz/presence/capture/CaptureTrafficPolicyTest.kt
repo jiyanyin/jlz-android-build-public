@@ -27,7 +27,7 @@ class CaptureTrafficPolicyTest {
         val selected = setOf("com.xingin.xhs", "tv.danmaku.bili")
         assertTrue(policy.configureAutomatic(true, selected))
         assertFalse(policy.configureAutomatic(true, emptySet()))
-        assertFalse(policy.configureAutomatic(true, setOf("com.tencent.mm", "com.openai.chatgpt", "com.android.settings")))
+        assertFalse(policy.configureAutomatic(true, setOf("com.example.bank", "com.android.settings")))
         assertEquals(true to selected, CaptureTrafficPolicy(context).automaticSelection())
         assertTrue(policy.configureAutomatic(false, selected))
         assertEquals(false to selected, CaptureTrafficPolicy(context).automaticSelection())
@@ -40,7 +40,7 @@ class CaptureTrafficPolicyTest {
     @Test fun defaultClosedAndExplicitWhitelist() {
         assertFalse(policy.canCapture("test.app")); allow()
         assertTrue(policy.canCapture("test.app"))
-        assertFalse(policy.canCapture("other.app")); assertFalse(policy.canCapture("com.openai.chatgpt"))
+        assertFalse(policy.canCapture("other.app")); assertTrue(policy.canCapture("com.openai.chatgpt"))
     }
     @Test fun exactBudgetCooldownDedupeAndRestart() {
         allow(); val now = System.currentTimeMillis()
@@ -53,8 +53,8 @@ class CaptureTrafficPolicyTest {
     @Test fun noFixedHourlyScreenshotCountCapButBytesRemainBounded() {
         assertTrue(policy.configureAutomatic(true, setOf("test.app", "com.tencent.mm", "com.openai.chatgpt")))
         assertTrue(policy.canCapture("test.app"))
-        assertFalse(policy.canCapture("com.tencent.mm"))
-        assertFalse(policy.canCapture("com.openai.chatgpt"))
+        assertTrue(policy.canCapture("com.tencent.mm"))
+        assertTrue(policy.canCapture("com.openai.chatgpt"))
         val now = System.currentTimeMillis()
         for (i in 0 until 27) {
             val bytes = ByteArray(512) { i.toByte() }

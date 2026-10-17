@@ -463,7 +463,10 @@ class NativeRuntimeService : Service() {
                         deviceId = settings.deviceId,
                         deviceType = NativePhoneSnapshot.deviceType(applicationContext),
                         appVersion = RuntimeApiClient.appVersion(applicationContext),
-                        health = dev.jlz.presence.life.HuaweiHealthObservationStore(applicationContext).snapshot(),
+                        health = dev.jlz.presence.life.HuaweiHealthObservationStore(applicationContext).snapshot().apply {
+                            val rest = applicationContext.getSharedPreferences("jlz_phone_rest_v1", Context.MODE_PRIVATE).getString("latest", null)
+                            if (rest != null) put("phone_inferred_rest_window", JSONObject(rest))
+                        },
                         place = placeWeatherSnapshot?.placeJson(),
                         weather = placeWeatherSnapshot?.weather?.toJson(),
                         presencePlan = presencePlanRepository.summaryJson(),
@@ -709,6 +712,9 @@ class NativeRuntimeService : Service() {
                 } else if (!command.payload.optBoolean("notify", true) ||
                     focusRepository.current().modeNow() == dev.jlz.presence.focus.DailyMode.SLEEP) {
                     true to "echo_only_without_system_notification"
+                } else if (command.payload.optString("queue_message_id").isNotBlank() &&
+                    dev.jlz.presence.notification.PresenceInterruptionPolicy.reason(this) != null) {
+                    true to "protected_activity_without_system_notification"
                 } else if (command.payload.optString("queue_message_id").isNotBlank() &&
                     !runCatching { api.reminderCheck(command.payload) }.getOrDefault(false)) {
                     true to "cancelled_or_check_unavailable_without_notification"

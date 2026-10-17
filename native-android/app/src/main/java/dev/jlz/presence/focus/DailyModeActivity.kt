@@ -158,7 +158,7 @@ class DailyModeActivity : Activity() {
             val steps = if (state.isNull("steps")) "没有今日有效步数" else "${state.optInt("steps")} 步（华为通知）"
             val sleep = if (state.isNull("sleep_minutes")) "睡眠时长尚未真实读到" else "${state.optInt("sleep_minutes")} 分钟（华为可见页面，日期待核实）"
             AlertDialog.Builder(this).setTitle("已读取的健康信息")
-                .setMessage(steps + "\n" + sleep + "\n\n每天约08:05尝试检查已有来源；18:30依据当天真实步数提醒。系统省电可能延迟触发。")
+                .setMessage(steps + "\n" + sleep + "\n\n每天约08:05记录手机推测休息／未用手机窗口；18:30依据当天真实步数提醒。系统省电可能延迟触发。")
                 .setPositiveButton("知道了", null).show()
         }
         section("有选择地让我看见", "自动截图默认关闭。由你选择应用；切换、滑动与长时间停留时有节制地采样。密码和敏感页面不拍。")
@@ -273,8 +273,7 @@ class DailyModeActivity : Activity() {
             Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0
         ).distinctBy { it.activityInfo.packageName }
             .filter {
-                dev.jlz.presence.cowatch.CoWatchTargetPolicy.allowed(
-                    it.activityInfo.packageName, classifier.classify(it.activityInfo.packageName))
+                !dev.jlz.presence.capture.AutomaticCaptureScopePolicy.blockedPackage(it.activityInfo.packageName)
             }.sortedBy { it.loadLabel(packageManager).toString() }
         if (installed.isEmpty()) {
             Toast.makeText(this, "找不到合适的可选应用", Toast.LENGTH_LONG).show()

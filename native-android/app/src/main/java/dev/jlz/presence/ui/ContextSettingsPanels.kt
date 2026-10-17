@@ -503,26 +503,36 @@ fun IncomingCallSettingsPanel() {
 
 @Composable
 fun AutomaticCaptureSettingsPanel() {
+    PresenceNotificationSettingsPanel()
     val context = LocalContext.current
     val policy = remember { CaptureTrafficPolicy(context.applicationContext) }
     val initial = remember { policy.automaticSelection() }
     var enabled by remember { mutableStateOf(initial.first) }
     var selectedCount by remember { mutableIntStateOf(initial.second.size) }
+    var allApps by remember { mutableStateOf(policy.allForegroundApps()) }
     LaunchedEffect(policy) {
         while (true) {
             val current = policy.automaticSelection()
             enabled = current.first
             selectedCount = current.second.size
+            allApps = policy.allForegroundApps()
             kotlinx.coroutines.delay(1000)
         }
     }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("我自己看看你在干什么", style = MaterialTheme.typography.titleMedium)
-            Text("你选定应用并授权后，我会在切换进入约6秒、停留30秒／2分钟／5分钟、之后每5分钟，以及滑动停稳后采样。每个应用至少间隔18秒；不设每小时张数上限，但仍受本机字节空间、重复画面和敏感页保护。")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("所有普通前台应用")
+                Switch(checked = allApps, onCheckedChange = { value ->
+                    if (policy.setAllForegroundApps(value)) { allApps = policy.allForegroundApps(); enabled = policy.automaticSelection().first }
+                })
+            }
+            Text(if (allApps) "包含新打开的浏览器、购物、阅读和聊天阅读页。银行、支付、密码、验证码、输入中、草稿和未知页面仍排除。" else "仅已选应用；可在模式页修改选择。升级保留原有范围，开启上方开关才扩大范围。")
+            Text("你选定范围并授权后，我会在切换进入约6秒、停留30秒／2分钟／5分钟、之后每5分钟，以及滑动停稳后采样。每个应用至少间隔18秒；不设每小时张数上限，但仍受本机字节空间、重复画面和敏感页保护。")
             Text("原图先放在世界之间的手机私有目录；联网后上传到电脑 Home Node 的 captures 目录，官端读取并确认后再释放本机传输副本。上传成功不等于官端GPT已经看过；系统拒绝截屏时不会绕过 Android 限制。")
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(if (enabled) "自动截图已开启 · ${selectedCount}个App" else
+                Text(if (enabled && allApps) "自动截图已开启 · 所有普通应用" else if (enabled) "自动截图已开启 · ${selectedCount}个App" else
                     if (selectedCount == 0) "先到模式页选择App" else "自动截图已暂停 · ${selectedCount}个App")
                 Switch(checked = enabled, onCheckedChange = { value ->
                     val (_, selected) = policy.automaticSelection()
