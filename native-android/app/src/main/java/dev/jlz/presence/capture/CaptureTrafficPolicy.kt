@@ -52,10 +52,25 @@ class CaptureTrafficPolicy(context: Context) {
             prefs.getStringSet("automatic_packages", emptySet()).orEmpty().toSet()
     }
 
+    /** Scope changes are made only by the visible settings UI. Existing installs stay selected-only. */
+    fun allForegroundApps(): Boolean = synchronized(LOCK) {
+        prefs.getBoolean("automatic_all_foreground_apps", false)
+    }
+
+    fun setAllForegroundApps(value: Boolean): Boolean = synchronized(LOCK) {
+        prefs.edit().putBoolean("automatic_all_foreground_apps", value).commit()
+    }
+
+    fun setAutomaticEnabled(value: Boolean): Boolean = synchronized(LOCK) {
+        prefs.edit().putBoolean("automatic_enabled", value).commit()
+    }
+
     fun enabledFor(pkg: String): Boolean = synchronized(LOCK) {
         prefs.getBoolean("automatic_enabled", false) &&
-            prefs.getStringSet("automatic_packages", emptySet()).orEmpty().contains(pkg) &&
-            pkg != "com.openai.chatgpt"
+            AutomaticCaptureScopePolicy.allowed(
+                pkg, prefs.getStringSet("automatic_packages", emptySet()).orEmpty(),
+                prefs.getBoolean("automatic_all_foreground_apps", false)
+            )
     }
 
     fun canCapture(pkg: String, now: Long = System.currentTimeMillis()): Boolean = synchronized(LOCK) {
@@ -111,7 +126,7 @@ class CaptureTrafficPolicy(context: Context) {
     fun snapshot(): JSONObject = synchronized(LOCK) {
         roll(System.currentTimeMillis())
         JSONObject().put("source", "android_http_body_bytes").put("excludes", "TLS/headers,Runtime-Storage,MCP-client")
-            .put("automatic_default", false).put("automatic_daily_count_limit", JSONObject.NULL)
+            .put("automatic_default", false).put("automatic_all_foreground_apps", allForegroundApps()).put("automatic_daily_count_limit", JSONObject.NULL)
             .put("automatic_count_semantics", "no_hourly_or_daily_frame_count_cap;bounded_by_bytes_and_dedupe")
             .put("automatic_daily_byte_limit", DAILY_BYTES).put("automatic_monthly_byte_limit", MONTHLY_BYTES)
             .also { json -> for (name in listOf("upload_bytes", "download_bytes", "screenshot_bytes", "auto_bytes")) {
