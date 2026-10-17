@@ -120,6 +120,33 @@ object AccessibilityActionGateway {
         return queue.isEmpty()
     }
 
+    /** Automatic capture may see an idle empty composer; CoWatch keeps its stricter rule. */
+    fun safeForAutomaticCapture(target: String): Boolean {
+        if (dev.jlz.presence.capture.AutomaticCaptureScopePolicy.blockedPackage(target)) return false
+        val windows = service?.windows ?: return false
+        val active = windows.filter { it.isActive || it.isFocused }
+        if (active.isEmpty() || active.any {
+                it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD
+            }) return false
+        if (windows.any { it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_APPLICATION &&
+                it.root?.packageName?.toString() != target }) return false
+        val root = bestRoot() ?: return false
+        if (root.packageName?.toString() != target || !root.isVisibleToUser) return false
+        val queue = java.util.ArrayDeque<android.view.accessibility.AccessibilityNodeInfo>()
+        queue.add(root)
+        var visited = 0
+        while (queue.isNotEmpty() && visited++ < 300) {
+            val node = queue.removeFirst()
+            if (node.isVisibleToUser && dev.jlz.presence.capture.AutomaticCaptureScopePolicy.sensitiveNode(
+                    node.isPassword, node.isEditable, node.isFocused,
+                    node.text?.toString().orEmpty(), node.contentDescription?.toString().orEmpty(),
+                    node.viewIdResourceName.orEmpty(), node.inputType
+                )) return false
+            for (i in 0 until node.childCount) node.getChild(i)?.let { queue.add(it) }
+        }
+        return queue.isEmpty()
+    }
+
     fun overlayProtected(): Boolean = runCatching {
         service?.windows?.any { window ->
             // Some OEMs retain an inactive keyboard window after it is dismissed.
