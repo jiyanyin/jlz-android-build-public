@@ -123,6 +123,12 @@ object AccessibilityActionGateway {
     /** Automatic capture may see an idle empty composer; CoWatch keeps its stricter rule. */
     fun safeForAutomaticCapture(target: String): Boolean {
         if (dev.jlz.presence.capture.AutomaticCaptureScopePolicy.blockedPackage(target)) return false
+        val currentService = service ?: return false
+        val label = runCatching {
+            val info = currentService.packageManager.getApplicationInfo(target, 0)
+            currentService.packageManager.getApplicationLabel(info).toString()
+        }.getOrNull() ?: return false
+        if (dev.jlz.presence.capture.AutomaticCaptureScopePolicy.blockedAppLabel(label)) return false
         val windows = service?.windows ?: return false
         val active = windows.filter { it.isActive || it.isFocused }
         if (active.isEmpty() || active.any {
@@ -135,8 +141,11 @@ object AccessibilityActionGateway {
         val queue = java.util.ArrayDeque<android.view.accessibility.AccessibilityNodeInfo>()
         queue.add(root)
         var visited = 0
+        var readable = false
         while (queue.isNotEmpty() && visited++ < 300) {
             val node = queue.removeFirst()
+            if (node.isVisibleToUser && !node.isShowingHintText &&
+                (!node.text.isNullOrBlank() || !node.contentDescription.isNullOrBlank())) readable = true
             if (node.isVisibleToUser && dev.jlz.presence.capture.AutomaticCaptureScopePolicy.sensitiveNode(
                     node.isPassword, node.isEditable, node.isFocused,
                     (if (node.isShowingHintText) "" else node.text?.toString().orEmpty()), node.contentDescription?.toString().orEmpty(),
@@ -144,7 +153,7 @@ object AccessibilityActionGateway {
                 )) return false
             for (i in 0 until node.childCount) node.getChild(i)?.let { queue.add(it) }
         }
-        return queue.isEmpty()
+        return queue.isEmpty() && readable
     }
 
     fun overlayProtected(): Boolean = runCatching {

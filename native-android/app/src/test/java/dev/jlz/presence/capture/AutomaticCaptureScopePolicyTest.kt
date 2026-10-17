@@ -81,6 +81,21 @@ class AutomaticCaptureScopePolicyTest {
         assertTrue(node(text = "信用卡安全码"))
     }
 
+    @Test fun readingBrowserUrlIsAllowedButTypingOrDraftStillBlocks() {
+        assertFalse(node(text = "https://example.com/article", resource = "com.android.chrome:id/url_bar", editable = true, inputType = 0x11))
+        assertTrue(node(text = "https://example.com/article", resource = "com.android.chrome:id/url_bar", editable = true, focused = true, inputType = 0x11))
+        assertTrue(node(text = "unsent words", resource = "chat_input", editable = true, inputType = 0x11))
+        assertTrue(node(text = "https://example.com/payment", resource = "com.android.chrome:id/url_bar", editable = true, inputType = 0x11))
+    }
+
+    @Test fun financialLabelsAndSystemSurfacesStayExcludedWithoutFlagSecure() {
+        for (label in listOf("中国银行", "工行", "密码管理器", "身份验证器", "My Bank"))
+            assertTrue(label, AutomaticCaptureScopePolicy.blockedAppLabel(label))
+        assertFalse(AutomaticCaptureScopePolicy.blockedAppLabel("浏览器"))
+        assertTrue(AutomaticCaptureScopePolicy.blockedPackage("com.hihonor.android.launcher"))
+        assertTrue(AutomaticCaptureScopePolicy.blockedPackage("com.miui.packageinstaller"))
+    }
+
     @Test fun allForegroundStillHasCooldownDedupeAndByteBudget() {
         traffic.setAllForegroundApps(true)
         traffic.setAutomaticEnabled(true)
