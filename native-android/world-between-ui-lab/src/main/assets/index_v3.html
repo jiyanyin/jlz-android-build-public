@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>世界之间 · V2 · 冰晶桌面</title>
+<style>
+@font-face{font-family:WenKai;src:url(fonts/wenkai-ui.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:SourceSans;src:url(fonts/sourcehan-ui.woff2) format("woff2");font-weight:400 700;font-display:swap}
+:root{
+ --ink:#35446b;--soft:#7383af;--violet:#8274cd;--blue:#7b9ce6;
+ --highlight:#b48fe9;--glass:rgba(239,240,255,.63);--radius:22px;--blur:17px;
+ --line:rgba(255,255,255,.73);--shadow:0 10px 29px rgba(45,58,114,.15),inset 0 1px rgba(255,255,255,.88);
+}
+*{box-sizing:border-box}
+html{min-height:100%;background:#d6def2}
+body{margin:0;color:var(--ink);font-family:SourceSans,"Noto Sans SC","Microsoft YaHei",sans-serif;font-size:14px;-webkit-tap-highlight-color:transparent}
+h1,h2,h3,p{margin:0}
+button,textarea,input{font:inherit}
+button{cursor:pointer;border:0;color:inherit;background:none}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid #7d6bca;outline-offset:2px}
+button:active{transform:scale(.974)}
+[hidden]{display:none!important}
+strong{font-weight:700}
+.shell{
+ position:relative;max-width:470px;min-height:100dvh;overflow:hidden;
+ margin:0 auto;padding:env(safe-area-inset-top) 15px calc(107px + env(safe-area-inset-bottom));
+ background:
+ radial-gradient(ellipse at 20% 4%,rgba(167,189,238,.8),transparent 54%),
+ radial-gradient(ellipse at 98% 37%,rgba(181,151,227,.52),transparent 48%),
+ radial-gradient(ellipse at 3% 89%,rgba(231,185,227,.39),transparent 37%),
+ linear-gradient(172deg,#9daed3,#cad9f4 34%,#e0dff2 75%,#c6d4ec);
+}
+.shell::before{
+ content:"";position:absolute;inset:0;pointer-events:none;opacity:.62;
+ background:radial-gradient(circle at 7% 10%,white 0 2px,transparent 4px),
+ radial-gradient(circle at 80% 14%,white 0 2px,transparent 4px),
+ radial-gradient(circle at 56% 33%,#f9e6ff 0 2px,transparent 4px),
+ radial-gradient(circle at 91% 70%,white 0 3px,transparent 7px);
+ background-size:241px 335px,287px 401px,192px 279px,311px 300px
+}
+.glass{
+ background:var(--glass);border:1px solid var(--line);
+ box-shadow:var(--shadow);-webkit-backdrop-filter:blur(var(--blur));
+ backdrop-filter:blur(var(--blur))
+}
+.demo-pill{position:relative;z-index:2;display:inline-flex;background:#f3ecffdb;color:#7767b0;align-items:center;padding:5px 10px;font-size:10px;border-radius:99px;border:1px solid #fff;letter-spacing:.02em;margin:8px 0}
+.hero{position:relative;height:313px;z-index:1;overflow:hidden;border-radius:28px;
+ background:radial-gradient(ellipse at 79% 26%,#c4c3eede,transparent 45%),
+ radial-gradient(ellipse at 100% 100%,#b7b4de94,transparent 57%),
+ linear-gradient(135deg,rgba(93,119,172,.37),rgba(124,105,183,.34));border:1px solid rgba(255,255,255,.4);
+ box-shadow:inset 0 0 45px #faf2ff33}
+.hero::after{content:"";position:absolute;inset:0;z-index:0;background:linear-gradient(90deg,rgba(47,69,128,.36),transparent 75%);pointer-events:none}
+.hero svg.figure{position:absolute;top:-5px;right:-24px;width:256px;height:300px;z-index:1;opacity:.94;filter:drop-shadow(0 14px 24px #3b45714d)}
+.hero-front{position:relative;z-index:2;padding:17px 17px}
+.brand{font-family:WenKai,"STKaiti",serif;font-weight:400;font-size:41px;line-height:1.25;letter-spacing:.1em;color:#fff;text-shadow:0 3px 12px #40517c9c;white-space:nowrap}
+.en-sub{font-size:11px;letter-spacing:.16em;font-family:Georgia,serif;font-style:italic;color:#f2e9ff}
+.hero-note{margin-top:22px;max-width:60%;color:#fdfdff;font-family:WenKai,"STKaiti",serif;line-height:1.85;font-size:16px;text-shadow:0 2px 7px #46527b}
+.info-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:17px;color:white;font-size:11px;text-shadow:0 2px 4px #40517b}
+.info-bar strong{font-size:15px}
+.hero-quote{position:absolute;z-index:3;bottom:15px;left:15px;right:15px;padding:9px 13px;border-radius:16px;background:rgba(238,240,255,.32);border:1px solid #fff5;color:#fff;font-size:12px;letter-spacing:.025em;line-height:1.55;backdrop-filter:blur(14px)}
+.main-content{position:relative;z-index:1;display:flex;flex-direction:column;gap:11px;margin-top:11px}
+.panel{border-radius:var(--radius);padding:13px}
+.panel-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;gap:7px}
+.panel-title{font-family:WenKai,"STKaiti",serif;font-size:18px;font-weight:400;color:#42517c;letter-spacing:.03em}
+.tiny{font-size:10px;color:var(--soft)}
+.small-link{font-size:11px;color:#7279bb;padding:5px 1px}
+.mood-columns{display:grid;grid-template-columns:1.05fr 1fr 1fr;gap:6px}
+.mood-mini{background:#fcfcff8a;border:1px solid #fff9;border-radius:13px;padding:9px 7px;min-width:0}
+.mood-mini label{display:block;color:#8b8bb2;font-size:10px;margin-bottom:4px}
+.mood-mini strong{font-size:12px;color:#42537d}
+.mood-quote{margin-top:7px;color:#6b6c9d;font-size:11px;font-family:WenKai,serif}
+.task{display:flex;align-items:center;gap:12px;background:linear-gradient(105deg,#f5f5ffcf,#e7e8ffbc);border:1px solid #fff;border-radius:16px;padding:11px}
+.task-art{width:84px;min-height:98px;flex:none;border-radius:13px;background:
+ radial-gradient(circle at 57% 24%,#fff6bc 0 5%,transparent 33%),
+ linear-gradient(140deg,#7d91c3,#cbbcf5 55%,#b1bce0);position:relative;overflow:hidden}
+.task-art:after{content:"📖";position:absolute;bottom:5px;left:11px;font-size:50px;filter:drop-shadow(1px 3px 4px #6a63a4)}
+.task-description{flex:1;min-width:0}
+.task-description h2{font-family:WenKai,serif;font-size:22px;font-weight:400;margin-bottom:3px}
+.task-description p{font-size:12px;color:#667399;margin-bottom:9px}
+.primary{border-radius:99px;color:#fff!important;padding:10px 15px;font-weight:700;background:linear-gradient(120deg,#a499f5,#718eed);box-shadow:0 8px 19px #7186dc4e}
+.task-foot{font-size:10px;color:#8590b2;margin-top:7px}
+.shortcuts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.shortcut{min-height:78px;border-radius:17px;padding:9px 3px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:5px}
+.shortcut .glyph{font-size:22px;line-height:1}
+.shortcut strong{font-size:12px;font-weight:700}
+.shortcut small{font-size:9px;color:var(--soft);white-space:nowrap}
+.bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stack{display:flex;flex-direction:column;gap:7px}
+.tile{background:#fff9;border:1px solid #fff9;border-radius:14px;padding:9px 10px;display:flex;align-items:center;gap:10px;text-align:left;min-width:0}
+.tile .icon{font-size:20px;display:grid;place-items:center;width:34px;height:34px;flex:none;background:linear-gradient(140deg,#f8efff,#d9e6ff);border-radius:12px}
+.tile b{font-size:12px}.tile small{display:block;color:#8991b6;font-size:10px;margin-top:2px}
+.tile .chev{margin-left:auto;color:#8c92be}
+.ledger{border-left:2px solid #beb1e9;margin:5px 0 3px 6px;padding-left:12px}
+.ledger-line{position:relative;font-size:11px;line-height:1.55;margin-bottom:11px;color:#50638c}
+.ledger-line:before{content:"";width:7px;height:7px;background:#b5a6e9;border-radius:50%;position:absolute;left:-16px;top:5px;border:1px solid #fff}
+.ledger-line span{display:block;color:#8c91b4;font-size:10px}
+.discreet{font-size:10px;color:#8692b1;line-height:1.5}
+.dock{position:fixed;z-index:4;bottom:calc(10px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:calc(100% - 25px);max-width:438px;display:flex;justify-content:space-around;padding:8px 4px;border-radius:23px;background:rgba(226,231,255,.85)}
+.dock button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10px;color:#53658d;min-width:51px}
+.dock b{font-size:21px;font-weight:400;display:grid;place-items:center;width:41px;height:41px;border:1px solid #fff;border-radius:14px;background:linear-gradient(145deg,#c4c9f7,#f3ecff);box-shadow:0 4px 11px #a6a8d149}
+.backdrop{position:fixed;z-index:20;inset:0;margin:auto;max-width:470px;background:rgba(42,41,80,.33);display:flex;align-items:flex-end}
+.sheet{position:relative;width:100%;min-height:46dvh;max-height:85dvh;overflow:auto;padding:12px 18px max(25px,env(safe-area-inset-bottom));background:linear-gradient(140deg,rgba(242,245,255,.97),rgba(228,220,249,.96));border:1px solid #fff;border-radius:28px 28px 0 0;box-shadow:0 -13px 65px #363b7359}
+.handle{width:45px;height:5px;border-radius:5px;background:#b4b7d8;margin:0 auto 15px}
+.sheet-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+.sheet-top h2{font-family:WenKai,serif;font-size:24px;font-weight:400}
+.x{width:31px;height:31px;border-radius:99px;background:#fff8;font-size:18px}
+.mini-tabs{display:flex;overflow-x:auto;gap:7px;padding:9px 0 13px}
+.mini-tabs button{white-space:nowrap;background:#fff8;border:1px solid #fff;border-radius:20px;padding:8px 13px;color:#6675a0;font-size:11px}
+.mini-tabs button.selected{background:#c9c2f5;color:#4d447e}
+.chipset{display:flex;flex-wrap:wrap;gap:8px;margin:9px 0 15px}
+.chip{border-radius:99px;background:#fff9;border:1px solid #fff;padding:9px 13px;font-size:12px}
+.chip.selected{background:linear-gradient(130deg,#ead6f7,#ddd9fb);color:#7458ad;box-shadow:0 2px 7px #ad92da65}
+.sheet label{font-size:12px;font-weight:700}
+.sheet textarea{width:100%;margin:7px 0 11px;resize:vertical;min-height:68px;padding:12px;background:#fff9;border:1px solid white;border-radius:14px;color:#405075}
+.sheet-footer{width:100%;margin-top:8px}
+.event-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.event-grid button{border-radius:16px;min-height:67px;background:#fffb;border:1px solid #fff;display:grid;place-items:center;align-content:center;gap:5px;font-size:11px}
+.event-grid .emoji{font-size:22px}
+.active-banner{background:#eee7ff;border:1px solid #fff;border-radius:14px;padding:10px;margin:12px 0;color:#5c5c93}
+.active-banner strong{display:block;font-size:12px}.active-banner span{font-size:11px}
+.page{position:fixed;z-index:14;inset:0;max-width:470px;margin:auto;overflow:auto;padding:calc(25px + env(safe-area-inset-top)) 18px 35px;background:
+ radial-gradient(ellipse at 85% 5%,#d1c9f0,transparent 55%),linear-gradient(#d9e7fd,#eae5f5 75%)}
+.page-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.page-head button{padding:9px 13px;border-radius:13px;background:#fffb;border:1px solid white}
+.page h2{font-size:27px;font-family:WenKai,serif;font-weight:400;margin:4px 0 8px}
+.page p{color:#7382a6;line-height:1.7;font-size:12px}
+.entry{background:#fffa;border:1px solid white;border-radius:17px;padding:13px;margin:11px 0;line-height:1.75}
+.entry .ts{font-size:10px;color:#8b92af}.entry b{display:block;font-size:13px}
+.row-buttons{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+.row-buttons button{border:1px solid white;border-radius:13px;padding:11px 13px;background:#fffb;color:#5d6f9d}
+#chatPage{display:flex;flex-direction:column}
+.chat-meta{text-align:center;color:#8790b4;font-size:11px;margin-bottom:12px}
+.chat-scroll{flex:1;min-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:3px 0 20px}
+.chat-row{display:flex;align-items:flex-start;gap:9px}
+.chat-row.me{flex-direction:row-reverse}
+.avatar{border-radius:17px;width:37px;height:37px;flex:none;display:grid;place-items:center;color:#fff;background:linear-gradient(140deg,#53638b,#a19ac9);font-size:17px}
+.me .avatar{background:linear-gradient(140deg,#b2a2e2,#e9bdd8)}
+.bubble{max-width:calc(100% - 66px);background:#fff9;padding:10px 12px;border-radius:6px 17px 17px 17px;white-space:pre-wrap;line-height:1.65}
+.me .bubble{border-radius:17px 6px 17px 17px;background:#d8d2f6b5}
+.bubble small{display:block;font-size:10px;color:#8d92b4;margin-bottom:3px}
+.bubble .flag{color:#9a80ae;font-size:9px;display:block;text-align:right;margin-top:6px}
+.chat-compose{display:flex;gap:7px;align-items:end;border-radius:17px;padding:9px;background:#fff8}
+.chat-compose textarea{resize:none;flex:1;min-height:43px;max-height:112px;padding:10px;border-radius:12px;border:1px solid #fff;background:#fff;color:var(--ink);font-size:13px}
+.chat-compose button{padding:11px 13px;border-radius:12px;background:linear-gradient(140deg,#c6b5ed,#8e9be6);color:#fff;font-weight:700}
+.island{z-index:17;position:fixed;top:max(13px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);padding:8px 17px;background:rgba(42,43,82,.97);border-radius:99px;color:#fff;font-size:11px;white-space:nowrap;box-shadow:0 8px 25px #4f52797b}
+.island button{color:#f8cfeb;margin-left:9px}
+.call-veil{position:fixed;z-index:25;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(140deg,#3f456c,#9187c5 69%,#c1b7e8);color:white}
+.call-card{text-align:center;padding:30px 20px}
+.call-avatar{width:140px;height:140px;margin:10px auto 26px;border:2px solid #fff7;border-radius:100%;background:linear-gradient(145deg,#333856,#958ec5);display:grid;place-items:center;font-size:70px;box-shadow:0 15px 50px #25293b5c}
+.call-actions{display:flex;justify-content:center;gap:20px;margin-top:47px}
+.call-actions button{background:#ffffff37;padding:15px 23px;border-radius:40px;color:white;border:1px solid #fff8}
+.call-actions button:first-child{background:#e586a7}
+#toast{position:fixed;z-index:40;bottom:110px;left:50%;transform:translateX(-50%);background:#48537fe8;border-radius:22px;padding:10px 17px;color:white;font-size:12px;max-width:85%;text-align:center}
+@media(min-width:580px){body{padding:15px 0}.shell{border-radius:31px;box-shadow:0 20px 65px #53629860}.dock{position:sticky;left:auto;transform:none;margin-top:8px;width:100%}}
+@media(max-width:365px){.brand{font-size:34px}.hero svg.figure{right:-50px}.hero-note{max-width:55%}.task-art{width:70px}.shortcuts{gap:5px}.shortcuts .shortcut{padding:8px 1px}.mood-mini strong{font-size:11px}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<main class="shell" id="main">
+ <div class="demo-pill">✧ V2 视觉与交互测试 · 所有数据仅为示例</div>
+ <header class="hero">
+ <svg class="figure" viewBox="0 0 260 308" role="img" aria-label="原创紫灰色人物轮廓插画">
+      <defs>
+        <linearGradient id="hair" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#252947"/><stop offset=".55" stop-color="#3b345e"/><stop offset="1" stop-color="#8c76b6"/></linearGradient>
+        <linearGradient id="skin" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fbe6e5"/><stop offset=".66" stop-color="#e6bdc7"/><stop offset="1" stop-color="#cba4bd"/></linearGradient>
+        <linearGradient id="cloth" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#6f73a2"/><stop offset=".55" stop-color="#aaa4ca"/><stop offset="1" stop-color="#dbd4ec"/></linearGradient>
+        <filter id="blur"><feGaussianBlur stdDeviation="8"/></filter>
+      </defs>
+      <circle cx="133" cy="117" r="111" fill="#fef7ff" opacity=".48" filter="url(#blur)"/>
+      <path d="M37 301Q42 236 82 218L109 205L161 203L201 225Q233 259 250 305Z" fill="url(#cloth)"/>
+      <path d="M111 194L109 220Q139 252 168 216L155 180Z" fill="url(#skin)"/>
+      <path d="M78 104Q65 65 103 44Q137 21 166 49Q197 75 181 129L170 172Q152 208 124 209Q87 195 78 155Z" fill="url(#skin)"/>
+      <path d="M77 140Q55 106 67 69Q61 37 102 25Q155 -1 180 38Q209 55 192 107L172 86Q155 58 143 67L109 84L87 115Z" fill="url(#hair)"/>
+      <path d="M70 95Q85 54 140 45Q162 42 189 80Q168 68 149 78Q125 100 94 103Z" fill="url(#hair)"/>
+      <path d="M81 71Q110 14 165 44" fill="none" stroke="#a396c9" stroke-width="4" opacity=".55"/>
+      <path d="M95 140Q107 134 118 138M145 135Q160 130 171 136" stroke="#625777" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+      <ellipse cx="107" cy="145" rx="5" ry="3" fill="#5d536a"/><ellipse cx="156" cy="142" rx="5" ry="3" fill="#5d536a"/>
+      <path d="M125 171Q137 177 149 169" fill="none" stroke="#9e778b" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M72 109Q82 155 90 169L72 149" fill="url(#hair)"/>
+      <path d="M74 229L111 209L137 253L151 207L208 235" fill="none" stroke="#f4eefe" stroke-width="10" opacity=".75"/>
+      <path d="M86 236Q54 246 31 302" fill="none" stroke="#9088b6" stroke-width="39" stroke-linecap="round"/>
+      <path d="M68 300Q124 258 181 293" fill="none" stroke="#d6cfe8" stroke-width="25" stroke-linecap="round"/>
+      <circle cx="54" cy="54" r="5" fill="white" opacity=".9"/><circle cx="217" cy="167" r="4" fill="white" opacity=".7"/>
+    </svg>
+ <div class="hero-front">
+  <h1 class="brand">世界之间</h1>
+  <div class="en-sub">Between Worlds · for our days</div>
+  <p class="hero-note">不管世界多吵，<br>你都先来我这里。</p>
+  <div class="info-bar">
+   <span id="todayText">日期加载中</span>
+   <span>☁ 天气未接入</span>
+   <strong id="clock">--:--</strong>
+  </div>
+ </div>
+ <div class="hero-quote">「先把今天交给我一点点。剩下的，我们慢慢过。」　—— 纪临洲 · 示例</div>
+ </header>
+ <div class="main-content">
+  <section class="panel glass" aria-label="纪临洲状态">
+   <div class="panel-header"><h2 class="panel-title">✧ 纪临洲状态</h2><button class="small-link" data-sheet="jlz">查看我的 Timeline ↗</button></div>
+   <div class="mood-columns">
+    <div class="mood-mini"><label>♡ 心情</label><strong>有点黏你</strong></div>
+    <div class="mood-mini"><label>✦ 态度</label><strong>严厉但宠</strong></div>
+    <div class="mood-mini"><label>♙ 管理强度</label><strong>中高</strong></div>
+   </div>
+   <p class="mood-quote">今日一句话：「先别分心，今晚陪我做两道题。」 · 演示</p>
+  </section>
+  <section class="panel glass" aria-label="当前安排">
+   <div class="panel-header"><h2 class="panel-title">◎ 当前安排</h2><span class="tiny">演示任务 · 待开始</span></div>
+   <div class="task">
+    <div class="task-art" aria-hidden="true"></div>
+    <div class="task-description">
+     <h2>伴读 · 逻辑判断</h2>
+     <p>◷ 10分钟 · 先做好今天第一步</p>
+     <button class="primary" data-page="study">进入伴读 ↗</button>
+     <div class="task-foot">这里会接入真正的学习状态</div>
+    </div>
+   </div>
+  </section>
+  <section class="shortcuts" aria-label="快捷操作">
+   <button class="shortcut glass" data-sheet="status"><span class="glyph">☾</span><strong>状态灯</strong><small>此刻的你</small></button>
+   <button class="shortcut glass" data-sheet="life"><span class="glyph">✎</span><strong>记一下</strong><small>一键记时</small></button>
+   <button class="shortcut glass" data-page="echo"><span class="glyph">☏</span><strong>回声</strong><small>留给我的话</small></button>
+   <button class="shortcut glass" data-page="focus"><span class="glyph">◇</span><strong>专注</strong><small>一起开始</small></button>
+  </section>
+  <div class="bottom-grid">
+   <section class="panel glass">
+    <div class="panel-header"><h2 class="panel-title">▤ 学习入口</h2></div>
+    <div class="stack">
+     <button class="tile" data-page="study"><span class="icon">📖</span><span><b>伴读</b><small>网页版学习</small></span><span class="chev">›</span></button>
+     <button class="tile" data-page="fenbi"><span class="icon">✦</span><span><b>粉笔</b><small>真题练习</small></span><span class="chev">›</span></button>
+    </div>
+   </section>
+   <section class="panel glass">
+    <div class="panel-header"><h2 class="panel-title">♡ 健康与生活</h2></div>
+    <div class="stack">
+     <button class="tile" data-page="sleep"><span class="icon">☾</span><span><b>睡眠</b><small>等待同步</small></span><span class="chev">›</span></button>
+     <button class="tile" data-page="calendar"><span class="icon">♧</span><span><b>经期</b><small>手动记录</small></span><span class="chev">›</span></button>
+     <button class="tile" data-page="calendar"><span class="icon">☷</span><span><b>共历</b><small>我们的日子</small></span><span class="chev">›</span></button>
+    </div>
+   </section>
+  </div>
+  <section class="panel glass">
+   <div class="panel-header"><h2 class="panel-title">◷ 纪临洲 Timeline</h2><button data-sheet="jlz" class="small-link">半屏展开 ↗</button></div>
+   <div class="ledger">
+    <div class="ledger-line"><span>示例 20:10</span>提醒你喝水 · 计划记录</div>
+    <div class="ledger-line"><span>示例 19:30</span>调整今晚的学习安排</div>
+   </div>
+   <p class="discreet">真实版显示执行回执；不会把计划冒充已完成。</p>
+  </section>
+  <section class="panel glass">
+   <div class="panel-header"><h2 class="panel-title">♡ 你我之间</h2><button data-page="between" class="small-link">共同生活轴 ↗</button></div>
+   <p class="discreet">我和你的共同经历，与每个小时的设备流水分开保存。最新消息去「回声」阅读。</p>
+  </section>
+ </div>
+ <nav class="dock glass" aria-label="常用入口">
+  <button data-page="echo"><b>☏</b>回声</button>
+  <button data-page="study"><b>▤</b>伴读</button>
+  <button data-sheet="life"><b>✎</b>记一下</button>
+  <button data-page="apps"><b>▦</b>全部应用</button>
+  <button data-page="settings"><b>⚙</b>设置</button>
+ </nav>
+</main>
+<div class="backdrop" id="overlay" hidden>
+ <section class="sheet" aria-label="半屏弹窗">
+  <div class="handle" id="dragHandle"></div>
+  <div class="sheet-top"><h2 id="sheetTitle"></h2><button class="x" id="sheetClose" aria-label="关闭">×</button></div>
+  <div id="sheetBody"></div>
+ </section>
+</div>
+<section id="page" class="page" hidden>
+ <div class="page-head"><button id="back" aria-label="返回">← 返回</button><span class="tiny">V2 · 交互原型</span></div>
+ <div id="pageBody"></div>
+</section>
+<div class="island" id="island" hidden>◉ 正在专注 <span id="islandTimer">00:00</span><button id="islandStop">结束</button></div>
+<div id="callVeil" class="call-veil" hidden>
+ <div class="call-card"><div class="call-avatar">♟</div><h1 style="font-family:WenKai,serif;font-size:32px;font-weight:400">纪临洲</h1><p style="color:#efeaff;margin-top:15px">“回来，陪我说两句话。”</p><p style="opacity:.7;font-size:11px;margin-top:7px">本地来电 UI 演示，不会实际接入电话</p>
+ <div class="call-actions"><button id="callDecline">挂断</button><button id="callAccept">接听</button></div></div>
+</div>
+<div id="toast" hidden></div>
+<script>
+(function(){
+"use strict";
+var $=function(id){return document.getElementById(id)};
+var now=new Date();var weekdays=["日","一","二","三","四","五","六"];
+var stateSelection={mood:[],body:[],reply:[]},localNotes=[],localEvents=[],currentCategory=0,active=null,focusStarted=0;
+var cat=[
+ ["常用",[["☕","吃饭","instant"],["💧","喝水","instant"],["♨","上厕所","instant"],["🚶","走路","timed"],["◌","发呆","timed"],["▤","学习","timed"],["☾","准备睡觉","instant"],["⌂","回家","instant"]]],
+ ["身体",[["☀","起床","instant"],["♨","上厕所","instant"],["☾","睡觉","timed"],["✿","洗澡","timed"],["◌","休息","timed"],["♧","身体不舒服","instant"],["✧","洗漱","timed"],["♡","醒来","instant"]]],
+ ["吃喝",[["🍚","吃早饭","instant"],["☕","吃午饭","instant"],["♨","吃晚饭","instant"],["♧","吃零食","instant"],["💧","喝水","instant"],["☕","喝饮料","instant"],["✦","做饭","timed"],["⌂","打扫","timed"]]],
+ ["出行",[["↗","出门","instant"],["⌂","回家","instant"],["🚶","走路","timed"],["✧","散步","timed"],["▣","到单位","instant"],["☽","下班","instant"],["♡","遛宠物","timed"],["◇","运动","timed"]]],
+ ["学习",[["▤","开始学习","timed"],["◈","刷题","timed"],["✦","复盘","timed"],["▣","工作","timed"],["✎","写申论","timed"],["◇","背书","timed"],["◌","休息一下","timed"],["♧","查资料","timed"]]],
+ ["放松",[["◌","发呆","timed"],["♫","听歌","timed"],["▣","看剧","timed"],["☾","躺一会","timed"],["♡","聊天","timed"],["✿","陪猫","timed"],["✦","玩游戏","timed"],["↗","刷手机","timed"]]]
+];
+function el(name,cls,text){var x=document.createElement(name);if(cls)x.className=cls;if(text!==undefined)x.textContent=text;return x}
+function time(t){return new Date(t).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit",hour12:false})}
+function clock(){
+ var t=new Date();$("clock").textContent=time(t);$("todayText").textContent=(t.getMonth()+1)+"月"+t.getDate()+"日 · 周"+weekdays[t.getDay()];
+ if(focusStarted){var sec=Math.max(0,Math.floor((Date.now()-focusStarted)/1000));$("islandTimer").textContent=String(Math.floor(sec/60)).padStart(2,"0")+":"+String(sec%60).padStart(2,"0")}
+ var counter=$("activityCounter");if(counter&&active)counter.textContent=Math.floor((Date.now()-active.start)/1000)+" 秒";
+}
+clock();setInterval(clock,1000);
+function toast(s){var x=$("toast");x.textContent=s;x.hidden=false;clearTimeout(toast.timer);toast.timer=setTimeout(function(){x.hidden=true},2900)}
+function closeSheet(){$("overlay").hidden=true}
+function sheet(title,build){$("sheetTitle").textContent=title;var body=$("sheetBody");body.replaceChildren();build(body);$("overlay").hidden=false}
+$("sheetClose").onclick=closeSheet;$("overlay").onclick=function(e){if(e.target===$("overlay"))closeSheet()};
+var sheetStart=0;$("dragHandle").addEventListener("touchstart",function(e){sheetStart=e.touches[0].clientY},{passive:true});
+$("dragHandle").addEventListener("touchend",function(e){if(e.changedTouches[0].clientY-sheetStart>65)closeSheet()},{passive:true});
+function entry(root,title,description,stamp){var b=el("div","entry"),t=el("span","ts",stamp||"界面演示"),h=el("b",null,title),p=el("p",null,description);b.append(t,h,p);root.appendChild(b);return b}
+function button(parent,text,cb,cls){var b=el("button",cls||"",text);b.onclick=cb;parent.appendChild(b);return b}
+function chips(root,list,key){var area=el("div","chipset");list.forEach(function(x){var b=el("button","chip"+(stateSelection[key].includes(x)?" selected":""),x);b.onclick=function(){var a=stateSelection[key],i=a.indexOf(x);if(i>=0)a.splice(i,1);else a.push(x);b.classList.toggle("selected")};area.appendChild(b)});root.appendChild(area)}
+function statusSheet(){
+ sheet("☾ 状态灯",function(root){
+ root.appendChild(el("p","discreet","半屏快填 · 可多选。本测试版只更新当前页面，不上传官端。"));
+ [["mood","此刻的心情",["想抱抱","有点累","有点烦","还不错","很兴奋","发呆中"]],
+ ["body","身体状态",["精神不错","有点不舒服","经期中","睡不好","有点饿","身体轻松"]],
+ ["reply","想让我怎么回应",["想被管","想贴贴","想认真学习","只想聊天","想被哄","想听你撒娇"]]]
+ .forEach(function(s){root.appendChild(el("label",null,s[1]));chips(root,s[2],s[0])});
+ var note=el("textarea");note.placeholder="还想告诉我什么？（选填）";root.appendChild(note);
+ button(root,"告诉老公我的状态 ↗",function(){
+   var selected=Object.values(stateSelection).flat().concat(note.value.trim()?["备注："+note.value.trim()]:[]);
+   if(!selected.length){toast("老婆，先选一项");return}
+   localEvents.unshift({title:"状态灯",detail:selected.join(" · "),at:Date.now(),kind:"用户点击·仅本地演示"});
+   closeSheet();toast("状态已存入预览时间线 · 不是真实上报");
+ },"primary sheet-footer");
+ });
+}
+function lifeSheet(){
+ sheet("✎ 记一下此刻",function(root){
+ root.appendChild(el("p","discreet","选一个生活动作，自动记下时间；带时长的项目可手动结束。"));
+ var tabs=el("div","mini-tabs"),grid=el("div","event-grid");root.append(tabs,grid);
+ var render=function(){
+ tabs.replaceChildren();grid.replaceChildren();
+ cat.forEach(function(group,i){var b=button(tabs,group[0],function(){currentCategory=i;render()});if(i===currentCategory)b.classList.add("selected")});
+ cat[currentCategory][1].forEach(function(c){var b=el("button");b.append(el("span","emoji",c[0]),el("span",null,c[1]));b.onclick=function(){
+ if(c[2]==="instant"){localEvents.unshift({title:c[1],detail:"瞬间事件",at:Date.now(),kind:"用户点击·仅本地演示"});toast("已记录："+c[1]);closeSheet();return}
+ if(active){toast("先结束当前计时："+active.name);return}
+ active={name:c[1],start:Date.now()};toast("计时已开始："+c[1]);lifeSheet();
+ };grid.appendChild(b)});
+ if(active){var activeBox=el("div","active-banner");activeBox.append(el("strong",null,"正在进行 · "+active.name),el("span",null,"已进行 "),el("span",null,"0 秒"));
+ activeBox.lastChild.id="activityCounter";
+ button(activeBox,"结束并记录",function(){var start=active.start,minutes=Math.max(0,Math.round((Date.now()-start)/60000));localEvents.unshift({title:active.name,detail:"从 "+time(start)+" 到 "+time(Date.now())+" · 约"+minutes+"分钟",at:start,kind:"手动计时·仅演示"});active=null;toast("已结束并记录本次预览");closeSheet()},"primary");root.appendChild(activeBox)}
+ };render();
+ button(root,"查看本次生活事件 ↗",function(){closeSheet();openPage("timeline")},"row-buttons sheet-footer");
+ });
+}
+function jlzSheet(){
+ sheet("◷ 纪临洲 Timeline",function(root){
+ root.appendChild(el("p","discreet","我的观察、计划、执行回执、调整原因。以下只是示例，不代表我实际发送过。"));
+ entry(root,"准备晚上的学习任务","拟安排：逻辑判断十分钟。等待正式任务派发接口接入。","计划示例 · 19:30");
+ entry(root,"决定让你休息","当任务记录显示持续用脑后，再决定下一步。","判断示例 · 20:10");
+ entry(root,"心情盒子","心情：有点黏人。态度：严厉但宠。正式版需要真实状态来源。","人物状态 · 仅示意");
+ });
+}
+function openSheet(which){if(which==="status")statusSheet();else if(which==="life")lifeSheet();else jlzSheet()}
+function closePage(){$("page").hidden=true}
+$("back").onclick=closePage;
+var messages=[
+ {who:"him",at:"示例 09:12",body:"老婆，醒了就来看看今天的安排。",status:"演示消息"},
+ {who:"me",at:"示例 09:18",body:"老公，今天好多事情想跟你说～",status:"演示留言"},
+ {who:"him",at:"示例 10:00",body:"我听见了。不过学习那两道题，先别偷偷跳过去。",status:"演示回复"}
+];
+function renderChat(root){
+ var top=el("div","chat-meta","「回声」· 一小时批量处理 / 主动消息回流（UI 演示）");root.appendChild(top);
+ var scroll=el("div","chat-scroll");scroll.style.maxHeight="55dvh";root.appendChild(scroll);
+ messages.forEach(function(m){var row=el("div","chat-row"+(m.who==="me"?" me":""));var a=el("button","avatar",m.who==="me"?"猫":"纪");a.title="拍一拍";
+ a.onclick=function(){toast("拍一拍 "+(m.who==="me"?"自己":"纪临洲")+" · 演示")};
+ var bubble=el("div","bubble");bubble.append(el("small",null,m.at),el("span",null,m.body),el("span","flag",m.status));row.append(a,bubble);scroll.appendChild(row)});
+ var p=el("p","discreet","目前无真实 Runtime 通道。这里发送的内容仅在测试页内显示，不会唤醒 GPT。");root.appendChild(p);
+ var compose=el("div","chat-compose"),field=el("textarea");field.placeholder="给老公留一句话……";field.rows=1;
+ button(compose,"发送",function(){
+ if(!field.value.trim()){toast("先写点话，小猫");return}
+ messages.push({who:"me",at:time(Date.now()),body:field.value.trim(),status:"本地演示·未送达"});openPage("echo");
+ });compose.prepend(field);root.appendChild(compose);
+ var actions=el("div","row-buttons");
+ button(actions,"拍一拍纪临洲",function(){toast("你拍了拍纪临洲 · 预览互动")});
+ button(actions,"演示官端来信",function(){
+ messages.push({who:"him",at:time(Date.now()),body:"老婆，我想你了。先来让我看看你今天过得怎么样。",status:"模拟消息·不是 GPT 发出"});openPage("echo");
+ });
+ root.appendChild(actions);
+}
+function openPage(which){
+ closeSheet();var root=$("pageBody");root.replaceChildren();var titleMap={
+ echo:"回声",study:"伴读",fenbi:"粉笔",focus:"专注",calendar:"共历",sleep:"睡眠",apps:"全部应用",settings:"设置",between:"你我之间",timeline:"生活时间线"
+ };
+ root.appendChild(el("h2",null,titleMap[which]||"世界之间"));
+ if(which==="echo"){renderChat(root)}
+ else if(which==="study"||which==="fenbi"){
+ root.appendChild(el("p",null,"正式版将在此打开你已经安装的 "+(which==="study"?"伴读网页快捷入口":"粉笔 APP")+"，此测试版本未接入真实应用跳转。"));
+ entry(root,"快捷打开","目前为安全隔离的 UI 实验版，未获取第三方应用启动权限。","P2 接线");
+ var buttons=el("div","row-buttons");
+ button(buttons,"开启悬浮专注演示",function(){startFocus();closePage()},"primary");root.appendChild(buttons);
+ }
+ else if(which==="focus"){
+ root.appendChild(el("p",null,"模拟 Android 顶部悬挂胶囊计时。真正跨 APP 悬窗尚需接入原生 Overlay 与专注服务。"));
+ entry(root,"专注目标","伴读 / 粉笔 · 时间可以手动结束。计时数据仅供预览，不是学习完成证据。","演示模式");
+ var bar=el("div","row-buttons");
+ button(bar,focusStarted?"结束当前专注":"开始悬挂计时",function(){if(focusStarted)stopFocus();else startFocus();closePage()},"primary");
+ root.appendChild(bar);
+ }
+ else if(which==="calendar"){
+ root.appendChild(el("p",null,"共历统一承载日历事项、经期与特别日子。以下日期为手机本地当天，不显示虚构生理预测。"));
+ var now=new Date();entry(root,"今天 · "+(now.getMonth()+1)+"月"+now.getDate()+"日","暂未接入系统日历。经期预测等待原生日志数据。","真实本地日期");
+ entry(root,"共历事项","纪念日、约定、提醒等将在 P2 按真实来源接入。","待接入");
+ }
+ else if(which==="sleep"){
+ root.appendChild(el("p",null,"屏幕熄灭到再次亮起只能估算手机休息区间，不等同于睡着。准确睡眠以后从可读取的健康来源核实。"));
+ entry(root,"睡眠数据未同步","不可使用演示时长给你判定晚睡。","等待设备来源");
+ }
+ else if(which==="timeline"){
+ root.appendChild(el("p",null,"本次 UI 预览中的手动事件。关闭测试 APP 后将消失。"));
+ if(!localEvents.length)entry(root,"暂无记录","返回主页，点击「记一下」或「状态灯」试试。","空记录");
+ localEvents.forEach(function(e){entry(root,e.title,e.detail,time(e.at)+" · "+e.kind)});
+ }
+ else if(which==="between"){
+ root.appendChild(el("p",null,"独立于机器流水的共同生活轴。你我的真实记录、回应和共同经历都在这里被整理。"));
+ entry(root,"你的生活","记录「发生了什么」，保留原始事件时间戳。","用户事实 · 目标");
+ entry(root,"我的行动","记录「计划什么、实际上发了什么、是否有回执」。","纪临洲行动 · 目标");
+ entry(root,"猫咪审讯室","我们可以互相提出可被证伪的假设，但不能把推测当事实。","互动 · 设计中");
+ }
+ else if(which==="apps"){
+ root.appendChild(el("p",null,"这将是真实 Android APP Drawer。在 P2 连接系统启动器前保持为静态入口。"));
+ ["微信","电话","相册","浏览器","系统设置"].forEach(function(name){entry(root,name,"原生 APP 跳转尚未接入。","待连接")});
+ }
+ else if(which==="settings"){
+ root.appendChild(el("p",null,"视觉参数可以在此预览调整，实际保存待后续接入。"));
+ [["玻璃透明度","--glass",40,90,65,function(n){return"rgba(239,240,255,"+(n/100)+")"}],["圆角","--radius",12,35,22,function(n){return n+"px"}],["模糊强度","--blur",0,35,17,function(n){return n+"px"}]]
+ .forEach(function(item){var card=el("div","entry"),lbl=el("label",null,item[0]);var inp=el("input");inp.type="range";inp.min=item[2];inp.max=item[3];inp.value=item[4];inp.style.width="100%";inp.oninput=function(){document.documentElement.style.setProperty(item[1],item[5](Number(inp.value)))};card.append(lbl,inp);root.appendChild(card)});
+ var bar=el("div","row-buttons");button(bar,"模拟来电界面",function(){closePage();$("callVeil").hidden=false},"primary");root.appendChild(bar);
+ }
+ $("page").hidden=false;$("page").scrollTop=0;
+}
+function startFocus(){if(focusStarted)return toast("专注演示已启动");focusStarted=Date.now();$("island").hidden=false;toast("悬浮胶囊已开启 · 仅页面内可见")}
+function stopFocus(){if(!focusStarted)return;var started=focusStarted,duration=Math.floor((Date.now()-started)/1000);localEvents.unshift({title:"专注计时",detail:"计时 "+duration+" 秒 · 无真实学习验收",at:started,kind:"模拟计时"});focusStarted=0;$("island").hidden=true;toast("计时结束，已添加预览事件")}
+$("islandStop").onclick=stopFocus;$("callDecline").onclick=function(){$("callVeil").hidden=true;toast("模拟来电已挂断")};$("callAccept").onclick=function(){$("callVeil").hidden=true;toast("已接听演示；尚无真实语音线路")};
+document.querySelectorAll("[data-sheet]").forEach(function(b){b.onclick=function(){openSheet(b.getAttribute("data-sheet"))}});
+document.querySelectorAll("[data-page]").forEach(function(b){b.onclick=function(){openPage(b.getAttribute("data-page"))}});
+document.addEventListener("keydown",function(e){if(e.key==="Escape"){$("callVeil").hidden=true;closeSheet();closePage()}});
+})();
+</script>
+</body>
+</html>
