@@ -504,16 +504,27 @@ fun IncomingCallSettingsPanel() {
 fun AutomaticCaptureSettingsPanel() {
     val context = LocalContext.current
     val coordinator = remember { AutomaticCaptureCoordinator(context.applicationContext) }
-    var enabled by remember { mutableStateOf(coordinator.enabled()) }
+    val traffic = remember { dev.jlz.presence.capture.CaptureTrafficPolicy(context.applicationContext) }
+    var enabled by remember { mutableStateOf(coordinator.enabled() && traffic.automaticSelection().first) }
+    var allApps by remember { mutableStateOf(traffic.allForegroundApps()) }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("我自己看看你在干什么", style = MaterialTheme.typography.titleMedium)
-            Text("你授权后，我在亮屏且无障碍可读取时自动暂存截图：学习时段约每4分钟一张，其他时段约每12分钟一张，按实际学习会话分列。")
+            Text("亮屏、未锁定且页面可安全读取时，按应用切换、停留和滚动取样；不会逐帧录屏。")
             Text("原图先留在手机；上传成功不等于官端GPT已经看过。手机截屏被系统拒绝时不会绕过 Android 限制。")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("所有前台应用（敏感页面除外）")
+                Switch(checked = allApps, onCheckedChange = { value ->
+                    if (traffic.setAllForegroundApps(value)) allApps = value
+                })
+            }
+            Text(if (allApps) "包含新打开的普通应用、浏览器与聊天阅读页，无需逐个添加。银行、支付、密码、验证码、输入中及无法确认安全的页面跳过。"
+                else "仅对之前选择的应用取样；开启上方选项可扩大范围。")
+
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(if (enabled) "自动截图已开启" else "自动截图已暂停")
                 Switch(checked = enabled, onCheckedChange = { value ->
-                    if (coordinator.setEnabled(value)) enabled = value
+                    if (coordinator.setEnabled(value) && traffic.setAutomaticEnabled(value)) enabled = value
                 })
             }
         }
