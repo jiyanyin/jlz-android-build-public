@@ -283,9 +283,9 @@ class LocalLifeReminderEngine(context: Context) {
 
     suspend fun scheduled(key: String, scheduledAtMs: Long, nowMs: Long = System.currentTimeMillis()): Boolean {
         // A resumed phone must not dump yesterday's missed reminders at once.
-        if (scheduledAtMs <= 0L || nowMs - scheduledAtMs !in 0..(2 * 60 * 60_000L)) return false
+        if (!LivingReminderWindow.allowed(key,scheduledAtMs,nowMs)) return false
         val focus = dev.jlz.presence.focus.FocusRepository(app).current().modeNow()
-        if (key == "hourly" && focus == DailyMode.SLEEP) return false
+        if (focus == DailyMode.SLEEP || dev.jlz.presence.notification.PresenceInterruptionPolicy.reason(app,nowMs)!=null) return false
         if (key == "nap" || key.startsWith("nap_followup_")) {
             if (focus == DailyMode.SLEEP) return false
             val interactive = app.getSystemService(PowerManager::class.java)?.isInteractive == true
@@ -303,17 +303,22 @@ class LocalLifeReminderEngine(context: Context) {
         val health = HuaweiHealthObservationStore(app).snapshot(nowMs)
         val shortSleep = health.optBoolean("sleep_date_verified", false) &&
             !health.isNull("sleep_minutes") && health.optInt("sleep_minutes") < 360
-        val text = LocalDailyCopy.choose(if (key.startsWith("nap_followup_")) "nap" else key,
+        val voice = dev.jlz.presence.persona.LivingVoiceStore(app)
+        val card = voice.select("notification", now=nowMs, notificationKey="$key:$scheduledAtMs")
+        val text = card?.optString("text") ?: LocalDailyCopy.choose(if (key.startsWith("nap_followup_")) "nap" else key,
             ordinal, scheduledAtMs, dev.jlz.presence.persona.JlzVoiceStateEngine(app).read(nowMs).mood,
             LocalStatusLamp(app).fresh(nowMs),
             WeeklyBehaviorStore(app).decision("").optBoolean("tighter", false), shortSleep)
-        return emitOnce("daily_$key", "今天的约定", nowMs, scope, text)
+        val sent = emitOnce("daily_$key", "今天的约定", nowMs, scope, text)
+        if (sent && card!=null && content.text(LocalLifeCopy.worldKey("daily_$key"),"").isBlank())
+            voice.displayed(card.getString("selection_id"),nowMs)
+        return sent
     }
 
     fun scheduledWeather(key: String, weather: WeatherState?, scheduledAtMs: Long,
                          nowMs: Long = System.currentTimeMillis()): Boolean {
         if (key !in setOf("weather_morning", "weather_afternoon")) return false
-        if (scheduledAtMs <= 0L || nowMs - scheduledAtMs !in 0..(2 * 60 * 60_000L)) return false
+        if (!LivingReminderWindow.allowed(key,scheduledAtMs,nowMs)) return false
         return emitOnce("daily_$key", "出门前的天气", nowMs, date(scheduledAtMs),
             LocalDailyCopy.weather(weather, key == "weather_morning"))
     }

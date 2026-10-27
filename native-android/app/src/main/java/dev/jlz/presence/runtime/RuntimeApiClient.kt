@@ -106,6 +106,7 @@ class RuntimeApiClient(private val settings: RuntimeSettings) {
     fun dailyPlanForReaction(): JSONObject = getJson("/api/daily-plan?space_id=world-between-primary").getJSONObject("plan")
     fun reminderCheck(payload: JSONObject): Boolean = postJson("/api/world/reminder-check",payload).optBoolean("allowed",false)
     fun worldContent(): JSONObject = getJson("/api/world/content?space_id=world-between-primary&device_scope=" + if(settings.deviceId.contains("tablet")) "tablet" else "phone").getJSONObject("content")
+    fun voiceBank(sha256: String): JSONObject = getJson("/api/world/voice-bank?space_id=world-between-primary&sha256=" + sha256)
     private fun connection(
         path: String,
         method: String,

@@ -23,6 +23,11 @@ on:
         required: false
         type: boolean
         default: false
+      voice_bank_required:
+        description: 'Require an authenticated private V2 voice bank in the final APK'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: public-android-${{ github.ref }}
@@ -62,6 +67,7 @@ jobs:
           RELEASE_ID: ${{ inputs.private_release_id }}
           WB_PRIVATE_BUILD_KEY: ${{ secrets.WB_PRIVATE_BUILD_KEY }}
           OWNER_AVATAR_REQUIRED: ${{ inputs.owner_avatar_required }}
+          VOICE_BANK_REQUIRED: ${{ inputs.voice_bank_required }}
         shell: bash
         run: |
           set -euo pipefail
@@ -94,6 +100,25 @@ jobs:
             rm -f "$RUNNER_TEMP/owner-avatar.enc"
           elif test "$OWNER_AVATAR_REQUIRED" = true; then
             echo 'Required private owner avatar is missing.' >&2
+            exit 1
+          fi
+          voice_asset=$(jq -r '.assets[] | select(.name=="voice-bank.enc") | .id' "$RUNNER_TEMP/private-release.json")
+          if test -n "$voice_asset"; then
+            gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$voice_asset" > "$RUNNER_TEMP/voice-bank.enc"
+            mkdir -p native-android/app/src/main/assets/voice
+            node scripts/private-build-envelope.mjs decrypt "$RUNNER_TEMP/voice-bank.enc" native-android/app/src/main/assets/voice/voice-bank.json
+            python - <<'PY'
+          import json,pathlib,hashlib
+          raw=pathlib.Path('native-android/app/src/main/assets/voice/voice-bank.json').read_bytes()
+          b=json.loads(raw)
+          assert len(raw)<=2*1024*1024 and b['schema']=='world-voice-bank-v2' and b['timezone']=='Asia/Shanghai'
+          assert 600<=len(b['entries'])<=2000 and b['entry_count']==len(b['entries'])
+          assert len({e['id'] for e in b['entries']})==len(b['entries'])
+          print('Authenticated private voice bank staged:',len(b['entries']),'entries; sha256',hashlib.sha256(raw).hexdigest())
+          PY
+            rm -f "$RUNNER_TEMP/voice-bank.enc"
+          elif test "$VOICE_BANK_REQUIRED" = true; then
+            echo 'Required private voice bank is missing.' >&2
             exit 1
           fi
 
@@ -186,7 +211,7 @@ jobs:
 
       - name: Remove private runner resources
         if: always() && github.event_name == 'workflow_dispatch' && inputs.private_release_id != ''
-        run: rm -rf native-android/app/src/main/assets/avatar/packs native-android/app/build between-worlds-prod/public/owner-avatar.jpg between-worlds-prod/dist native-android/app/src/main/assets/world-between
+        run: rm -rf native-android/app/src/main/assets/avatar/packs native-android/app/src/main/assets/voice native-android/app/build between-worlds-prod/public/owner-avatar.jpg between-worlds-prod/dist native-android/app/src/main/assets/world-between
 
       - name: Publish latest APK release
         if: success() && inputs.private_release_id == '' && github.ref == 'refs/heads/main'

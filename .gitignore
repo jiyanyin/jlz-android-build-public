@@ -18,5 +18,6 @@ native-android/app/src/main/assets/world-between/
 
 # Private Q artwork is staged only by the private build workflow.
 native-android/app/src/main/assets/avatar/packs/
+native-android/app/src/main/assets/voice/
 # Owner-selected avatar is staged only inside authenticated private builds.
 between-worlds-prod/public/owner-avatar.jpg

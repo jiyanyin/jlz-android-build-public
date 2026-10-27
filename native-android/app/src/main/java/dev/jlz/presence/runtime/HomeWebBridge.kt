@@ -85,6 +85,14 @@ class HomeWebBridge(private val context: Context, private val save: (String)->Un
             .put("source",s.source).put("updated_at_ms",s.updatedAtMs)
             .put("expires_at_ms",s.expiresAtMs).toString()
     }
+    @JavascriptInterface fun livingVoice(surface: String, input: String): String = runCatching {
+        require(input.length <= 4096)
+        dev.jlz.presence.persona.LivingVoiceStore(context).select(surface, JSONObject(input))?.toString() ?: "{}"
+    }.getOrDefault("{}")
+    @JavascriptInterface fun livingVoiceDisplayed(selectionId: String): Boolean =
+        dev.jlz.presence.persona.LivingVoiceStore(context).displayed(selectionId)
+    @JavascriptInterface fun livingVoiceStatus(): String =
+        dev.jlz.presence.persona.LivingVoiceStore(context).diagnostics().toString()
     @JavascriptInterface fun recordStatusAxes(raw: String): Boolean =
         dev.jlz.presence.life.LocalStatusLamp(context).record(raw)
     @JavascriptInterface fun exerciseDay(date: String): String {

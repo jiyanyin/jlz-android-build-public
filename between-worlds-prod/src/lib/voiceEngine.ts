@@ -419,7 +419,7 @@ const stableHash = (value: string) => {
 };
 
 const localDateKey = (date: Date) =>
-  [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+  new Date(date.getTime()+8*3600000).toISOString().slice(0,10);
 
 const contextKeyFor = (input: VoiceInput, signal: VoiceSignal) => {
   const nowMs = input.now.getTime();
@@ -475,7 +475,7 @@ export const selectVoiceCard = (
     statusSignal(normalized.status, nowMs) ??
     activitySignal(activeFresh?.action) ??
     nativeMoodSignal(normalized.nativeMood) ??
-    daypartSignal(normalized.now.getHours());
+    daypartSignal(new Date(normalized.now.getTime()+8*3600000).getUTCHours());
   const key = contextKeyFor(normalized, signal);
 
   const current = memory.currentKey === key
@@ -512,7 +512,7 @@ export const selectVoiceCard = (
 };
 
 export const formatVoiceClock = (date: Date) =>
-  [date.getHours(), date.getMinutes(), date.getSeconds()].map((value) => String(value).padStart(2, "0")).join(":");
+  new Date(date.getTime()+8*3600000).toISOString().slice(11,19);
 
 export const formatVoiceDate = (date: Date) =>
-  new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(date).toUpperCase();
+  new Intl.DateTimeFormat("en-US", { timeZone:"Asia/Shanghai", weekday: "long", month: "long", day: "numeric" }).format(date).toUpperCase();

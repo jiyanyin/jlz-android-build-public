@@ -7,7 +7,7 @@ import {
   type VoiceInput,
 } from "../src/lib/voiceEngine.ts";
 
-const local = (hour: number, minute = 0, second = 0) => new Date(2026, 9, 3, hour, minute, second, 0);
+const local = (hour: number, minute = 0, second = 0) => new Date(`2026-10-03T${[hour,minute,second].map(n=>String(n).padStart(2,"0")).join(":")}+08:00`);
 
 test("clock includes seconds", () => {
   assert.equal(formatVoiceClock(local(18, 7, 9)), "18:07:09");

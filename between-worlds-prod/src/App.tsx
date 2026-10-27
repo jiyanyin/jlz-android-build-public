@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { parseLivingVoice, type LivingVoiceCard } from "./lib/livingVoice";
 import { NativeCalendarPanel } from "./NativeCalendarPanel";
 import { NotificationDynamicsPanel } from "./NotificationDynamicsPanel";
 import { TripMapPanel } from "./TripMapPanel";
@@ -544,6 +545,7 @@ export default function BetweenWorlds() {
   const savedText = (what: string) => (conn === "online" ? `${what}已存本机，正在同步给纪临洲` : `${what}已存本机，连接后自动同步`);
 
   const [nativeMood, setNativeMood] = useState<VoiceInput["nativeMood"]>(null);
+  const [livingCard,setLivingCard]=useState<LivingVoiceCard|null>(null);
   useEffect(() => {
     if (!loaded) return;
     const load = () => {
@@ -572,6 +574,42 @@ export default function BetweenWorlds() {
     status: voiceStatus,
     nativeMood,
   }, state.voiceMemory);
+  const livingSurface=welcome?"welcome":tab==="home" && !sheet?"home":null;
+  const statusAge=(now?.getTime()??Date.now())-Date.parse(state.status?.at??"");
+  const livingInput=JSON.stringify({active_action:state.activeLife?.action??"",
+    active_start_at:state.activeLife?.startAt??0,
+    study_finished_at:state.studySummary?.recent_sessions.find(s=>s.device_id===device.current.device_id)?.ended_at_ms??0,
+    quiet:statusAge>=0 && statusAge<=6*3600000 &&
+      voiceStatus?.detail?.["想听我怎样回应"]?.includes("现在先不用回复")===true});
+  const livingHour=Math.floor((now?.getTime()??Date.now())/3600000);
+  useEffect(()=>{
+    if(!loaded || !livingSurface)return;
+    const read=()=>{
+      if(document.visibilityState!=="visible")return;
+      const bridge=homeBridge();
+      if(!bridge?.livingVoice)return;
+      try {const card=parseLivingVoice(bridge.livingVoice(livingSurface,livingInput));
+        setLivingCard(previous=>previous?.selection_id===card?.selection_id?previous:card);
+      }catch{setLivingCard(null);}
+    };
+    read();
+    window.addEventListener("living-voice-entry",read);
+    window.addEventListener("focus",read);
+    document.addEventListener("visibilitychange",read);
+    const timer=window.setInterval(read,60000);
+    return()=>{window.clearInterval(timer);window.removeEventListener("living-voice-entry",read);
+      window.removeEventListener("focus",read);document.removeEventListener("visibilitychange",read);};
+  },[loaded,livingSurface,livingInput,livingHour]);
+  useEffect(()=>{
+    if(!livingCard || livingCard.surface!==livingSurface || document.visibilityState!=="visible")return;
+    const overridden=livingSurface==="welcome"?!!copy["welcome.line"]:
+      !!copy["home.moment"] || !!copy["greetings."+displayedPart];
+    if(overridden)return;
+    const frame=requestAnimationFrame(()=>{homeBridge()?.livingVoiceDisplayed?.(livingCard.selection_id);});
+    return()=>cancelAnimationFrame(frame);
+  },[livingCard,livingSurface,copy["welcome.line"],copy["home.moment"],copy["greetings."+displayedPart]]);
+  const shownVoice=livingCard && livingCard.surface===livingSurface?{...voiceCard,id:livingCard.id,
+    headline:livingCard.headline,body:livingCard.body,contextLabel:"JLZ · FOR YOU"}:voiceCard;
   useEffect(() => {
     if (!loaded || !now || voiceCard.nextMemory === state.voiceMemory) return;
     update((s) => ({ ...s, voiceMemory: voiceCard.nextMemory }));
@@ -681,14 +719,14 @@ export default function BetweenWorlds() {
       <div className="welcome-card">
         <div className="welcome-kicker">BETWEEN WORLDS · PRIVATE SPACE</div>
         <div className="welcome-portrait-wrap"><img className="welcome-portrait" src={welcomePortrait} alt="纪临洲立绘" /></div>
-        <div className="welcome-copy"><h1>世界之间</h1><p className="welcome-en">Between Worlds</p><p>{copy["welcome.line"] || `${voiceCard.headline} ${voiceCard.body}`}</p></div>
+        <div className="welcome-copy"><h1>世界之间</h1><p className="welcome-en">Between Worlds</p><p>{copy["welcome.line"] || `${shownVoice.headline} ${shownVoice.body}`}</p></div>
         <button className="enter-btn" onClick={() => setWelcome(false)}>进入我们的世界 <span>↗</span></button>
       </div>
     </div>
 
     <main className="app-shell">
       <header className="topbar"><div><span>{timeText}</span><span className="brand-mini">☁ BETWEEN WORLDS</span></div><div className="top-actions"><button className="pill-btn" onClick={flipTheme}><VintageIcon name="theme" size={22} /> 换装</button><button className="round-btn" aria-label="更多" onClick={()=>switchTab("more")}>⋯</button><button className="round-btn" aria-label="同步状态" onClick={() => { void connect(); notify(configured ? "正在和 Runtime 同步……" : "在「更多」里填写私人连接钥匙即可同步"); }}>♢</button></div></header>
-      {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} copy={copy} voice={{...voiceCard, headline:copy["greetings."+contentPart(now ?? new Date())] || voiceCard.headline, body:copy["home.moment"] || voiceCard.body}} homePortrait={homePortrait} selectTaskDate={selectTaskDate} plan={state.dailyPlan?.date === taskDate ? state.dailyPlan : emptyDailyPlan(taskDate)} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} unlockHello={unlockHello} appHub={appHub} launchApp={launchHubApp} openBanduread={openBanduread} openApps={() => setSheet("apps")} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
+      {tab === "home" && <HomePage dateLabel={dateLabel} timeText={timeText} copy={copy} voice={{...shownVoice, headline:copy["greetings."+contentPart(now ?? new Date())] || shownVoice.headline, body:copy["home.moment"] || shownVoice.body}} homePortrait={homePortrait} selectTaskDate={selectTaskDate} plan={state.dailyPlan?.date === taskDate ? state.dailyPlan : emptyDailyPlan(taskDate)} study={state.studySummary?.date === keyDate(now ?? new Date()) ? state.studySummary : emptyStudySummary(keyDate(now ?? new Date()))} nowMs={(now ?? new Date()).getTime()} unlockHello={unlockHello} appHub={appHub} launchApp={launchHubApp} openBanduread={openBanduread} openApps={() => setSheet("apps")} openStudy={openNativeStudy} openSheet={setSheet} openTask={openTaskEditor} mutateTask={mutateDailyTask} setTab={switchTab} banner={banner} />}
       {tab === "echo" && <EchoPage emptyCopy={copy["echo.empty"]} onTask={(text,id)=>{mutateDailyTask("upsert",{date:keyDate(new Date()),task_id:"echo-task-"+id.slice(-70),title:text.slice(0,180),description:text,source:"echo:"+id});notify("已放进今日任务");}} state={state} conn={conn} update={update} send={send} notify={notify} chatAvatar={chatAvatar} />}
       {tab === "timeline" && <TimelinePage notes={state.notes} remote={state.remoteRecords} />}
       {tab === "room" && <RoomPage records={state.remoteRecords} teaser={copy["jlz.room.teaser"]} portrait={homePortrait} />}

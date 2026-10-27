@@ -32,6 +32,12 @@ class WebShellActivity : ComponentActivity() {
     private lateinit var studyBridge: StudySessionBridge
     private var nativeFallbackOpened = false
     private var pendingPack = ""
+    override fun onStart() {
+        super.onStart()
+        dev.jlz.presence.persona.LivingVoiceStore(this).beginVisit()
+        if (::webView.isInitialized) webView.evaluateJavascript(
+            "window.dispatchEvent(new Event('living-voice-entry'));", null)
+    }
     private val askSteps = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
     private val savePack = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if(uri!=null && pendingPack.isNotBlank()) contentResolver.openOutputStream(uri)?.use { it.write(pendingPack.toByteArray()) }

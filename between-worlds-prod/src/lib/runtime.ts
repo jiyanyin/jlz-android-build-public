@@ -20,6 +20,9 @@ export type HomeBridge = {
   requestAsync?(id: string, path: string, method: string, body: string): void;
   snapshot(): string;
   voiceState?(): string;
+  livingVoice?(surface:string,input:string):string;
+  livingVoiceDisplayed?(selectionId:string):boolean;
+  livingVoiceStatus?():string;
   savePack(raw: string): void;
   openPack(): void;
   setGateEnabled(value: boolean): void;

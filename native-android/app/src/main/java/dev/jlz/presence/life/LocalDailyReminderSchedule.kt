@@ -48,6 +48,7 @@ object LocalDailyReminderSchedule {
     }
 
     suspend fun deliver(context: Context, slot: Slot) {
+        if (!LivingReminderWindow.allowed(slot.key,slot.atMs,System.currentTimeMillis())) return
         val app = context.applicationContext
         val engine = LocalLifeReminderEngine(app)
         if (slot.key == "steps_evening") {

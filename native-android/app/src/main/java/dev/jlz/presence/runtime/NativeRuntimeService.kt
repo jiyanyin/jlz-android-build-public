@@ -261,6 +261,7 @@ class NativeRuntimeService : Service() {
                 // an unreceived version as applied to the UI.
                 if(settings.bridgeName.startsWith("Home") &&
                     System.currentTimeMillis()-contentCheckedAt >= 60_000L) {
+                    runCatching { dev.jlz.presence.persona.LivingVoiceStore(applicationContext).sync(api) }
                     val synced = runCatching {
                         WorldContentCache(applicationContext).save(api.worldContent())
                     }.getOrDefault(false)
@@ -368,6 +369,7 @@ class NativeRuntimeService : Service() {
                             }
                         })
                 }
+                dev.jlz.presence.persona.LivingVoiceStore(applicationContext).observeUsage(usageJson)
                 val windowEnd = System.currentTimeMillis()
                 val windowStart = windowEnd - 3_600_000L
                 val recent = deviceActivityJournal.readAppSessions(applicationContext,
