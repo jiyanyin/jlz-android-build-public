@@ -2,6 +2,10 @@ export type LivingVoiceCard = {
   id:string; selection_id:string; headline:string; body:string; text:string;
   topic:string; bank_version:number; bank_entries:number; surface:"home"|"welcome";
 };
+export function livingVoiceSurface(welcome:boolean,tab:string,hasSheet:boolean,entryMode:string|null):"welcome"|"home"|null {
+  if(entryMode==="gate")return null;
+  return welcome?"welcome":tab==="home"&&!hasSheet?"home":null;
+}
 export function parseLivingVoice(raw:string):LivingVoiceCard|null {
   try {
     const c=JSON.parse(raw) as LivingVoiceCard;

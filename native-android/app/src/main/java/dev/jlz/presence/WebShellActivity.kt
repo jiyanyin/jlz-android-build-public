@@ -175,6 +175,7 @@ class WebShellActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        dev.jlz.presence.persona.LivingVoiceStore(this).beginVisit()
         setIntent(intent)
         nativeFallbackOpened = false
         webView.loadUrl(resolveWebUrl(intent))

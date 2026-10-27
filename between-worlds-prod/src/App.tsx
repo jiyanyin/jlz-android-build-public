@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { parseLivingVoice, type LivingVoiceCard } from "./lib/livingVoice";
+import { parseLivingVoice, livingVoiceSurface, type LivingVoiceCard } from "./lib/livingVoice";
 import { NativeCalendarPanel } from "./NativeCalendarPanel";
 import { NotificationDynamicsPanel } from "./NotificationDynamicsPanel";
 import { TripMapPanel } from "./TripMapPanel";
@@ -574,7 +574,7 @@ export default function BetweenWorlds() {
     status: voiceStatus,
     nativeMood,
   }, state.voiceMemory);
-  const livingSurface=welcome?"welcome":tab==="home" && !sheet?"home":null;
+  const livingSurface=livingVoiceSurface(welcome,tab,!!sheet,ENTRY_MODE);
   const statusAge=(now?.getTime()??Date.now())-Date.parse(state.status?.at??"");
   const livingInput=JSON.stringify({active_action:state.activeLife?.action??"",
     active_start_at:state.activeLife?.startAt??0,
