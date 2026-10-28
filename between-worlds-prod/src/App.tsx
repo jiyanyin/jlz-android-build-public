@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { parseLivingVoice, livingVoiceSurface, type LivingVoiceCard } from "./lib/livingVoice";
+import { mergeEchoMessages, pendingEchoMessages } from "./lib/echoMessages";
+import { BANDUREAD_URL } from "./lib/studyLinks";
 import { NativeCalendarPanel } from "./NativeCalendarPanel";
 import { NotificationDynamicsPanel } from "./NotificationDynamicsPanel";
 import { TripMapPanel } from "./TripMapPanel";
@@ -649,7 +651,7 @@ export default function BetweenWorlds() {
       if (!appHubActions.openBanduread()) notify("伴读没有成功打开。");
       return;
     }
-    window.location.href = "https://banduread-study.sujiaojiao99.chatgpt.site/";
+    window.location.href = BANDUREAD_URL;
   };
 
   const updateAppPin = (item: AppHubItem, pinned: boolean) => {
@@ -1300,6 +1302,7 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask, empty
   const [day, setDay] = useState(() => keyDate(new Date()));
   const [dayMessages, setDayMessages] = useState<RemoteMessage[]>([]);
   const [dayLoaded,setDayLoaded] = useState(false);
+  const [dayRefreshFailed,setDayRefreshFailed] = useState(false);
   const [beforeId,setBeforeId] = useState("");
   const [hasMore,setHasMore] = useState(false);
   const [loadingOlder,setLoadingOlder] = useState(false);
@@ -1335,14 +1338,17 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask, empty
     if(nextKey<=keyDate(new Date()))setDay(nextKey);
   };
   useEffect(()=>{
-    activeDay.current=day;
-    morePagesLoaded.current=false;
-    nearBottom.current=true;
-    setDayMessages([]);
-    setDayLoaded(false);
-    setHasMore(false);
-    setBeforeId("");
-    setNewMessages(false);
+    if(activeDay.current!==day){
+      activeDay.current=day;
+      morePagesLoaded.current=false;
+      nearBottom.current=true;
+      setDayMessages([]);
+      setDayLoaded(false);
+      setHasMore(false);
+      setBeforeId("");
+      setNewMessages(false);
+      setDayRefreshFailed(false);
+    }
     const c=echoConfig();
     if(conn!=="online" || !c) return;
     let cancelled=false;
@@ -1351,19 +1357,15 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask, empty
         const page=await runtime.messagesForDay(c,day,"",100);
         if(cancelled || activeDay.current!==day || page.date!==day)return;
         const latest=extractMessages(page);
-        setDayMessages(previous=>{
-          const unique=new Map<string,RemoteMessage>();
-          for(const m of previous) unique.set(m.id,m);
-          for(const m of latest) unique.set(m.id,m);
-          return Array.from(unique.values()).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
-        });
+        setDayMessages(previous=>mergeEchoMessages(previous,latest));
         if(!morePagesLoaded.current){
           setHasMore(page.has_more);
           setBeforeId(page.next_before_id||"");
         }
         setDayLoaded(true);
+        setDayRefreshFailed(false);
       } catch {
-        if(!cancelled && activeDay.current===day)setDayLoaded(false);
+        if(!cancelled && activeDay.current===day)setDayRefreshFailed(true);
       }
     };
     void refresh();
@@ -1383,12 +1385,7 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask, empty
       if(currentDay!==activeDay.current || page.date!==currentDay)return;
       const older=extractMessages(page);
       morePagesLoaded.current=true;
-      setDayMessages(prev=>{
-        const unique=new Map<string,RemoteMessage>();
-        for(const m of prev)unique.set(m.id,m);
-        for(const m of older)unique.set(m.id,m);
-        return Array.from(unique.values()).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
-      });
+      setDayMessages(prev=>mergeEchoMessages(prev,older));
       setHasMore(page.has_more);setBeforeId(page.next_before_id||"");
     } catch {notify("这页历史暂时没有加载成功，稍后再试");preserveScroll.current=null;}
     finally {setLoadingOlder(false);}
@@ -1403,14 +1400,11 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask, empty
     nearBottom.current=true;setNewMessages(false);
     if(conn!=="online") notify("已存本机，连接后自动发送");
   };
-  const shownRemote=conn==="online" && dayLoaded
-    ? dayMessages
-    : state.remoteMessages;
-  const remoteIds = new Set(shownRemote.map((m)=>m.id));
+  const shownRemote=mergeEchoMessages(state.remoteMessages,dayMessages);
   const list = [
-    ...state.importedMessages.map((m)=>({key:m.id,text:m.text,at:m.at,me:false,label:"离线指令包"})),
-    ...shownRemote.map((m)=>({key:m.id,text:m.text,at:m.at,me:!m.fromCompanion,label:m.handled?"官端已处理":m.fromCompanion?"已送达回响":"已入队 · 等待官端"})),
-    ...state.messages.filter((m)=>!m.event_id||!remoteIds.has(m.event_id)).map((m,i)=>({key:m.event_id??m.at+"-"+i,text:m.text,at:m.at,me:true,label:m.sync==="synced"?"已发送":"本地 · 待发送"})),
+    ...state.importedMessages.map((m)=>({key:"imported:"+m.id,ref:m.id,text:m.text,at:m.at,me:false,label:"离线指令包"})),
+    ...shownRemote.map((m)=>({key:(m.fromCompanion?"companion:":"user:")+m.id,ref:m.id,text:m.text,at:m.at,me:!m.fromCompanion,label:m.handled?"官端已处理":m.fromCompanion?"已送达回响":"已入队 · 等待官端"})),
+    ...pendingEchoMessages(state.messages,shownRemote).map((m,i)=>({key:"local:"+(m.event_id??m.at+"-"+i),ref:m.event_id??m.at+"-"+i,text:m.text,at:m.at,me:true,label:m.sync==="synced"?"已发送":"本地 · 待发送"})),
   ].filter((m)=>Number.isFinite(Date.parse(m.at)) && keyDate(new Date(m.at))===day)
     .sort((a,b)=>Date.parse(a.at)-Date.parse(b.at));
   const newest=list.length?list[list.length-1].key+"|"+list[list.length-1].text:"";
@@ -1452,7 +1446,8 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask, empty
       <button type="button" onClick={()=>{setDay(keyDate(new Date()));nearBottom.current=true;setNewMessages(false)}}>今天</button>
     </div>
     {conn!=="online"&&<div className="preview-tip">离线时只能查看已缓存的消息；历史日期需连接 Home Node。你写的话会在本机排队。</div>}
-    {conn==="online"&&!dayLoaded&&<div className="preview-tip">正在取这一天的聊天；如果连接失败，只显示已有缓存，不冒充完整历史。</div>}
+    {conn==="online"&&dayRefreshFailed&&<div className="preview-tip">这一天的聊天暂时没能刷新，已加载的正文和缓存仍保留；连接后会重试。</div>}
+    {conn==="online"&&!dayLoaded&&!dayRefreshFailed&&<div className="preview-tip">正在取这一天的聊天；如果连接失败，只显示已有缓存，不冒充完整历史。</div>}
     <div className="message-list echo-day-list" ref={viewport} onScroll={e=>{const target=e.currentTarget;nearBottom.current=target.scrollHeight-target.scrollTop-target.clientHeight<90;if(nearBottom.current)setNewMessages(false);}}>
       {hasMore&&conn==="online"&&<button type="button" className="echo-older" onClick={()=>void loadOlder()} disabled={loadingOlder}>{loadingOlder?"加载中……":"加载当天更早的消息"}</button>}
       {list.length===0&&<div className="echo-empty">{emptyCopy || <>这一天还没有加载到聊天。{day===today?"今天的话，就从这一句开始。":"可以换一天找我们说过的话。"}</>}</div>}
@@ -1461,9 +1456,9 @@ function EchoPage({ state, conn, update, send, notify, chatAvatar, onTask, empty
         <div className={"message "+(m.me?"me":"")}>{m.text}
           <time>{new Date(m.at).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})} · {m.label}</time>
           <div className="echo-actions">
-            {!m.me&&<button onClick={()=>setReplyTo({id:m.key,text:m.text})}>回复这条</button>}
-            <button onClick={()=>onTask(m.text,m.key)}>变成待办</button>
-            <button onClick={()=>{const id="echo-note-"+m.key.slice(-70);send("/api/web/journal",{kind:"echo_excerpt",text:m.text,source_ref:m.key},id);notify("片段已排队保存到共历");}}>留在共历</button>
+            {!m.me&&<button onClick={()=>setReplyTo({id:m.ref,text:m.text})}>回复这条</button>}
+            <button onClick={()=>onTask(m.text,m.ref)}>变成待办</button>
+            <button onClick={()=>{const id="echo-note-"+m.ref.slice(-70);send("/api/web/journal",{kind:"echo_excerpt",text:m.text,source_ref:m.ref},id);notify("片段已排队保存到共历");}}>留在共历</button>
           </div>
         </div>
         {m.me&&<OwnerAvatar />}

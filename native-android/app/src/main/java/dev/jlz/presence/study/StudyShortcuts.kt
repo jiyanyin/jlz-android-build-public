@@ -7,7 +7,7 @@ import android.net.Uri
 
 /** External apps are optional: never pretend a web fallback opened a native app. */
 object StudyShortcuts {
-    const val BANDUREAD_URL = "https://banduread-study.sujiaojiao99.chatgpt.site/"
+    const val BANDUREAD_URL = "https://laptop-p23k8ciu.tail9f1176.ts.net:8443/"
     const val FENBI_URL = "https://www.fenbi.com/"
 
     fun openBanduread(context: Context): String =

@@ -62,9 +62,15 @@ class LocalAppClassifier(private val context: Context) {
             @Suppress("DEPRECATION")
             val meta = pm.getApplicationInfo(pkg, PackageManager.GET_META_DATA).metaData
             val origin = android.net.Uri.parse(meta?.getString("org.chromium.webapk.shell_apk.startUrl").orEmpty())
-            origin.scheme == "https" && origin.host == "banduread-study.sujiaojiao99.chatgpt.site"
+            isLearningOrigin(origin)
         }.getOrDefault(false)
     }
+
+    internal fun isLearningOrigin(origin: android.net.Uri): Boolean =
+        origin.scheme == "https" && origin.userInfo == null && (
+            // Retain the old read-only PWA's classification during migration.
+            (origin.host == "banduread-study.sujiaojiao99.chatgpt.site" && origin.port in setOf(-1,443)) ||
+            (origin.host == "laptop-p23k8ciu.tail9f1176.ts.net" && origin.port == 8443))
 
     @Synchronized fun classify(pkg: String): LocalAppCategory {
         if (pkg in setOf(context.packageName, "com.android.settings", "com.android.systemui")) return LocalAppCategory.SYSTEM_SAFE

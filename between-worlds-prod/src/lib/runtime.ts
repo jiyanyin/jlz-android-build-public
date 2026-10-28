@@ -133,7 +133,8 @@ export const runtime = {
 
 // ---- defensive normalisers for Runtime payloads ----
 export type RemoteRecord = { id: string; type: string; at: string; body: string; actor?:string; provenance?:string; entity_id?:string; entity_state?:string; related_event_id?:string; date?:string; kind?:string; event?:string };
-export type RemoteMessage = { id: string; text: string; at: string; fromCompanion: boolean; handled?: boolean; reply_to?:string };
+export { extractMessages } from "./echoMessages";
+export type { RemoteMessage } from "./echoMessages";
 
 const str = (v: unknown) => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
 const toIso = (v: unknown) => {
@@ -169,20 +170,3 @@ export function extractRecords(state: unknown): RemoteRecord[] {
   return out.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
 }
 
-export function extractMessages(payload: unknown): RemoteMessage[] {
-  const p = asObj(payload);
-  const arr = Array.isArray(payload) ? payload : Array.isArray(p.messages) ? p.messages : Array.isArray(p.items) ? p.items : [];
-  return arr
-    .map((raw) => {
-      const m = asObj(raw);
-      const role = str(m.role ?? m.sender ?? m.from ?? m.author).toLowerCase();
-      return {
-        id: str(m.event_id || m.id),
-        text: str(m.text ?? m.content ?? m.body),
-        at: toIso(m.at ?? m.created_at ?? m.timestamp),
-        fromCompanion: !["user", "web", "me", "yanyin", "human"].includes(role),
-        handled: Boolean(m.handled), reply_to:str(m.reply_to ?? m.reply_to_id),
-      };
-    })
-    .filter((m) => m.id && m.text);
-}
