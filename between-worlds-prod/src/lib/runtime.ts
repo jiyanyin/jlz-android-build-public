@@ -169,4 +169,3 @@ export function extractRecords(state: unknown): RemoteRecord[] {
   const seen = new Set<string>();
   return out.filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true)));
 }
-
