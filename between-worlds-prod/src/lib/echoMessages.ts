@@ -20,7 +20,7 @@ export function extractMessages(payload: unknown): RemoteMessage[] {
       id: str(m.id || m.event_id), text: str(m.text ?? m.content ?? m.body),
       at: new Date(Number.isFinite(at) ? at : Date.now()).toISOString(), fromCompanion,
       handled: Boolean(m.handled), reply_to: str(m.reply_to ?? m.reply_to_id),
-      clientEventId: fromCompanion ? undefined : str(m.client_event_id || m.event_id || m.id),
+      clientEventId: fromCompanion ? undefined : str(m.client_event_id || (m.source === "world_between_web" ? m.event_id : m.id)),
     };
   }).filter(m => m.id && m.text);
 }

@@ -37,6 +37,8 @@ test("only the accepted user message reconciles the local outbox bubble",()=>{
   assert.deepEqual(pendingEchoMessages(local,parsed).map(m=>m.event_id),["unsent"]);
   const native=extractMessages([{...rows[1],id:"native-user-row",client_event_id:"input-id"}]);
   assert.deepEqual(pendingEchoMessages(local,native).map(m=>m.event_id),["unsent"]);
+  const relatedInput=extractMessages([{...rows[1],id:"native-user-row",source:"jlz_native_android"}]);
+  assert.equal(pendingEchoMessages(local,relatedInput).length,2);
 });
 test("same text on distinct ids remains distinct; event-only legacy messages still work",()=>{
   const a=extractMessages([{...rows[1],id:"one"},{...rows[1],id:"two"}]);
